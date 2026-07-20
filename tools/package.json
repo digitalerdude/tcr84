@@ -1,0 +1,14 @@
+{
+  "name": "tcr84-tracker-updater",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Automated data.json updates for tcr84 from the official followmychallenge.com TCR live tracker.",
+  "scripts": {
+    "start": "node update-tracker.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
