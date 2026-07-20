@@ -551,8 +551,8 @@ function renderProfile(c){
        <div class="setbody">
          <p class="profnote" style="margin-top:14px">
            Der Live-Tracker meldet nur Position und Kilometerstand, keine Höhenmeter. Dieses
-           Board fragt ihn stündlich ab — zwischen zwei hier gespeicherten Meldungen liegen
-           also gut 30 km, in denen jeder Anstieg unsichtbar wäre.
+           Board fragt ihn alle 30 Minuten ab — zwischen zwei hier gespeicherten Meldungen
+           liegen also etliche Kilometer, in denen jeder Anstieg unsichtbar wäre.
          </p>
          <p class="profnote">
            Deshalb wird für jedes Segment die wahrscheinlichste Radroute zwischen den beiden
@@ -807,7 +807,7 @@ function renderSource(c){
     ? `Bearbeiten-Modus. Quelle gerade: <code>${SOURCE}</code>. Änderungen sind erst öffentlich, wenn du
        <code>data.json</code> im Repo ersetzt oder den frischen Link verschickst.<br>
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`
-    : `Werte werden seit dem 20.07.2026 automatisiert stündlich vom offiziellen Live-Tracker abgefragt
+    : `Werte werden seit dem 20.07.2026 automatisiert alle 30 Minuten vom offiziellen Live-Tracker abgefragt
        (erkennbar an „GPS" bei der Meldung); vereinzelte Einträge sind von Hand nachgetragen.
        Quelle: <code>${SOURCE}</code>.<br>
        Höhen und Höhenmeter sind geschätzt${PROFILE_TEST?' und noch im Testmodus':''} — wie sie

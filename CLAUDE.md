@@ -34,6 +34,7 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
       "climbUp": 103,           // optional, geschätzte Höhenmeter seit der Meldung davor
       "climbDown": 427,         // optional, dito bergab
       "climbKm": 17.4,          // optional, Länge der gerouteten Strecke des Segments
+      "climbSrc": "brouter:trekking",  // welches Routing-Profil die climb-Werte erzeugt hat
       "track": [[387.1,569]]    // optional, ausgedünnte Höhenlinie [km, m], absolute Renn-km
     }
   ],
@@ -105,8 +106,24 @@ Zwei verschiedene Dinge mit zwei verschiedenen Problemen:
   dazwischen), also wird die wahrscheinlichste Radroute geroutet und deren
   Höhenprofil ausgewertet.
 
-**Quelle: [BRouter](https://brouter.de/) (`profile=trekking`, `format=geojson`)**,
-kein Key, öffentlicher Server. Liefert Höhe je Stützpunkt in der Geometrie
+**Quelle: [BRouter](https://brouter.de/)** (`format=geojson`), kein Key,
+öffentlicher Server. Profil in `CONFIG.routeProfile`, aktuell `trekking`.
+
+**Warum `trekking` und nicht `fastbike`?** Messung am 2026-07-20 auf den ersten
+beiden Segmenten — Tracker-Delta als Referenz für die Länge, Manuels eigene
+Erwartung von ~5.400 hm bis Flåm als Referenz für die Höhe:
+
+| Profil | Länge Seg1 / Seg2 | Summe hm | hochgerechnet bis Flåm |
+|---|---|---|---|
+| `trekking` | +2,66 / −0,36 km | 372 | ~5.740 ← gewählt |
+| `fastbike` | +1,63 / +0,57 km | 553 | ~8.550 |
+| `shortest` | +0,52 / −0,58 km | 472 | ~7.300 |
+
+Die Länge entscheidet nichts (jedes Profil gewinnt ein Segment), die Höhe schon:
+`fastbike` nimmt im Gudbrandsdal die andere, hügeligere Talseite. Das gewählte
+Profil steht in jedem Eintrag als `climbSrc` (`"brouter:trekking"`), ein Wechsel
+plus `--backfill --force` bleibt dadurch nachvollziehbar.
+`fastbike-asphalt-avoid-unsafe` gibt es auf dem öffentlichen Server nicht (HTTP 500). Liefert Höhe je Stützpunkt in der Geometrie
 (`[lon, lat, ele]`), `track-length`, und entscheidend `filtered ascend` — eine
 bereits entrauschte Höhenmeter-Summe. `climbDown` = `filtered ascend` − `plain-ascend`.
 
@@ -134,7 +151,12 @@ anderer ID-Namespace als die internen `ridersArray`-Keys).
 ## Automatisierung (launchd)
 
 `~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — läuft
-stündlich (`StartInterval: 3600`), ruft `update-tracker.mjs --commit --push` auf.
+alle 30 Minuten (`StartInterval: 1800`, seit 2026-07-20; davor stündlich — der
+Tracker selbst meldet deutlich häufiger, `lastReportMins` lag im Test bei 2–7
+Minuten, stündliches Abfragen hat also unnötig Auflösung verschenkt), ruft
+`update-tracker.mjs --commit --push` auf. `RunAtLoad` ist gesetzt: ein
+`launchctl bootstrap` nach dem Editieren startet den Job **sofort** mit, inklusive
+Push — vor dem Neuladen also schauen, was gerade uncommittet im Baum liegt.
 Läuft in der GUI-Session des Users (nicht als reiner Daemon), das ist nötig, damit
 der "headed"-Chromium-Start funktioniert (siehe oben).
 

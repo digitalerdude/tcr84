@@ -35,6 +35,22 @@ const CONFIG = {
   riderName: 'Manuel Kaufer',
   // Skip writing a new entry if the distance barely moved since the last one.
   minKmDelta: 1,
+  /* BRouter-Profil für die Höhenmeter-Schätzung. Vergleich am 2026-07-20 auf
+     den ersten beiden Segmenten (Tracker-Delta als Referenz für die Länge,
+     Manuels eigene Erwartung von ~5.400 hm bis Flåm als Referenz für die Höhe):
+
+       Profil     Länge Seg1/Seg2   Summe hm   hochgerechnet bis Flåm
+       trekking   +2,66 / −0,36 km      372    ~5.740   ← gewählt
+       fastbike   +1,63 / +0,57 km      553    ~8.550
+       shortest   +0,52 / −0,58 km      472    ~7.300
+
+     Die Länge allein entscheidet nichts (jedes Profil gewinnt ein Segment),
+     die Höhe schon: `fastbike` nimmt im Gudbrandsdal die andere, hügeligere
+     Talseite und liegt 58 % über Manuels Erwartung, `trekking` 6 %. Sollte
+     die Auswertung am Abend des 21.07. etwas anderes zeigen: hier ändern,
+     dann `--backfill --force` — das Profil steht in jedem Eintrag als
+     `climbSrc`, alte und neue Werte bleiben unterscheidbar. */
+  routeProfile: 'trekking',
   // Don't try to route/climb-sample absurdly long gaps (tracker was offline
   // for hours) — the guessed route gets too speculative to be worth showing.
   maxSegmentKm: 250,
@@ -131,7 +147,7 @@ async function demElevation(points) {
 // Koordinaten sind [lon, lat, ele].
 async function brouterSegment(a, b) {
   const url = `https://brouter.de/brouter?lonlats=${a[1]},${a[0]}|${b[1]},${b[0]}` +
-              `&profile=trekking&alternativeidx=0&format=geojson`;
+              `&profile=${CONFIG.routeProfile}&alternativeidx=0&format=geojson`;
   const data = await fetchJson(url);
   const f = data.features && data.features[0];
   if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates)) return null;
@@ -178,6 +194,7 @@ async function segmentClimb(from, to) {
       down: Math.round(up - net),
       routeKm: isFinite(trackLen) ? Math.round(trackLen / 100) / 10 : null,
       track: thinTrack(seg.coords, from.km, to.km),
+      src: 'brouter:' + CONFIG.routeProfile,
       endEle: typeof seg.coords[seg.coords.length - 1][2] === 'number'
         ? Math.round(seg.coords[seg.coords.length - 1][2]) : null,
     };
@@ -283,6 +300,7 @@ async function backfill() {
     b.climbUp = climb.up; b.climbDown = climb.down;
     if (climb.routeKm != null) b.climbKm = climb.routeKm;
     if (climb.track) b.track = climb.track;
+    b.climbSrc = climb.src;
     if (climb.endEle != null) { b.ele = climb.endEle; b.eleSrc = 'route'; }
     changed++;
     log(`  ${b.ts} ${b.place||'?'}: ↑${climb.up} ↓${climb.down} hm over ~${climb.routeKm} km`);
@@ -370,6 +388,7 @@ async function main() {
     entry.climbDown = climb.down;
     if (climb.routeKm != null) entry.climbKm = climb.routeKm;
     if (climb.track) entry.track = climb.track;
+    entry.climbSrc = climb.src;
     if (climb.endEle != null) { entry.ele = climb.endEle; entry.eleSrc = 'route'; }
     log(`climb since last entry: ↑${climb.up} ↓${climb.down} hm over ~${climb.routeKm} km`);
   }
