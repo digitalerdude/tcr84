@@ -27,7 +27,14 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
       "note": "Platz 66",
       "lat": 61.772323,         // optional, nur bei automatisch erfassten Einträgen
       "lon": 10.21984,          // optional
-      "speed": 7.2              // optional, km/h bei Erfassung
+      "speed": 7.2,             // optional, km/h bei Erfassung
+      "ele": 245,               // optional, Höhe in m an dieser Meldung
+      "eleSrc": "route",        // woher `ele` stammt: route | dem | gps
+      "eleGps": 274,            // optional, rohe GPS-Höhe des Trackers
+      "climbUp": 103,           // optional, geschätzte Höhenmeter seit der Meldung davor
+      "climbDown": 427,         // optional, dito bergab
+      "climbKm": 17.4,          // optional, Länge der gerouteten Strecke des Segments
+      "track": [[387.1,569]]    // optional, ausgedünnte Höhenlinie [km, m], absolute Renn-km
     }
   ],
   "updated": "..."
@@ -78,7 +85,42 @@ node update-tracker.mjs                     # Dry Run, schreibt data.json nur lo
 node update-tracker.mjs --commit --push      # committet und pusht
 node update-tracker.mjs --headed             # Fenster sichtbar (Debugging)
 node update-tracker.mjs --dump=rider.json    # rohes ridersArray-Objekt für den Fahrer dumpen
+node update-tracker.mjs --backfill            # nur fehlende Höhen-Felder nachtragen (ohne Browser)
+node update-tracker.mjs --backfill --force    # dito, auch vorhandene Werte neu rechnen
 ```
+
+### Höhen und Höhenmeter
+
+Zwei verschiedene Dinge mit zwei verschiedenen Problemen:
+
+- **`ele`** — Höhe *an* der Meldung. `ridersArray` hat ein Feld `altitude` (das Feld
+  `elevation` daneben steht konstant auf 0, unbrauchbar), aber es ist **nicht immer
+  gefüllt** — am 2026-07-20 mal 274, eine Stunde später `null`. Es wird als `eleGps`
+  immer mitgeschrieben, ist aber nicht die angezeigte Höhe: Einzelfix-GPS-Höhen
+  streuen um ±20–30 m. Angezeigt wird der Wert aus der gerouteten Strecke
+  (`eleSrc:'route'`), damit die Kurve im Board eine durchgehend gleiche Quelle hat.
+  Fallbacks: DEM-Lookup (`'dem'`), dann GPS (`'gps'`).
+- **`climbUp`/`climbDown`/`track`** — Höhenmeter *zwischen* zwei Meldungen. Aus den
+  Meldungen selbst nicht ableitbar (bei ~35 km Abstand liegt jeder Anstieg
+  dazwischen), also wird die wahrscheinlichste Radroute geroutet und deren
+  Höhenprofil ausgewertet.
+
+**Quelle: [BRouter](https://brouter.de/) (`profile=trekking`, `format=geojson`)**,
+kein Key, öffentlicher Server. Liefert Höhe je Stützpunkt in der Geometrie
+(`[lon, lat, ele]`), `track-length`, und entscheidend `filtered ascend` — eine
+bereits entrauschte Höhenmeter-Summe. `climbDown` = `filtered ascend` − `plain-ascend`.
+
+**Verworfener erster Ansatz (2026-07-20), nicht zurückbauen:** OSRM-Demo-Server +
+punktweise Höhenabfrage bei Open-Meteo. Zwei Fehler: der öffentliche OSRM-Demo
+routet nur mit Auto-Profil (19,4 km statt real gefahrener 17,8 km — BRouter trifft
+mit 17,4 km), und das Aufsummieren roher DEM-Werte alle ~230 m erzeugt massive
+Artefakte, weil die geratene Route Hangflanken streift: im Testsegment ein Sprung
+von 190 m auf 500 m Strecke (38 % Steigung). Ergebnis 423 statt 103 Höhenmeter,
+gut das Vierfache. Steigungs- und Hysterese-Filter von Hand brachten nur ~8 %.
+
+`--backfill` trägt die Felder auf bestehenden Einträgen nach (ohne Browser, nur
+BRouter + DEM), `--backfill --force` rechnet auch schon vorhandene Werte neu.
+1,5 s Pause zwischen den Segmenten, der BRouter-Server ist ein Gratis-Dienst.
 
 Race-Window-Guard: läuft nur zwischen `settings.start` und `settings.deadline + 1 Tag`
 (liest das direkt aus `data.json`), damit der geplante Job vor/nach dem Rennen
@@ -112,6 +154,14 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   bewusst **standardmäßig eingeklappt** (`<details>`/Klick-Toggle) — die mobile
   Startansicht soll schlank bleiben, tiefere Daten sind einen Klick entfernt, nicht
   auf der ersten Bildschirmseite.
+- Höhenprofil (`#profileWrap`, `renderProfile()`): handgebautes SVG, **kein
+  Chart-Framework**. Wird auf die tatsächliche Container-Breite gerechnet
+  (1 SVG-Einheit = 1 px), damit Schriftgrößen auf dem Handy echte Pixel sind statt
+  hochskalierter Miniaturen — deshalb der entprellte `resize`-Handler daneben.
+  Zwei Ebenen: die dichte Linie aus den `track`-Arrays (~1 Stützpunkt je km) und die
+  Meldungen als Punkte darauf. Farben über CSS-Klassen (`.pl`, `.gl`, `.pdot` …)
+  statt `var()` in SVG-Präsentationsattributen. Zeiger per `pointermove`/`pointerdown`
+  auf einem transparenten `<rect>`, also auch auf Touch bedienbar.
 - Karte: Leaflet + OpenStreetMap-Tiles, per CDN erst beim Öffnen von
   `<details id="mapDetails">` nachgeladen (`ensureLeaflet()`), kein Impact auf die
   normale Ladezeit.

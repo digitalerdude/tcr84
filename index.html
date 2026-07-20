@@ -113,6 +113,28 @@
   .daylabels{display:flex;gap:5px;margin-top:6px}
   .daylabel{flex:1;min-width:12px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
   .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+  .dayhm{font-family:var(--mono);font-size:8.5px;color:var(--brass);opacity:.8}
+
+  /* Höhenprofil: Kennzahlenstreifen + SVG-Diagramm als ein zusammenhängender Block.
+     Der Streifen ist mobil zweispaltig und wird ab 641px vierspaltig. */
+  .hmstrip{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);
+           border:1px solid var(--line);border-bottom:none}
+  @media (min-width:641px){.hmstrip{grid-template-columns:repeat(4,1fr)}}
+  .profbox{border:1px solid var(--line);background:var(--panel);padding:10px 10px 6px}
+  .profread{font-family:var(--mono);font-size:11px;color:var(--muted);min-height:17px;
+            display:flex;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+  .profread .rv{color:var(--brass)}
+  .profbox svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+  /* SVG-Farben über Klassen statt var() in Präsentationsattributen — die
+     werden nicht überall gleich zuverlässig ersetzt. */
+  .profbox svg text{font-family:var(--mono);fill:var(--muted)}
+  .profbox .gl{stroke:var(--line)}
+  .profbox .pl{stroke:var(--brass)}
+  .profbox .cpl,.profbox .gd{stroke:var(--ice)}
+  .profbox .pdot{fill:var(--brass);stroke:var(--night)}
+  .profbox .pmark{fill:var(--ice);opacity:.55}
+  .profbox .pcur{fill:var(--ice)}
+  .profnote{font-size:11.5px;color:var(--muted);margin:8px 2px 0;line-height:1.55}
 
   table{width:100%;border-collapse:collapse;font-size:14px}
   th{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
@@ -169,6 +191,9 @@
       <div class="verdict" id="verdict">Lädt…</div>
 
       <div id="editArea"></div>
+
+      <h2>Höhenprofil</h2>
+      <div id="profileWrap"></div>
 
       <h2>Kilometer pro Tag</h2>
       <div id="daysWrap"></div>
@@ -307,13 +332,24 @@ function compute(){
     if(dh > 0) roll = (b.km-a.km)/dh;
   }
   const nextCp = st.cps.find(c=> Number(c.km) > km) || null;
+  /* Höhen: `ele` ist die Höhe an der Meldung, `climbUp`/`climbDown` sind die
+     geschätzten Höhenmeter im Segment davor (siehe update-tracker.mjs). Beides
+     optional — Meldungen ohne GPS haben nichts davon, und die Summen zählen
+     deshalb ausdrücklich nur den abgedeckten Teil der Strecke. */
+  const eleList = list.filter(e=> e.ele!=null);
+  const ele = eleList.length ? Number(eleList[eleList.length-1].ele) : null;
+  const climbUp = list.reduce((s,e)=> s + (Number(e.climbUp)||0), 0);
+  const climbDown = list.reduce((s,e)=> s + (Number(e.climbDown)||0), 0);
+  const climbKm = list.reduce((s,e)=> s + (e.climbUp!=null ? (Number(e.climbKm)||0) : 0), 0);
+  const eleMax = eleList.length ? Math.max(...eleList.map(e=> Number(e.ele))) : null;
   let state = 'warn';
   if(!last) state = '';
   else if(rest === 0) state = 'good';
   else if(buffer !== null && buffer > 24*3.6e6) state = 'good';
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
-  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,state};
+  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,state,
+          eleList,ele,eleMax,climbUp,climbDown,climbKm};
 }
 
 /* ---------- Ansicht ---------- */
@@ -355,6 +391,9 @@ function renderMetrics(c){
     if(c.roll) p.push(`Zwischen den letzten beiden Meldungen: <strong>${one(c.roll)} km/h</strong> ${
       c.roll > c.avg ? '— über dem Gesamtschnitt, also ein Fahrblock ohne längere Pause.'
                      : '— unter dem Gesamtschnitt, da lag vermutlich Schlaf drin.'}`);
+    if(c.last.climbUp!=null && c.last.climbUp > 0)
+      p.push(`Dabei rund <strong>${num(c.last.climbUp)} Höhenmeter</strong> bergauf${
+        c.last.climbDown > c.last.climbUp*1.5 ? ' — netto war das Segment aber deutlich abwärts.' : '.'}`);
     if(c.nextCp) p.push(`Bis ${c.nextCp.nm}: <strong>${num(c.nextCp.km-c.km)} km</strong>${
       c.avg? `, bei gleichem Schnitt rund ${dur((c.nextCp.km-c.km)/c.avg*3.6e6)}.` : '.'}`);
     const age = (c.now-new Date(c.last.ts))/3.6e6;
@@ -381,21 +420,193 @@ function renderLadder(c){
   document.getElementById('ladder').innerHTML = html;
 }
 
+/* ---------- Höhenprofil ----------
+   Bewusst kein Chart-Framework: die SVG wird auf die tatsächliche Container-
+   Breite gerechnet (1 SVG-Einheit = 1 px), damit Schriftgrößen auf dem Handy
+   echte Pixel sind statt hochskalierter Miniaturen. Deshalb auch der
+   resize-Handler unten. */
+const esc = s => String(s).replace(/[<>&]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+let PROF = null; // gerenderter Zustand für die Zeigersteuerung
+
+function renderProfile(c){
+  const wrap = document.getElementById('profileWrap');
+
+  /* Zwei Ebenen: `pts` ist die dichte Höhenlinie (rund ein Stützpunkt je
+     Kilometer, kommt als `track` pro Segment aus dem Scraper), `marks` sind
+     die eigentlichen Meldungen. Ohne `track` — etwa bei von Hand
+     nachgetragenen Einträgen — fällt die Linie auf die Meldungen zurück. */
+  const marks = c.eleList.map(e=> ({
+    km:Number(e.km), ele:Number(e.ele), ts:e.ts, place:e.place||'',
+    up:e.climbUp!=null?Number(e.climbUp):null, down:e.climbDown!=null?Number(e.climbDown):null
+  }));
+  const pts = [];
+  c.list.forEach(e=>{
+    if(Array.isArray(e.track)) e.track.forEach(([km,ele])=> pts.push({km:Number(km), ele:Number(ele)}));
+    else if(e.ele!=null) pts.push({km:Number(e.km), ele:Number(e.ele)});
+  });
+  pts.sort((a,b)=> a.km-b.km);
+
+  const strip = [
+    ['Aktuelle Höhe', c.ele!=null? num(c.ele):'–', 'm ü. NN', ''],
+    ['Höhenmeter bergauf', c.climbUp? num(c.climbUp):'–', 'hm',
+      c.climbKm>0 ? num(c.climbUp/c.climbKm*100)+' hm je 100 km' : ''],
+    ['Bergab', c.climbDown? num(c.climbDown):'–', 'hm', ''],
+    ['Höchster Punkt', c.eleMax!=null? num(c.eleMax):'–', 'm', '']
+  ].map(([k,v,u,n])=>
+    `<div class="cell"><div class="k">${k}</div>
+     <div class="v">${v}${u?` <span class="u">${u}</span>`:''}</div>
+     ${n?`<div class="n">${n}</div>`:''}</div>`).join('');
+
+  if(pts.length < 2){
+    wrap.innerHTML = `<div class="hmstrip">${strip}</div>
+      <div class="profbox"><div class="empty" style="border:none;padding:22px 8px">
+        Ab zwei Meldungen mit GPS-Position zeichnet sich hier das Höhenprofil.</div></div>`;
+    PROF = null; return;
+  }
+
+  const W = Math.max(wrap.clientWidth || 340, 260);
+  const H = W < 520 ? 158 : 205;
+  const L = 36, R = 10, T = 16, B = 22;
+  const x0 = pts[0].km, x1 = Math.max(pts[pts.length-1].km, pts[0].km + 1);
+  const lo = Math.min(...pts.map(p=>p.ele)), hi = Math.max(...pts.map(p=>p.ele));
+  const pad = Math.max((hi-lo)*0.18, 25);
+  const eBot = Math.max(lo - pad, Math.min(0, lo)), eTop = hi + pad;
+  const X = km => L + (km - x0)/(x1 - x0) * (W - L - R);
+  const Y = e  => T + (eTop - e)/(eTop - eBot) * (H - T - B);
+  const base = H - B;
+
+  const line = pts.map((p,i)=> `${i?'L':'M'}${X(p.km).toFixed(1)},${Y(p.ele).toFixed(1)}`).join('');
+  // line beginnt mit "M…", für die Fläche wird daraus ein "L…" am Fußpunkt-Start
+  const area = `M${X(pts[0].km).toFixed(1)},${base}L` + line.slice(1) +
+               `L${X(pts[pts.length-1].km).toFixed(1)},${base}Z`;
+
+  // Gitternetz: drei Höhenlinien, auf 50er/100er gerundet damit die Beschriftung ruhig bleibt
+  const stepRaw = (eTop - eBot)/3;
+  const step = stepRaw > 400 ? 500 : stepRaw > 200 ? 250 : stepRaw > 80 ? 100 : 50;
+  let grid = '';
+  for(let v = Math.ceil(eBot/step)*step; v <= eTop; v += step){
+    grid += `<line class="gl" x1="${L}" y1="${Y(v).toFixed(1)}" x2="${W-R}" y2="${Y(v).toFixed(1)}" stroke-width="1"/>
+             <text x="${L-6}" y="${(Y(v)+3.5).toFixed(1)}" text-anchor="end" font-size="9.5">${num(v)}</text>`;
+  }
+
+  // Kontrollpunkte, sofern sie im dargestellten Kilometerfenster liegen
+  let cps = '';
+  c.st.cps.forEach(cp=>{
+    const k = Number(cp.km);
+    if(k <= x0 || k >= x1) return;
+    cps += `<line class="cpl" x1="${X(k).toFixed(1)}" y1="${T}" x2="${X(k).toFixed(1)}" y2="${base}"
+                  stroke-width="1" stroke-dasharray="2 3" opacity=".4"/>
+            <text x="${(X(k)+4).toFixed(1)}" y="${T+8}" font-size="9">${esc(cp.nm)}</text>`;
+  });
+
+  const cur = marks[marks.length-1];
+  // Die Meldungen als kleine Punkte auf der Linie — die aktuelle in Messing.
+  const dots = marks.map((m,i)=>
+    `<circle class="${i===marks.length-1?'pdot':'pmark'}" cx="${X(m.km).toFixed(1)}" cy="${Y(m.ele).toFixed(1)}"
+             r="${i===marks.length-1?4.5:2.4}" ${i===marks.length-1?'stroke-width="1.5"':''}/>`).join('');
+  wrap.innerHTML =
+    `<div class="hmstrip">${strip}</div>
+     <div class="profbox">
+       <div class="profread" id="profRead"></div>
+       <svg id="profSvg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+            aria-label="Höhenprofil der gefahrenen Strecke, aktuell ${num(cur.ele)} Meter">
+         <defs><linearGradient id="profFill" x1="0" y1="0" x2="0" y2="1">
+           <stop offset="0%" stop-color="#D9A441" stop-opacity=".34"/>
+           <stop offset="100%" stop-color="#D9A441" stop-opacity="0"/>
+         </linearGradient></defs>
+         ${grid}
+         <path d="${area}" fill="url(#profFill)"/>
+         <path class="pl" d="${line}" fill="none" stroke-width="1.8"
+               stroke-linejoin="round" stroke-linecap="round"/>
+         ${cps}
+         <line class="gl" x1="${L}" y1="${base}" x2="${W-R}" y2="${base}"/>
+         <text x="${L}" y="${H-7}" font-size="9.5">${num(x0)} km</text>
+         <text x="${W-R}" y="${H-7}" text-anchor="end" font-size="9.5">${num(x1)} km</text>
+         <line class="gd" id="profGuide" x1="0" y1="${T}" x2="0" y2="${base}" stroke-width="1" opacity="0"/>
+         ${dots}
+         <circle class="pcur" id="profCursor" cx="0" cy="0" r="4" opacity="0"/>
+         <rect id="profHit" x="${L}" y="${T}" width="${W-L-R}" height="${base-T}" fill="transparent"/>
+       </svg>
+       <p class="profnote">
+         Höhenlinie und Höhenmeter aus der wahrscheinlichsten Radroute zwischen zwei
+         Meldungen (BRouter, Radprofil). Das TCR hat freie Routenwahl — was wirklich
+         gefahren wurde, kann davon abweichen. Beginnt bei ${num(x0)} km, ab da liefert
+         der Tracker GPS-Positionen.
+       </p>
+     </div>`;
+
+  PROF = {pts, marks, X, Y, L, R, W, T, base, cur};
+  bindProfilePointer();
+  showProfileRead(-1);
+}
+
+/* i = Index in die dichte Linie, -1 = Ausgangszustand (letzte Meldung).
+   Ortsname und Zeit gibt es nur, wenn der Zeiger nah genug an einer echten
+   Meldung steht — dazwischen weiß das Board weder das eine noch das andere. */
+function showProfileRead(i){
+  const el = document.getElementById('profRead');
+  if(!el || !PROF) return;
+  const p = i < 0 ? PROF.cur : PROF.pts[i];
+  if(!p) return;
+  const seg = PROF.marks.find(m=> m.km >= p.km - 0.05) || PROF.cur;
+  const near = Math.abs(seg.km - p.km) < Math.max((PROF.pts[PROF.pts.length-1].km - PROF.pts[0].km)/60, .8);
+  el.innerHTML =
+    `<span><span class="rv">${num(p.ele)} m</span> bei ${num(p.km)} km</span>` +
+    (near && seg.place ? `<span>${esc(seg.place)}</span>` : '') +
+    (seg.up!=null ? `<span>Segment <span class="rv">↑ ${num(seg.up)}</span> / ↓ ${num(seg.down)} hm</span>` : '') +
+    (near ? `<span style="opacity:.7">${fmt(seg.ts)}</span>` : '');
+}
+
+function bindProfilePointer(){
+  const svg = document.getElementById('profSvg'), hit = document.getElementById('profHit');
+  if(!svg || !hit || !PROF) return;
+  const guide = document.getElementById('profGuide'), cursor = document.getElementById('profCursor');
+  const move = ev=>{
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) / r.width * PROF.W;   // Bildschirm- → SVG-Koordinaten
+    let best = 0, bd = Infinity;
+    PROF.pts.forEach((p,i)=>{ const d = Math.abs(PROF.X(p.km)-px); if(d<bd){ bd=d; best=i; } });
+    const p = PROF.pts[best];
+    guide.setAttribute('x1', PROF.X(p.km)); guide.setAttribute('x2', PROF.X(p.km));
+    guide.setAttribute('opacity', '.45');
+    cursor.setAttribute('cx', PROF.X(p.km)); cursor.setAttribute('cy', PROF.Y(p.ele));
+    cursor.setAttribute('opacity', '1');
+    showProfileRead(best);
+  };
+  const leave = ()=>{
+    guide.setAttribute('opacity','0'); cursor.setAttribute('opacity','0');
+    showProfileRead(-1);
+  };
+  hit.addEventListener('pointermove', move);
+  hit.addEventListener('pointerdown', move);
+  hit.addEventListener('pointerleave', leave);
+  hit.addEventListener('pointercancel', leave);
+}
+
+// Breitenabhängig gerendert, also bei Größenänderung neu zeichnen (entprellt).
+let profResizeT = null;
+addEventListener('resize', ()=>{
+  clearTimeout(profResizeT);
+  profResizeT = setTimeout(()=> renderProfile(compute()), 180);
+});
+
 function renderDays(c){
   const w = document.getElementById('daysWrap');
   if(c.list.length < 2){ w.innerHTML = '<div class="empty">Ab zwei Meldungen erscheint hier die Tagesleistung.</div>'; return; }
-  const byDay = {};
+  const byDay = {}, upDay = {};
   for(let i=1;i<c.list.length;i++){
     const a=c.list[i-1], b=c.list[i];
     const key = b.ts.slice(0,10);
     byDay[key] = (byDay[key]||0) + Math.max(Number(b.km)-Number(a.km), 0);
+    if(b.climbUp!=null) upDay[key] = (upDay[key]||0) + Number(b.climbUp);
   }
   const keys = Object.keys(byDay).sort();
   const max = Math.max(...keys.map(k=>byDay[k]), 1);
   const best = keys.reduce((p,k)=> byDay[k]>byDay[p]?k:p, keys[0]);
   w.innerHTML =
     `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
-      <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*66}px"></div></div>`).join('')}</div>
+      ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}</span>`:''}
+      <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>
      <div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>`;
 }
 
@@ -422,6 +633,8 @@ function renderLog(c){
     const detail = hasGps ? `<tr class="logDetail" id="${detailId}" style="display:none"><td colspan="${cols}">
         <div class="dk">
           <span>${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}</span>
+          ${e.ele!=null?`<span>${num(Number(e.ele))} m ü. NN${e.eleSrc==='dem'?' (Geländemodell)':''}</span>`:''}
+          ${e.climbUp!=null?`<span>↑ ${num(Number(e.climbUp))} / ↓ ${num(Number(e.climbDown))} hm seit davor</span>`:''}
           ${e.speed!=null?`<span>${one(e.speed)} km/h bei Erfassung</span>`:''}
           <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank" rel="noopener">Google Maps ↗</a>
         </div>
@@ -548,12 +761,16 @@ function renderSource(c){
     : `Werte werden seit dem 20.07.2026 automatisiert stündlich vom offiziellen Live-Tracker abgefragt
        (erkennbar an „GPS" bei der Meldung); vereinzelte Einträge sind von Hand nachgetragen.
        Quelle: <code>${SOURCE}</code>.<br>
+       Höhen und Höhenmeter sind geschätzt: zwischen je zwei Meldungen wird die wahrscheinlichste
+       Radroute über <a href="https://brouter.de/" target="_blank" rel="noopener">BRouter</a>
+       gerechnet und deren Höhenprofil ausgewertet. Die reine GPS-Höhe des Trackers steht in
+       <code>data.json</code> als <code>eleGps</code> daneben.<br>
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
 }
 
 function render(){
   const c = compute();
-  renderMetrics(c); renderLadder(c); renderDays(c); renderLog(c); renderSource(c);
+  renderMetrics(c); renderLadder(c); renderProfile(c); renderDays(c); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   if(EDIT) renderDirty();
   if(mapObj && document.getElementById('mapDetails').open) renderMap(c);
