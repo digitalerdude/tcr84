@@ -162,6 +162,12 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   Meldungen als Punkte darauf. Farben über CSS-Klassen (`.pl`, `.gl`, `.pdot` …)
   statt `var()` in SVG-Präsentationsattributen. Zeiger per `pointermove`/`pointerdown`
   auf einem transparenten `<rect>`, also auch auf Touch bedienbar.
+- **Testmodus Höhenprofil:** `PROFILE_TEST = true` im Script blendet eine
+  „Testmodus“-Kennzeichnung neben der Überschrift ein und hängt einen Prüfkasten in
+  den Erklärkasten: Manuel rechnet bis Flåm (700 km) mit rund 5.400 hm, das Board
+  rechnet seinen bisherigen hm/km-Schnitt dagegen hoch. Auswertung war für den Abend
+  des 21.07.2026 geplant — **danach hier auf `false` stellen**, sonst steht die
+  Kennzeichnung für immer da. Referenzwerte in `PROFILE_TEST_REF`.
 - Karte: Leaflet + OpenStreetMap-Tiles, per CDN erst beim Öffnen von
   `<details id="mapDetails">` nachgeladen (`ensureLeaflet()`), kein Impact auf die
   normale Ladezeit.

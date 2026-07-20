@@ -134,7 +134,15 @@
   .profbox .pdot{fill:var(--brass);stroke:var(--night)}
   .profbox .pmark{fill:var(--ice);opacity:.55}
   .profbox .pcur{fill:var(--ice)}
-  .profnote{font-size:11.5px;color:var(--muted);margin:8px 2px 0;line-height:1.55}
+  .profnote{font-size:13px;color:var(--muted);margin:0;line-height:1.6}
+  .profnote + .profnote{margin-top:10px}
+  /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
+  #profileWrap details{margin-top:-1px}
+  .h2row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+  .tag{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+       border:1px solid var(--warn);color:var(--warn);border-radius:999px;padding:3px 8px;line-height:1}
+  .testnote{border-left:3px solid var(--warn);background:var(--panel2);padding:9px 12px;
+            margin-top:12px;font-size:13px;line-height:1.6}
 
   table{width:100%;border-collapse:collapse;font-size:14px}
   th{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
@@ -192,7 +200,7 @@
 
       <div id="editArea"></div>
 
-      <h2>Höhenprofil</h2>
+      <h2 class="h2row">Höhenprofil <span class="tag" id="profTest" style="display:none">Testmodus</span></h2>
       <div id="profileWrap"></div>
 
       <h2>Kilometer pro Tag</h2>
@@ -426,10 +434,20 @@ function renderLadder(c){
    echte Pixel sind statt hochskalierter Miniaturen. Deshalb auch der
    resize-Handler unten. */
 const esc = s => String(s).replace(/[<>&]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+
+/* Testmodus: die Höhenmeter sind geschätzt (siehe Erklärkasten unter dem
+   Diagramm) und werden am Abend des 21.07.2026 gegen Manuels eigene Angabe
+   geprüft — er rechnet für die Strecke bis Flåm mit rund 5.400 hm. Bis dahin
+   trägt der Abschnitt eine sichtbare Kennzeichnung, damit niemand die Zahlen
+   für gesichert hält. Danach hier auf false stellen. */
+const PROFILE_TEST = true;
+const PROFILE_TEST_REF = { hm: 5400, km: 700, nm: 'Flåm', bis: 'Abend des 21.07.2026' };
 let PROF = null; // gerenderter Zustand für die Zeigersteuerung
 
 function renderProfile(c){
   const wrap = document.getElementById('profileWrap');
+  document.getElementById('profTest').style.display = PROFILE_TEST ? '' : 'none';
+  const wasOpen = !!wrap.querySelector('details')?.open;
 
   /* Zwei Ebenen: `pts` ist die dichte Höhenlinie (rund ein Stützpunkt je
      Kilometer, kommt als `track` pro Segment aus dem Scraper), `marks` sind
@@ -527,13 +545,44 @@ function renderProfile(c){
          <circle class="pcur" id="profCursor" cx="0" cy="0" r="4" opacity="0"/>
          <rect id="profHit" x="${L}" y="${T}" width="${W-L-R}" height="${base-T}" fill="transparent"/>
        </svg>
-       <p class="profnote">
-         Höhenlinie und Höhenmeter aus der wahrscheinlichsten Radroute zwischen zwei
-         Meldungen (BRouter, Radprofil). Das TCR hat freie Routenwahl — was wirklich
-         gefahren wurde, kann davon abweichen. Beginnt bei ${num(x0)} km, ab da liefert
-         der Tracker GPS-Positionen.
-       </p>
-     </div>`;
+     </div>
+     <details>
+       <summary>Wie das Höhenprofil entsteht</summary>
+       <div class="setbody">
+         <p class="profnote" style="margin-top:14px">
+           Der Live-Tracker meldet nur Position und Kilometerstand, keine Höhenmeter — und
+           das etwa stündlich. Zwischen zwei Meldungen liegen also gut 30 km, in denen jeder
+           Anstieg unsichtbar wäre.
+         </p>
+         <p class="profnote">
+           Deshalb wird für jedes Segment die wahrscheinlichste Radroute zwischen den beiden
+           GPS-Punkten gerechnet (<a href="https://brouter.de/" target="_blank" rel="noopener">BRouter</a>,
+           Profil „Trekking“) und deren Höhenprofil ausgewertet. Die Linie oben zeigt rund
+           einen Stützpunkt je Kilometer, die Punkte darauf sind die echten Meldungen.
+         </p>
+         <p class="profnote">
+           Bleiben zwei Unschärfen: das TCR hat freie Routenwahl, gefahren wurde also
+           vielleicht anders als gerechnet. Und das Profil beginnt erst bei ${num(x0)} km —
+           ab da liefert der Tracker GPS-Positionen, die ${num(x0)} km davor fehlen in allen
+           Summen. Die Höhe an der Meldung stammt aus derselben Route; die rohe GPS-Höhe des
+           Trackers steht in <code>data.json</code> als <code>eleGps</code> daneben.
+         </p>
+         ${PROFILE_TEST ? `<div class="testnote">
+           <strong>Testmodus.</strong> Manuel rechnet für die Strecke bis ${PROFILE_TEST_REF.nm}
+           mit rund ${num(PROFILE_TEST_REF.hm)} Höhenmetern. Dieses Board zählt bisher
+           ${num(c.climbUp)} hm auf ${num(c.climbKm)} gerouteten Kilometern${
+             c.climbKm > 0 ? `, im gleichen Verhältnis weitergerechnet wären es auf den
+             ${num(PROFILE_TEST_REF.km)} km bis ${PROFILE_TEST_REF.nm}
+             rund <strong>${num(Math.round(c.climbUp/c.climbKm*PROFILE_TEST_REF.km/50)*50)} hm</strong>` : ''}.
+           Ob die Schätzmethode taugt, wird am ${PROFILE_TEST_REF.bis} entschieden — die
+           Hochrechnung ist grob, sie zieht die Steilheit eines Teilstücks über die ganze Etappe.
+         </div>` : ''}
+       </div>
+     </details>`;
+
+  // Der Erklärkasten überlebt das 60s-Neuzeichnen — anders als beim Log-Detail
+  // wäre ein Zuklappen mitten im Lesen hier echt ärgerlich.
+  if(wasOpen){ const d = wrap.querySelector('details'); if(d) d.open = true; }
 
   PROF = {pts, marks, X, Y, L, R, W, T, base, cur};
   bindProfilePointer();
@@ -761,10 +810,8 @@ function renderSource(c){
     : `Werte werden seit dem 20.07.2026 automatisiert stündlich vom offiziellen Live-Tracker abgefragt
        (erkennbar an „GPS" bei der Meldung); vereinzelte Einträge sind von Hand nachgetragen.
        Quelle: <code>${SOURCE}</code>.<br>
-       Höhen und Höhenmeter sind geschätzt: zwischen je zwei Meldungen wird die wahrscheinlichste
-       Radroute über <a href="https://brouter.de/" target="_blank" rel="noopener">BRouter</a>
-       gerechnet und deren Höhenprofil ausgewertet. Die reine GPS-Höhe des Trackers steht in
-       <code>data.json</code> als <code>eleGps</code> daneben.<br>
+       Höhen und Höhenmeter sind geschätzt${PROFILE_TEST?' und noch im Testmodus':''} — wie sie
+       zustande kommen, steht ausklappbar unter dem Höhenprofil.<br>
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
 }
 
