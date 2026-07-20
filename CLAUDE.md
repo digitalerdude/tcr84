@@ -10,6 +10,7 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 |---|---|
 | `index.html` | Die ganze App: Vanilla-JS, kein Build-Step. CSS-Variablen in `:root` sind das Design-System (`--night`, `--panel`, `--brass`, `--mono` etc.) — neue UI hält sich daran, keine Hardcoded-Farben. |
 | `data.json` | Der Datenspeicher. Wird von GitHub Pages ausgeliefert, `index.html` lädt ihn per `fetch('data.json?t=...')`. Schreibrechte nur über Git-Commit ins Repo (kein Server, kein Backend). |
+| `track.json` | Archiv der **echten gefahrenen Spur** aus dem GPX-Export des Trackers, siehe unten. Wird bei jedem Lauf komplett neu geschrieben. Noch von nichts im Frontend gelesen. |
 | `tools/update-tracker.mjs` | Automatisierter Scraper, siehe unten. |
 | `tools/package.json` | Playwright-Dependency für den Scraper. `cd tools && npm install`. |
 
@@ -138,6 +139,42 @@ gut das Vierfache. Steigungs- und Hysterese-Filter von Hand brachten nur ~8 %.
 `--backfill` trägt die Felder auf bestehenden Einträgen nach (ohne Browser, nur
 BRouter + DEM), `--backfill --force` rechnet auch schon vorhandene Werte neu.
 1,5 s Pause zwischen den Segmenten, der BRouter-Server ist ein Gratis-Dienst.
+
+### Die echte Spur (track.json) — und warum die Schätzung ersetzt gehört
+
+Am 2026-07-20 im nachgeladenen `functions.min.js` der Tracker-Seite gefunden:
+
+```
+export/gpx/generate.php?deviceId=<deviceId>          ← funktioniert
+application/get/get_route.php?id=…                    ← Cloudflare 403
+application/get/get_historical_waypoint_data.php?id=… ← Cloudflare 403
+```
+
+Der GPX-Export liefert die **komplette Aufzeichnung seit dem Start**: Position,
+GPS-Höhe und Zeitstempel je Punkt, im Median **alle 5 Minuten**. Muss aus dem
+geladenen Tab heraus geholt werden (`page.evaluate` + `fetch`), direkt gibt es
+auch hier 403. `rider.deviceId` ist der richtige Parameter (nicht `id`, nicht `imei`).
+
+Landet in `track.json` als kompakte Arrays `[lat, lon, eleGps, unixSec]`.
+
+**Wichtig:** die `eleGps`-Werte sind rohe GPS-Höhen und dürfen **nicht** aufsummiert
+werden — sie streuen mit ~20 m gegen das Geländemodell und ergäben über die ersten
+405 km 3.379 statt ~2.750 hm.
+
+**Offene, gemessene Erkenntnis (2026-07-20):** die aktuelle Schätzung über
+BRouter-Segmente *zwischen unseren Meldungen* liegt zu hoch, weil sie die Route
+dazwischen errät. Für dasselbe 44,6-km-Stück:
+
+| Methode | Länge | ↑ hm |
+|---|---|---|
+| BRouter zwischen den 4 Meldungen (aktuell im Board) | 45,0 km | 372 |
+| BRouter **entlang der echten Spurpunkte** (20er-Blöcke als Wegpunkte) | 44,4 km | **301** |
+| rohe GPS-Höhe | — | verrauscht, zu hoch |
+
+Der Umbau darauf steht noch aus. Er würde zusätzlich die größte Lücke schließen:
+das Profil beginnt aktuell erst bei 360 km (erste eigene GPS-Meldung), die Spur
+reicht dagegen bis Trondheim zurück. Dabei zu beachten: BRouter nicht bei jedem
+Lauf über die ganze Spur laufen lassen, sondern nur über das neue Ende.
 
 Race-Window-Guard: läuft nur zwischen `settings.start` und `settings.deadline + 1 Tag`
 (liest das direkt aus `data.json`), damit der geplante Job vor/nach dem Rennen

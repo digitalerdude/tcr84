@@ -28,6 +28,7 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DATA_JSON_PATH = path.join(REPO_ROOT, 'data.json');
+const TRACK_JSON_PATH = path.join(REPO_ROOT, 'track.json');
 
 const CONFIG = {
   trackerUrl: 'https://www.followmychallenge.com/live/tcrno12/',
@@ -248,6 +249,23 @@ async function fetchRiderState() {
     }
     const rider = await handle.jsonValue();
 
+    /* Die echte gefahrene Spur. Die Tracker-Seite bietet dafür einen
+       GPX-Export an (`export/gpx/generate.php?deviceId=…`, gefunden am
+       2026-07-20 im nachgeladenen functions.min.js). Er liefert die volle
+       Aufzeichnung seit dem Start: Position, Höhe und Zeitstempel je Punkt,
+       im Median alle 5 Minuten — also viel feiner als alles, was wir durch
+       eigenes Abfragen je bekommen. Muss aus dem geladenen Tab heraus
+       geholt werden, direkt gibt Cloudflare auch hier 403. Die beiden
+       anderen internen Endpunkte (`get_route.php`,
+       `get_historical_waypoint_data.php`) sind hart geblockt. */
+    let gpx = null;
+    try {
+      gpx = await page.evaluate(async (deviceId) => {
+        const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`);
+        return res.ok ? res.text() : null;
+      }, rider.deviceId);
+    } catch (e) { log('GPX-Export fehlgeschlagen (ignoriert):', e.message); }
+
     if (FLAGS.dump) {
       writeFileSync(FLAGS.dump, JSON.stringify(rider, null, 2));
       log(`raw rider object dumped to ${FLAGS.dump}`);
@@ -263,10 +281,53 @@ async function fetchRiderState() {
       // Der Tracker meldet seine GPS-Höhe in `altitude` (das Feld `elevation`
       // daneben steht konstant auf 0 und ist unbrauchbar).
       altitude: (typeof rider.altitude === 'number' && isFinite(rider.altitude)) ? rider.altitude : null,
+      deviceId: rider.deviceId,
+      gpx,
     };
   } finally {
     await browser.close();
   }
+}
+
+/* ---------- Echte Spur archivieren --------------------------------------
+ * Der GPX-Export liefert bei jedem Abruf die komplette Aufzeichnung seit dem
+ * Start, es geht also (Stand jetzt) nichts verloren, wenn ein Lauf ausfällt.
+ * Trotzdem wird sie mitgeschrieben: ob der Export irgendwann ältere Punkte
+ * abschneidet, weiß niemand, und die Spur ist die einzige Quelle, die nicht
+ * rekonstruierbar wäre.
+ *
+ * Format bewusst kompakt (Arrays statt Objekte, Koordinaten auf 5
+ * Nachkommastellen ≈ 1 m, Zeit als Unix-Sekunden): bei ~5 Minuten je Punkt
+ * und drei Wochen Rennen landet das bei einigen Tausend Punkten, und die
+ * Datei wird alle 30 Minuten neu committet.
+ *
+ * `ele` ist hier die rohe GPS-Höhe des Trackers — brauchbar als Rohdatum,
+ * aber NICHT zum Aufsummieren: sie streut mit gut 20 m gegen das
+ * Geländemodell und käme über 405 km auf 3.379 statt ~2.750 hm.
+ */
+function parseGpx(gpx) {
+  const out = [];
+  const re = /<trkpt lat="([\d.-]+)" lon="([\d.-]+)">\s*<ele>([\d.-]+)<\/ele>[\s\S]*?<time>([^<]*)<\/time>/g;
+  for (const m of gpx.matchAll(re)) {
+    const t = Date.parse(m[4]);
+    if (!isFinite(t)) continue;
+    out.push([Math.round(+m[1] * 1e5) / 1e5, Math.round(+m[2] * 1e5) / 1e5, Math.round(+m[3]), Math.round(t / 1000)]);
+  }
+  return out;
+}
+
+function saveTrack(gpx, deviceId) {
+  if (!gpx) return null;
+  const points = parseGpx(gpx);
+  if (points.length < 2) { log('GPX enthielt keine brauchbaren Punkte, übersprungen.'); return null; }
+  writeFileSync(TRACK_JSON_PATH, JSON.stringify({
+    source: 'followmychallenge GPX export',
+    deviceId,
+    updated: new Date().toISOString(),
+    fields: ['lat', 'lon', 'eleGps', 'unixSec'],
+    points,
+  }) + '\n');
+  return points.length;
 }
 
 function loadData() {
@@ -279,6 +340,16 @@ function saveData(data) {
 
 function git(...cmdArgs) {
   return execFileSync('git', cmdArgs, { cwd: REPO_ROOT, encoding: 'utf8' });
+}
+
+// Committet data.json und track.json zusammen, aber nur, wenn sich wirklich
+// etwas geändert hat — sonst bricht `git commit` den ganzen Lauf ab.
+function commitAll(message) {
+  git('add', 'data.json', 'track.json');
+  if (!git('diff', '--cached', '--name-only').trim()) { log('nothing changed, no commit.'); return; }
+  git('commit', '-m', message);
+  log('committed.');
+  if (FLAGS.push) { git('push'); log('pushed.'); }
 }
 
 // Trägt `ele`/`climbUp`/`climbDown`/`track` auf bestehenden Einträgen nach,
@@ -350,18 +421,25 @@ async function main() {
   }
 
   const rider = await fetchRiderState();
-  log('rider state:', rider);
+  const { gpx, ...riderLog } = rider;   // das GPX ist zigtausend Zeichen, nicht ins Log
+  log('rider state:', riderLog);
 
   if (rider.lastReportMins != null && rider.lastReportMins > 180) {
     log(`warning: last report is ${rider.lastReportMins} min old — tracker may be offline/asleep.`);
   }
 
+  const trackPoints = saveTrack(gpx, rider.deviceId);
+  if (trackPoints) log(`track.json: ${trackPoints} Spurpunkte archiviert.`);
+
   const data = loadData();
   const entries = data.entries || [];
   const last = entries[entries.length - 1];
 
+  // Auch wenn kein neuer Eintrag fällig ist, kann die Spur gewachsen sein —
+  // die wird dann trotzdem veröffentlicht.
   if (last && Math.abs(rider.km - Number(last.km)) < CONFIG.minKmDelta) {
-    log(`km barely changed since last entry (${last.km} → ${rider.km}), skipping.`);
+    log(`km barely changed since last entry (${last.km} → ${rider.km}), skipping entry.`);
+    if (FLAGS.commit && trackPoints) commitAll(`Auto-update: Spur auf ${trackPoints} Punkte`);
     return;
   }
 
@@ -407,13 +485,7 @@ async function main() {
   log('wrote entry:', entry);
 
   if (FLAGS.commit) {
-    git('add', 'data.json');
-    git('commit', '-m', `Auto-update: ${entry.km} km, ${entry.place || '?'} (${entry.note})`);
-    log('committed.');
-    if (FLAGS.push) {
-      git('push');
-      log('pushed.');
-    }
+    commitAll(`Auto-update: ${entry.km} km, ${entry.place || '?'} (${entry.note})`);
   } else {
     log('dry run — not committed. Pass --commit (and --push) to publish.');
   }
