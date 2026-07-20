@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cap 84 · TCR No12 Dotwatch</title>
+<meta name="description" content="Live-Stand von Manuel Kaufer, Startnummer 84, beim Transcontinental Race No12 von Trondheim nach Kalamata.">
+<meta property="og:title" content="Cap 84 · Manuel Kaufer · TCR No12">
+<meta property="og:description" content="Trondheim → Kalamata. Kilometerstand, Schnitt, Prognose, Puffer aufs Zeitlimit.">
+<meta name="theme-color" content="#0C1620">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --night:#0C1620; --panel:#14212C; --panel2:#1A2A36; --line:#25394A;
+    --ice:#BCD7DE; --muted:#7F98A6; --bone:#E9E4D8; --brass:#D9A441;
+    --good:#86B08C; --warn:#D9A441; --alert:#C2503C;
+    --display:"Space Grotesk","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--night);color:var(--bone);font-family:var(--display);
+       font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--ice)}
+  :focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+  .wrap{max-width:1120px;margin:0 auto;padding:24px 18px 64px}
+
+  .masthead{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-top:6px}
+  .cap{font-family:var(--mono);font-size:42px;font-weight:600;color:var(--brass);line-height:1}
+  h1{font-size:27px;font-weight:700;letter-spacing:-.02em;margin:0}
+  .sub{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.9}
+  .sub a{color:var(--muted)}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+        border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--muted);white-space:nowrap}
+  .pill.good{color:var(--good);border-color:var(--good)}
+  .pill.warn{color:var(--warn);border-color:var(--warn)}
+  .pill.alert{color:var(--alert);border-color:var(--alert)}
+
+  .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
+  .ladder-panel{position:sticky;top:18px}
+  @media (max-width:820px){
+    .cols{display:flex;flex-direction:column;gap:24px}
+    .ladder-panel{position:static;order:2}
+    .main{order:1}
+  }
+
+  .ladder{position:relative;height:min(62vh,540px);min-height:400px;margin-top:12px}
+  .rail{position:absolute;left:74px;top:0;bottom:0;width:8px;border-radius:4px;
+    background:linear-gradient(to bottom,#DDEAEE 0%,#8FB6C4 18%,#5E7F86 42%,#8F8C6B 62%,#C79A4E 82%,#C2683F 100%);opacity:.9}
+  .rail-shade{position:absolute;left:74px;width:8px;border-radius:4px;background:var(--night);opacity:.72}
+  .anchor{position:absolute;left:0;right:0;transform:translateY(-50%)}
+  .anchor .tick{position:absolute;left:66px;width:24px;height:1px;background:var(--line)}
+  .anchor .lat{position:absolute;left:0;width:62px;text-align:right;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .anchor .nm{position:absolute;left:96px;font-size:13px;letter-spacing:-.01em;white-space:nowrap}
+  .anchor .km{position:absolute;left:96px;top:15px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}
+  .anchor.done .nm,.anchor.done .km{color:var(--muted)}
+  .dot{position:absolute;left:70px;width:16px;height:16px;border-radius:50%;background:var(--brass);
+       box-shadow:0 0 0 4px rgba(217,164,65,.18);transform:translateY(-50%);transition:top .6s ease}
+  .dot-label{position:absolute;left:96px;transform:translateY(-50%);font-family:var(--mono);font-size:12px;
+       color:var(--brass);white-space:nowrap;transition:top .6s ease}
+  @media (prefers-reduced-motion:reduce){.dot,.dot-label{transition:none}}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+  @media (max-width:640px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .cell{background:var(--panel);padding:13px 15px 15px}
+  .cell .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .cell .v{font-family:var(--mono);font-size:24px;font-weight:600;margin-top:6px;letter-spacing:-.02em}
+  .cell .u{font-size:13px;color:var(--muted);font-weight:400}
+  .cell .n{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
+  .v.good{color:var(--good)} .v.warn{color:var(--warn)} .v.alert{color:var(--alert)}
+
+  .verdict{border:1px solid var(--line);border-left:3px solid var(--brass);background:var(--panel);
+           padding:14px 15px;margin-top:16px;font-size:14.5px}
+  .verdict.good{border-left-color:var(--good)}
+  .verdict.warn{border-left-color:var(--warn)}
+  .verdict.alert{border-left-color:var(--alert)}
+
+  h2{font-size:11px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;
+     color:var(--muted);margin:30px 0 11px;font-weight:500}
+
+  .editbox{border:1px solid var(--brass);background:var(--panel);padding:16px;margin-top:26px}
+  .form{display:grid;grid-template-columns:1.1fr .7fr 1fr 1.3fr auto;gap:10px;align-items:end}
+  @media (max-width:820px){.form{grid-template-columns:1fr 1fr}}
+  label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+        text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--bone);
+        font-family:var(--mono);font-size:16px;padding:9px 10px;border-radius:2px}
+  input::placeholder{color:#5D7382}
+  button{font-family:var(--display);font-size:14px;font-weight:500;padding:10px 16px;border-radius:2px;
+         border:1px solid var(--brass);background:var(--brass);color:#12202B;cursor:pointer}
+  button:hover{background:#E6B458}
+  button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+  button.ghost:hover{color:var(--bone);border-color:var(--muted)}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .msg{font-family:var(--mono);font-size:12px;color:var(--brass);margin-top:8px;min-height:16px}
+  .msg.err{color:var(--alert)}
+  textarea{width:100%;height:150px;background:#0A131B;color:var(--ice);border:1px solid var(--line);
+           font-family:var(--mono);font-size:11.5px;padding:10px;margin-top:12px;border-radius:2px}
+
+  .days{display:flex;gap:5px;align-items:flex-end;height:92px;border-bottom:1px solid var(--line)}
+  .day{flex:1;min-width:12px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+  .bar{width:100%;background:var(--ice);opacity:.5;border-radius:2px 2px 0 0;min-height:2px}
+  .bar.top{opacity:1;background:var(--brass)}
+  .daylabels{display:flex;gap:5px;margin-top:6px}
+  .daylabel{flex:1;min-width:12px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+     text-align:left;font-weight:500;padding:0 8px 8px 0;border-bottom:1px solid var(--line)}
+  td{padding:9px 8px 9px 0;border-bottom:1px solid #1C2C39;vertical-align:top}
+  td.num{font-family:var(--mono);white-space:nowrap;font-size:13px}
+  .del{background:none;border:none;color:#5D7382;cursor:pointer;font-size:16px;padding:0 4px}
+  .del:hover{color:var(--alert)}
+  .empty{color:var(--muted);font-size:14px;border:1px dashed var(--line);padding:16px;text-align:center}
+  details{border:1px solid var(--line);background:var(--panel);margin-top:22px}
+  summary{cursor:pointer;padding:12px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+          text-transform:uppercase;color:var(--muted)}
+  .setbody{padding:4px 15px 18px;border-top:1px solid var(--line)}
+  .setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:14px}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);
+         font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8}
+  code{background:#0A131B;padding:1px 5px;border-radius:2px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Transcontinental Race No12 · Trondheim → Kalamata</div>
+    <div class="titlerow">
+      <span class="cap">84</span>
+      <h1>Manuel Kaufer</h1>
+      <span class="pill" id="statusPill">lädt…</span>
+    </div>
+    <div class="sub" id="sourceLine">
+      Start 19.07.2026, 20:00 CEST · Zeitlimit 08.08.2026 ·
+      <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
+      <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>
+    </div>
+  </header>
+
+  <div class="cols">
+    <section class="ladder-panel" aria-label="Streckenfortschritt">
+      <div class="eyebrow">63°N → 37°N</div>
+      <div class="ladder" id="ladder"></div>
+    </section>
+
+    <section class="main">
+      <div class="grid" id="metrics"></div>
+      <div class="verdict" id="verdict">Lädt…</div>
+
+      <div id="editArea"></div>
+
+      <h2>Kilometer pro Tag</h2>
+      <div id="daysWrap"></div>
+
+      <h2>Positionslog</h2>
+      <div id="log"></div>
+    </section>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+
+<script>
+/* =========================================================
+   Datenquellen, in dieser Reihenfolge:
+   1. data.json neben dieser Datei   (GitHub Pages, ein fester Link für alle)
+   2. Daten im Link-Hash  #d=...      (Übergangslösung ohne Server)
+   3. lokaler Speicher                (nur für die eintragende Person)
+   Bearbeiten-Modus: an die Adresse #edit anhängen.
+   ========================================================= */
+const KEY = 'tcr84:state';
+const DEFAULTS = {
+  totalKm: 4800,
+  start: '2026-07-19T20:00',
+  deadline: '2026-08-08T23:59',
+  cps: [
+    { nm:'Trondheim', lat:'63.4°N', km:0 },
+    { nm:'CP1 Flåm', lat:'60.9°N', km:700 },
+    { nm:'CP2 Tatra / Chopok', lat:'48.9°N', km:2350 },
+    { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450 },
+    { nm:'CP4 Leskovik', lat:'40.2°N', km:4200 },
+    { nm:'Kalamata', lat:'37.0°N', km:4800 }
+  ]
+};
+let S = { settings: structuredClone(DEFAULTS), entries: [] };
+let SOURCE = 'leer';
+let DIRTY = false;
+const EDIT = /(^|[#&])edit(&|$)/.test(location.hash);
+
+/* ---------- Speicher-Adapter: Artefakt oder normale Webseite ---------- */
+const store = {
+  async get(){
+    if(window.storage){ const r = await window.storage.get(KEY); return r && r.value; }
+    return localStorage.getItem(KEY);
+  },
+  async set(v){
+    if(window.storage) return window.storage.set(KEY, v);
+    localStorage.setItem(KEY, v);
+  },
+  async del(){
+    if(window.storage) return window.storage.delete(KEY);
+    localStorage.removeItem(KEY);
+  }
+};
+
+/* ---------- Link-Kodierung ---------- */
+function packLink(obj){
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let bin=''; bytes.forEach(b=> bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function unpackLink(s){
+  const b64 = s.replace(/-/g,'+').replace(/_/g,'/');
+  const bin = atob(b64 + '==='.slice((b64.length+3)%4));
+  const bytes = Uint8Array.from(bin, ch=> ch.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+function hashParam(name){
+  const m = location.hash.replace(/^#/,'').split('&').find(p=> p.startsWith(name+'='));
+  return m ? m.slice(name.length+1) : null;
+}
+function adopt(p){
+  S.settings = Object.assign(structuredClone(DEFAULTS), p.settings||{});
+  S.entries = Array.isArray(p.entries) ? p.entries : [];
+}
+
+/* ---------- Laden ---------- */
+async function loadRemote(){
+  try{
+    const res = await fetch('data.json?t=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) return false;
+    adopt(await res.json()); SOURCE = 'data.json'; return true;
+  }catch(e){ return false; }
+}
+async function loadAll(){
+  if(await loadRemote()) return;
+  const d = hashParam('d');
+  if(d){ try{ adopt(unpackLink(d)); SOURCE = 'Link'; return; }catch(e){} }
+  try{ const raw = await store.get(); if(raw){ adopt(JSON.parse(raw)); SOURCE = 'lokal'; } }catch(e){}
+}
+
+/* ---------- Hilfen ---------- */
+const num = n => n.toLocaleString('de-DE',{maximumFractionDigits:0});
+const one = n => n.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFractionDigits:1});
+const sorted = () => [...S.entries].sort((a,b)=> new Date(a.ts)-new Date(b.ts));
+function dur(ms){
+  if(!isFinite(ms)) return '–';
+  const neg = ms<0; ms = Math.abs(ms);
+  const h = Math.floor(ms/3.6e6), d = Math.floor(h/24);
+  return (neg?'−':'') + (d>0 ? d+' T '+(h-d*24)+' h' : h+' h');
+}
+function fmt(ts){
+  const d = new Date(ts);
+  return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})+' '+
+         d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+}
+
+/* ---------- Rechnung ---------- */
+function compute(){
+  const st = S.settings;
+  const start = new Date(st.start), dl = new Date(st.deadline), now = new Date();
+  const total = Number(st.totalKm)||1;
+  const list = sorted(), last = list[list.length-1] || null;
+  const km = last ? Number(last.km) : 0;
+  const rest = Math.max(total-km, 0);
+  const elapsedToLast = last ? (new Date(last.ts)-start)/3.6e6 : 0;
+  const leftToDl = (dl-now)/3.6e6;
+  const avg = elapsedToLast > 0 ? km/elapsedToLast : 0;
+  const need = leftToDl > 0 ? rest/leftToDl : Infinity;
+  const eta = avg > 0 && rest > 0 ? new Date(now.getTime() + rest/avg*3.6e6) : null;
+  const buffer = eta ? (dl-eta) : (rest===0 && last ? dl-new Date(last.ts) : null);
+  let roll = null;
+  if(list.length >= 2){
+    const a = list[list.length-2], b = last;
+    const dh = (new Date(b.ts)-new Date(a.ts))/3.6e6;
+    if(dh > 0) roll = (b.km-a.km)/dh;
+  }
+  const nextCp = st.cps.find(c=> Number(c.km) > km) || null;
+  let state = 'warn';
+  if(!last) state = '';
+  else if(rest === 0) state = 'good';
+  else if(buffer !== null && buffer > 24*3.6e6) state = 'good';
+  else if(buffer !== null && buffer > 0) state = 'warn';
+  else state = 'alert';
+  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,state};
+}
+
+/* ---------- Ansicht ---------- */
+function renderMetrics(c){
+  const cells = [
+    ['Rennzeit', dur(c.now-c.start), '',
+      c.last ? 'letzte Meldung vor '+dur(c.now-new Date(c.last.ts)) : 'noch keine Meldung', ''],
+    ['Gefahren', c.last? num(c.km):'–', 'km', c.last? one(c.km/c.total*100)+' % der Strecke':'', ''],
+    ['Rest bis Kalamata', c.last? num(c.rest):'–', 'km', '', ''],
+    ['Ø-Schnitt gesamt', c.avg? one(c.avg):'–', 'km/h', c.avg? num(c.avg*24)+' km/Tag inkl. Schlaf':'', ''],
+    ['Soll-Schnitt ab jetzt', isFinite(c.need)&&c.rest>0? one(c.need):'–', 'km/h',
+      c.rest===0? 'Ziel erreicht' : isFinite(c.need)? num(c.need*24)+' km/Tag · '+dur(c.dl-c.now)+' übrig':'Zeitlimit vorbei',
+      c.rest===0?'good':(c.state==='alert'?'alert':(c.avg && c.need<=c.avg?'good':'warn'))],
+    ['Puffer auf das Limit', c.buffer!==null? dur(c.buffer):'–', '',
+      c.rest===0? 'im Ziel' : c.eta? 'Prognose Ankunft '+fmt(c.eta):'ab zwei Meldungen', c.state]
+  ];
+  document.getElementById('metrics').innerHTML = cells.map(([k,v,u,n,cl])=>
+    `<div class="cell"><div class="k">${k}</div>
+     <div class="v ${cl||''}">${v}${u?` <span class="u">${u}</span>`:''}</div>
+     ${n?`<div class="n">${n}</div>`:''}</div>`).join('');
+
+  const pill = document.getElementById('statusPill');
+  pill.textContent = !c.last ? 'keine Daten' : c.rest===0 ? 'im Ziel'
+    : c.state==='good' ? 'im Zeitplan' : c.state==='warn' ? 'knapp' : 'hinter dem Limit';
+  pill.className = 'pill ' + c.state;
+
+  const v = document.getElementById('verdict');
+  v.className = 'verdict ' + c.state;
+  if(!c.last){
+    v.textContent = EDIT
+      ? 'Trag die erste Position ein: Kilometerstand aus dem Live-Tracker ablesen, Zeitpunkt dazu. Ab der zweiten Meldung rechnet das Board Tempo, Prognose und Puffer.'
+      : 'Noch keine Position gemeldet. Sobald der erste Stand eingetragen ist, erscheint hier die Einschätzung.';
+  } else {
+    const p = [];
+    p.push(`Bei <strong>${one(c.avg)} km/h</strong> im Mittel über die gesamte Rennzeit reicht es ${
+      c.rest===0 ? 'nicht mehr zu diskutieren, das Ding ist durch.' :
+      c.state==='alert' ? 'nicht bis zum Zeitlimit.' :
+      c.state==='warn' ? 'gerade so, ohne Reserve.' : 'mit Reserve.'}`);
+    if(c.roll) p.push(`Zwischen den letzten beiden Meldungen: <strong>${one(c.roll)} km/h</strong> ${
+      c.roll > c.avg ? '— über dem Gesamtschnitt, also ein Fahrblock ohne längere Pause.'
+                     : '— unter dem Gesamtschnitt, da lag vermutlich Schlaf drin.'}`);
+    if(c.nextCp) p.push(`Bis ${c.nextCp.nm}: <strong>${num(c.nextCp.km-c.km)} km</strong>${
+      c.avg? `, bei gleichem Schnitt rund ${dur((c.nextCp.km-c.km)/c.avg*3.6e6)}.` : '.'}`);
+    const age = (c.now-new Date(c.last.ts))/3.6e6;
+    if(age > 18) p.push(`Die letzte Meldung ist über ${Math.floor(age)} Stunden alt, die Prognose ist entsprechend weich.`);
+    v.innerHTML = p.join(' ');
+  }
+}
+
+function renderLadder(c){
+  const frac = Math.min(c.km/c.total, 1);
+  const pos = k => Number(k)/c.total*100;
+  let html = '<div class="rail"></div>' +
+             `<div class="rail-shade" style="top:${frac*100}%;bottom:0"></div>`;
+  c.st.cps.forEach(cp=>{
+    const done = c.km > 0 && Number(cp.km) <= c.km;
+    html += `<div class="anchor ${done?'done':''}" style="top:${pos(cp.km)}%">
+      <span class="lat">${cp.lat}</span><span class="tick"></span>
+      <span class="nm">${cp.nm}</span><span class="km">${num(Number(cp.km))} km</span></div>`;
+  });
+  if(c.last){
+    html += `<div class="dot" style="top:${frac*100}%"></div>
+             <div class="dot-label" style="top:${frac*100}%">▸ ${num(c.km)} km</div>`;
+  }
+  document.getElementById('ladder').innerHTML = html;
+}
+
+function renderDays(c){
+  const w = document.getElementById('daysWrap');
+  if(c.list.length < 2){ w.innerHTML = '<div class="empty">Ab zwei Meldungen erscheint hier die Tagesleistung.</div>'; return; }
+  const byDay = {};
+  for(let i=1;i<c.list.length;i++){
+    const a=c.list[i-1], b=c.list[i];
+    const key = b.ts.slice(0,10);
+    byDay[key] = (byDay[key]||0) + Math.max(Number(b.km)-Number(a.km), 0);
+  }
+  const keys = Object.keys(byDay).sort();
+  const max = Math.max(...keys.map(k=>byDay[k]), 1);
+  const best = keys.reduce((p,k)=> byDay[k]>byDay[p]?k:p, keys[0]);
+  w.innerHTML =
+    `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
+      <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*66}px"></div></div>`).join('')}</div>
+     <div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>`;
+}
+
+function renderLog(c){
+  const el = document.getElementById('log');
+  if(!c.list.length){ el.innerHTML = '<div class="empty">Noch keine Positionen erfasst.</div>'; return; }
+  const rows = [...c.list].reverse().map((e,i,arr)=>{
+    const prev = arr[i+1];
+    let d = '–';
+    if(prev){
+      const dh = (new Date(e.ts)-new Date(prev.ts))/3.6e6;
+      d = dh>0 ? one((Number(e.km)-Number(prev.km))/dh)+' km/h' : '–';
+    }
+    return `<tr>
+      <td class="num">${fmt(e.ts)}</td>
+      <td class="num">${num(Number(e.km))} km</td>
+      <td class="num">${d}</td>
+      <td>${e.place||''}${e.note? (e.place?' · ':'')+'<span style="color:var(--muted)">'+e.note+'</span>':''}</td>
+      ${EDIT?`<td style="text-align:right"><button class="del" data-id="${e.id}" aria-label="Meldung löschen">×</button></td>`:''}
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th>Zeit</th><th>Stand</th><th>Schnitt seit davor</th><th>Ort / Notiz</th>${EDIT?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table>`;
+  el.querySelectorAll('.del').forEach(b=> b.onclick = async ()=>{
+    S.entries = S.entries.filter(x=> x.id!==b.dataset.id);
+    DIRTY = true; await store.set(JSON.stringify(S)); render();
+  });
+}
+
+function renderSource(c){
+  const line = document.getElementById('sourceLine');
+  const stand = c.last ? 'Stand ' + fmt(c.last.ts) : 'noch kein Stand';
+  line.innerHTML = `${stand} · Start 19.07.2026, 20:00 CEST · Zeitlimit 08.08.2026 ·
+    <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
+    <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>`;
+  document.getElementById('foot').innerHTML = EDIT
+    ? `Bearbeiten-Modus. Quelle gerade: <code>${SOURCE}</code>. Änderungen sind erst öffentlich, wenn du
+       <code>data.json</code> im Repo ersetzt oder den frischen Link verschickst.<br>
+       Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`
+    : `Werte werden von Hand aus dem offiziellen Live-Tracker übernommen, dieses Board fragt nichts selbst ab.
+       Quelle: <code>${SOURCE}</code>.<br>
+       Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
+}
+
+function render(){
+  const c = compute();
+  renderMetrics(c); renderLadder(c); renderDays(c); renderLog(c); renderSource(c);
+  if(EDIT) renderDirty();
+}
+
+/* ---------- Bearbeiten ---------- */
+function buildEditor(){
+  document.getElementById('editArea').innerHTML = `
+    <div class="editbox">
+      <div class="eyebrow" style="margin-bottom:12px">Position melden</div>
+      <div class="form">
+        <div><label for="fTime">Zeitpunkt</label><input id="fTime" type="datetime-local"></div>
+        <div><label for="fKm">Gesamt-km</label><input id="fKm" type="number" step="1" min="0" inputmode="numeric" placeholder="620"></div>
+        <div><label for="fPlace">Ort</label><input id="fPlace" type="text" placeholder="Flåm"></div>
+        <div><label for="fNote">Notiz</label><input id="fNote" type="text" placeholder="CP1 gestempelt, Regen"></div>
+        <div><button id="add">Eintragen</button></div>
+      </div>
+      <div class="msg" id="msg"></div>
+      <div id="dirty"></div>
+      <div class="btnrow">
+        <button id="copyJson" class="ghost">data.json kopieren</button>
+        <button id="copyLink" class="ghost">Teil-Link kopieren</button>
+        <button id="showJson" class="ghost">JSON anzeigen</button>
+      </div>
+      <textarea id="jsonOut" style="display:none" readonly></textarea>
+    </div>
+
+    <details>
+      <summary>Renn-Parameter</summary>
+      <div class="setbody">
+        <p style="font-size:13px;color:var(--muted);margin:12px 0 0">
+          Kilometer der Kontrollpunkte sind Schätzungen, TCR hat freie Routenwahl. Sobald die echte Route bekannt ist, hier korrigieren.
+        </p>
+        <div class="setgrid" id="settings"></div>
+        <div class="btnrow">
+          <button id="saveSet">Parameter übernehmen</button>
+          <button id="reset" class="ghost">Alles zurücksetzen</button>
+        </div>
+      </div>
+    </details>`;
+
+  document.getElementById('add').onclick = addEntry;
+  document.getElementById('copyJson').onclick = ()=> copy(JSON.stringify(payload(), null, 2), 'data.json kopiert. Jetzt im Repo ersetzen.');
+  document.getElementById('copyLink').onclick = ()=>{
+    const base = location.origin + location.pathname;
+    copy(base + '#d=' + packLink(payload()), 'Teil-Link kopiert. Der zeigt genau diesen Stand.');
+  };
+  document.getElementById('showJson').onclick = ()=>{
+    const t = document.getElementById('jsonOut');
+    t.style.display = t.style.display==='none' ? 'block' : 'none';
+    t.value = JSON.stringify(payload(), null, 2);
+  };
+  document.getElementById('saveSet').onclick = async ()=>{
+    const st = S.settings;
+    st.totalKm = Number(document.getElementById('sTotal').value)||st.totalKm;
+    st.start = document.getElementById('sStart').value || st.start;
+    st.deadline = document.getElementById('sDl').value || st.deadline;
+    st.cps.forEach((c,i)=>{ const v=document.getElementById('sCp'+i).value; if(v!=='') c.km=Number(v); });
+    DIRTY = true; await store.set(JSON.stringify(S)); renderSettings(); render();
+  };
+  document.getElementById('reset').onclick = async ()=>{
+    if(!confirm('Alle Meldungen und Parameter löschen?')) return;
+    S = { settings: structuredClone(DEFAULTS), entries: [] };
+    DIRTY = true; await store.del(); renderSettings(); render();
+  };
+  renderSettings(); setNow();
+}
+function payload(){ return { settings:S.settings, entries:S.entries, updated:new Date().toISOString() }; }
+function copy(text, ok){
+  navigator.clipboard.writeText(text).then(
+    ()=> note(ok),
+    ()=> { const t=document.getElementById('jsonOut'); t.style.display='block'; t.value=text; t.select();
+           note('Zwischenablage blockiert. Text steht unten, von Hand kopieren.', true); }
+  );
+}
+function note(t, err){
+  const m = document.getElementById('msg');
+  if(!m) return;
+  m.textContent = t||''; m.className = 'msg' + (err?' err':'');
+}
+function renderDirty(){
+  const d = document.getElementById('dirty');
+  if(!d) return;
+  d.innerHTML = DIRTY
+    ? `<div style="border-left:3px solid var(--brass);padding:8px 12px;margin-top:12px;background:var(--panel2);font-size:13.5px">
+         Geändert, aber noch nicht veröffentlicht. Der Fanclub sieht den neuen Stand erst nach
+         <em>data.json kopieren</em> und Ersetzen im Repo.</div>`
+    : '';
+}
+function renderSettings(){
+  const st = S.settings;
+  const f = (id,l,v,t='text') => `<div><label for="${id}">${l}</label><input id="${id}" type="${t}" value="${v}"></div>`;
+  const el = document.getElementById('settings'); if(!el) return;
+  el.innerHTML = f('sTotal','Gesamtstrecke km',st.totalKm,'number') +
+    f('sStart','Start',st.start,'datetime-local') + f('sDl','Zeitlimit',st.deadline,'datetime-local') +
+    st.cps.map((c,i)=> f('sCp'+i, c.nm+' km', c.km, 'number')).join('');
+}
+function setNow(){
+  const d = new Date(); d.setMinutes(d.getMinutes()-d.getTimezoneOffset());
+  const el = document.getElementById('fTime'); if(el) el.value = d.toISOString().slice(0,16);
+}
+async function addEntry(){
+  note('');
+  const ts = document.getElementById('fTime').value;
+  const km = document.getElementById('fKm').value;
+  if(!ts){ note('Zeitpunkt fehlt.', true); return; }
+  if(km==='' || isNaN(Number(km))){ note('Kilometerstand fehlt.', true); return; }
+  const prev = sorted().filter(e=> new Date(e.ts) <= new Date(ts)).pop();
+  if(prev && Number(km) < Number(prev.km)){
+    note('Der Stand liegt unter der Meldung davor. Rückwärts geht es im Rennen nicht, bitte prüfen.', true); return;
+  }
+  S.entries.push({ id:String(Date.now()), ts, km:Number(km),
+    place:document.getElementById('fPlace').value.trim(),
+    note:document.getElementById('fNote').value.trim() });
+  DIRTY = true;
+  await store.set(JSON.stringify(S));
+  ['fKm','fPlace','fNote'].forEach(i=> document.getElementById(i).value='');
+  setNow(); render();
+  note('Eingetragen. Zum Veröffentlichen data.json kopieren.');
+}
+
+/* ---------- Start ---------- */
+(async function init(){
+  await loadAll();
+  if(EDIT){
+    // im Bearbeiten-Modus haben lokale, ungespeicherte Änderungen Vorrang vor data.json
+    try{
+      const raw = await store.get();
+      if(raw){ const local = JSON.parse(raw);
+        if((local.entries||[]).length >= S.entries.length){ adopt(local); SOURCE = 'lokal'; DIRTY = true; } }
+    }catch(e){}
+    buildEditor();
+  }
+  render();
+  setInterval(render, 60000);
+  if(!EDIT) setInterval(async ()=>{ if(await loadRemote()) render(); }, 300000);
+})();
+</script>
+</body>
+</html>
