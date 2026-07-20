@@ -147,6 +147,15 @@ function git(...cmdArgs) {
 }
 
 async function main() {
+  const data0 = loadData();
+  const windowStart = new Date(data0.settings.start);
+  const windowEnd = new Date(new Date(data0.settings.deadline).getTime() + 24 * 3600 * 1000); // +1 day buffer for finish-line stragglers
+  const now = new Date();
+  if (now < windowStart || now > windowEnd) {
+    log(`outside race window (${windowStart.toISOString()} – ${windowEnd.toISOString()}), skipping.`);
+    return;
+  }
+
   const rider = await fetchRiderState();
   log('rider state:', rider);
 

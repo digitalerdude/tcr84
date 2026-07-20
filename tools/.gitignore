@@ -1,1 +1,5 @@
 node_modules/
+update-tracker.log
+update-tracker-failure.png
+*.dump.json
+
