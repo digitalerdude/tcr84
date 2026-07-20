@@ -434,6 +434,25 @@ function loadTrack() {
   try { return JSON.parse(readFileSync(TRACK_JSON_PATH, 'utf8')); } catch { return null; }
 }
 
+/* Laufende Pause: aufeinanderfolgende Spurpunkte, die im Umkreis von 150 m um
+   den Beginn der Ansammlung bleiben, und die bis zum letzten bekannten Punkt
+   reicht. Bewusst dieselbe Regel wie `findStops()` im Board, damit Karte und
+   Kopfzeile nicht unterschiedliche Zahlen behaupten.
+   Was die Pause verursacht hat — Schlaf, Panne, Einkauf — steht hier nicht und
+   ist aus der Spur auch nicht ableitbar. */
+function ongoingStop(points, minMinutes = 40, radiusM = 150) {
+  let i = 0, last = null;
+  while (i < points.length) {
+    let j = i + 1;
+    while (j < points.length && haversine([points[i][0], points[i][1]], [points[j][0], points[j][1]]) < radiusM) j++;
+    const mins = (points[j - 1][3] - points[i][3]) / 60;
+    if (j > i + 1 && mins >= minMinutes) { last = { sinceUnix: points[i][3], toUnix: points[j - 1][3], mins }; i = j; }
+    else i = (j > i + 1) ? j : i + 1;
+  }
+  // Nur melden, wenn die Ansammlung bis ans Ende der Spur reicht.
+  return (last && last.toUnix === points[points.length - 1][3]) ? last : null;
+}
+
 function loadData() {
   return JSON.parse(readFileSync(DATA_JSON_PATH, 'utf8'));
 }
@@ -544,11 +563,29 @@ async function main() {
   const entries = data.entries || [];
   const last = entries[entries.length - 1];
 
-  // Auch wenn kein neuer Eintrag fällig ist, kann die Spur gewachsen sein —
-  // die wird dann trotzdem veröffentlicht.
+  /* Der Live-Stand, unabhängig davon ob ein Log-Eintrag fällig ist. Steht der
+     Fahrer, entsteht sonst stundenlang kein Eintrag und das Board sieht aus,
+     als wäre es kaputt — dabei IST der Stillstand die Information. */
+  const stop = trackPoints ? ongoingStop(trackPoints) : null;
+  data.live = {
+    ts: localIsoNoTZ(),                          // wann wir zuletzt nachgesehen haben
+    km: rider.km,
+    fixMinsAgo: rider.lastReportMins ?? null,    // wie alt die Trackermeldung dabei war
+    speed: rider.currentSpeed ?? null,
+    rank: rider.rank ?? null,
+  };
+  if (stop) {
+    data.live.stopSince = localIsoNoTZ(new Date(stop.sinceUnix * 1000));
+    log(`steht seit ${data.live.stopSince} (${Math.round(stop.mins)} min).`);
+  }
+
+  // Auch wenn kein neuer Eintrag fällig ist, sind Live-Stand und Spur neu —
+  // die werden trotzdem veröffentlicht.
   if (last && Math.abs(rider.km - Number(last.km)) < CONFIG.minKmDelta) {
     log(`km barely changed since last entry (${last.km} → ${rider.km}), skipping entry.`);
-    if (FLAGS.commit && trackPoints) commitAll(`Auto-update: Spur auf ${trackPoints} Punkte`);
+    data.updated = new Date().toISOString();
+    saveData(data);
+    if (FLAGS.commit) commitAll(`Auto-update: Live-Stand ${rider.km} km${stop ? ', Pause' : ''}`);
     return;
   }
 

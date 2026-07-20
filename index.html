@@ -190,6 +190,7 @@
       <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
       <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>
     </div>
+    <div class="wxline" id="liveLine" style="display:none"></div>
     <div class="wxline" id="wxLine" style="display:none"></div>
   </header>
 
@@ -294,6 +295,8 @@ function hashParam(name){
 function adopt(p){
   S.settings = Object.assign(structuredClone(DEFAULTS), p.settings||{});
   S.entries = Array.isArray(p.entries) ? p.entries : [];
+  // Live-Stand des Trackers, unabhängig vom letzten Log-Eintrag (siehe renderLive)
+  S.live = p.live || null;
 }
 
 /* ---------- Laden ---------- */
@@ -333,6 +336,9 @@ function dur(ms){
   if(!isFinite(ms)) return '–';
   const neg = ms<0; ms = Math.abs(ms);
   const h = Math.floor(ms/3.6e6), d = Math.floor(h/24);
+  // Unter einer Stunde in Minuten — sonst steht bei frischen Werten „0 h“,
+  // was aussieht als fehle die Angabe. Gilt auch für knappe Puffer.
+  if(h < 1) return (neg?'−':'') + Math.round(ms/6e4) + ' min';
   return (neg?'−':'') + (d>0 ? d+' T '+(h-d*24)+' h' : h+' h');
 }
 function fmt(ts){
@@ -390,11 +396,17 @@ function compute(){
 /* ---------- Ansicht ---------- */
 function renderMetrics(c){
   const cells = [
+    /* „Zuletzt gesehen“ statt „letzte Meldung“: gemeint ist, wie alt unser
+       Wissen über seine Position ist, nicht wann zuletzt eine Log-Zeile
+       entstand. Bei Stillstand entsteht keine — der Tracker meldet trotzdem.
+       Alter = Zeit seit unserem Abruf + Alter der Trackermeldung dabei. */
     ['Rennzeit', dur(c.now-c.start), '',
-      c.last ? 'letzte Meldung vor '+dur(c.now-new Date(c.last.ts)) : 'noch keine Meldung', ''],
+      S.live && S.live.ts
+        ? 'zuletzt gesehen vor ' + dur((c.now - new Date(S.live.ts)) + (S.live.fixMinsAgo||0)*6e4)
+        : (c.last ? 'letzte Meldung vor '+dur(c.now-new Date(c.last.ts)) : 'noch keine Meldung'), ''],
     ['Gefahren', c.last? num(c.km):'–', 'km', c.last? one(c.km/c.total*100)+' % der Strecke':'', ''],
     ['Rest bis Kalamata', c.last? num(c.rest):'–', 'km', '', ''],
-    ['Ø-Schnitt gesamt', c.avg? one(c.avg):'–', 'km/h', c.avg? num(c.avg*24)+' km/Tag inkl. Schlaf':'', ''],
+    ['Ø-Schnitt gesamt', c.avg? one(c.avg):'–', 'km/h', c.avg? num(c.avg*24)+' km/Tag inkl. Pausen':'', ''],
     ['Soll-Schnitt ab jetzt', isFinite(c.need)&&c.rest>0? one(c.need):'–', 'km/h',
       c.rest===0? 'Ziel erreicht' : isFinite(c.need)? num(c.need*24)+' km/Tag · '+dur(c.dl-c.now)+' übrig':'Zeitlimit vorbei',
       c.rest===0?'good':(c.state==='alert'?'alert':(c.avg && c.need<=c.avg?'good':'warn'))],
@@ -436,6 +448,41 @@ function renderMetrics(c){
     if(age > 18) p.push(`Die letzte Meldung ist über ${Math.floor(age)} Stunden alt, die Prognose ist entsprechend weich.`);
     v.innerHTML = p.join(' ');
   }
+}
+
+/* Live-Zeile im Kopf. Sie beantwortet die Frage, die das Positionslog nicht
+   beantworten kann: das bekommt nur alle paar Kilometer einen Eintrag, steht
+   der Fahrer, bleibt es stundenlang stumm und das Board wirkt eingefroren.
+   `data.live` schreibt der Scraper dagegen bei JEDEM Lauf.
+   Drei Zustände, bewusst unterscheidbar: Pause / unterwegs / Abruf hängt. */
+function renderLive(c){
+  const el = document.getElementById('liveLine');
+  const lv = S.live;
+  if(!el) return;
+  if(!lv || !lv.ts){ el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+
+  const alterAbruf = (c.now - new Date(lv.ts)) / 6e4;      // Minuten seit unserem letzten Blick
+  const teile = [];
+
+  if(alterAbruf > 150){
+    // Nicht der Fahrer hängt, sondern unsere Abfrage — das muss man auseinanderhalten.
+    teile.push(`<span class="wxwarn">⚠ Abruf zuletzt ${fmt(lv.ts)}</span>`);
+  } else if(lv.stopSince){
+    const dauer = (c.now - new Date(lv.stopSince)) / 6e4;
+    teile.push(`<span>⏸ <span class="wxval">Pause seit ${new Date(lv.stopSince)
+      .toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>` +
+      ` · ${dauer >= 60 ? Math.floor(dauer/60)+' h '+Math.round(dauer%60)+' min' : Math.round(dauer)+' min'}</span>`);
+  } else {
+    teile.push(`<span>▸ <span class="wxval">unterwegs</span>${
+      lv.speed ? ' · '+one(lv.speed)+' km/h' : ''}</span>`);
+  }
+
+  teile.push(`<span class="wxval">${num(Number(lv.km))} km</span>`);
+  if(lv.rank!=null) teile.push(`<span>Platz ${lv.rank}</span>`);
+  if(lv.fixMinsAgo!=null && alterAbruf <= 150)
+    teile.push(`<span style="opacity:.75">Trackermeldung ${num(lv.fixMinsAgo)} min alt</span>`);
+  el.innerHTML = teile.join('');
 }
 
 function renderLadder(c){
@@ -1094,7 +1141,7 @@ function renderSource(c){
 
 function render(){
   const c = compute();
-  renderMetrics(c); renderLadder(c); renderProfile(c); renderDays(c); renderLog(c); renderSource(c);
+  renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   if(EDIT) renderDirty();
   if(mapObj && document.getElementById('mapDetails').open) renderMap(c);

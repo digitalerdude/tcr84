@@ -20,6 +20,13 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 ```jsonc
 {
   "settings": { "totalKm": 4800, "start": "...", "deadline": "...", "cps": [...] },
+  "live": {                   // Live-Stand, wird bei JEDEM Lauf überschrieben
+    "ts": "2026-07-20T21:28", // wann wir zuletzt nachgesehen haben
+    "km": 404.92,
+    "fixMinsAgo": 35,         // wie alt die Trackermeldung dabei war
+    "speed": 0, "rank": 67,
+    "stopSince": "2026-07-20T18:55"  // nur wenn gerade eine Pause läuft
+  },
   "entries": [
     {
       "id": "...",              // String(Date.now())
@@ -51,6 +58,18 @@ ohne `Z`/Offset-Suffix wird von `Date` als **lokale Zeit** interpretiert — nic
 Zeit in diesem Format zu erzeugen. Jeder Code, der `ts` schreibt, muss dieselbe
 Konvention einhalten (`localIsoNoTZ()` in `update-tracker.mjs`) — ein echter UTC-ISO-
 String hier verschiebt Tempo-/Prognose-Berechnungen um die Zeitzonen-Differenz.
+
+**`live` vs. `entries` — nicht verwechseln:** `entries` ist das Protokoll und
+bekommt nur einen Eintrag, wenn sich der Kilometerstand um mindestens
+`minKmDelta` (1 km) bewegt hat. Steht der Fahrer, entsteht stundenlang keiner —
+das Board sah dadurch eingefroren aus, obwohl der Stillstand die eigentliche
+Information war. `live` wird dagegen bei jedem Lauf geschrieben und trägt im
+Board die Kopfzeile (`renderLive()`) mit drei unterscheidbaren Zuständen:
+Pause läuft / unterwegs / **unser Abruf hängt** (ab 150 Min ohne neuen `live.ts`).
+Der dritte ist der wichtigste — ohne ihn ist von außen nicht zu erkennen, ob der
+Fahrer steht oder der launchd-Job tot ist.
+Die Kennzahlen rechnen weiter ausschließlich mit `entries`; `live` fließt nur in
+Anzeigen ein, die Aktualität ausdrücken („zuletzt gesehen vor …“).
 
 **Zusätzliche Felder sind sicher:** `renderLog()` und `compute()` ignorieren
 unbekannte Keys, neue optionale Felder (wie `lat`/`lon`/`speed`) brechen nichts.
