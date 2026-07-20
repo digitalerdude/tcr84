@@ -40,6 +40,11 @@
   .pill.warn{color:var(--warn);border-color:var(--warn)}
   .pill.alert{color:var(--alert);border-color:var(--alert)}
 
+  .wxline{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;
+          display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .wxline .wxval{color:var(--ice)}
+  .wxline .wxwarn{color:var(--warn)}
+
   .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
   .ladder-panel{position:sticky;top:18px}
   @media (max-width:820px){
@@ -150,6 +155,7 @@
       <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
       <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>
     </div>
+    <div class="wxline" id="wxLine" style="display:none"></div>
   </header>
 
   <div class="cols">
@@ -435,6 +441,56 @@ function renderLog(c){
   });
 }
 
+/* ---------- Wetter am aktuellen Standort ----------
+   Läuft komplett unabhängig vom data.json-Poll (eigenes Intervall), ist aber an die
+   Koordinaten der letzten GPS-Meldung gekoppelt. Quelle: Open-Meteo (kein Key, CORS-fähig). */
+const WX_CODES = {
+  0:['☀️','klar'],1:['🌤️','überw. klar'],2:['⛅','wolkig'],3:['☁️','bedeckt'],
+  45:['🌫️','Nebel'],48:['🌫️','Nebel'],
+  51:['🌦️','Niesel'],53:['🌦️','Niesel'],55:['🌦️','Niesel'],
+  56:['🌧️','gefr. Niesel'],57:['🌧️','gefr. Niesel'],
+  61:['🌧️','Regen'],63:['🌧️','Regen'],65:['🌧️','Starkregen'],
+  66:['🌧️','gefr. Regen'],67:['🌧️','gefr. Regen'],
+  71:['🌨️','Schnee'],73:['🌨️','Schnee'],75:['❄️','Starkschnee'],77:['❄️','Schneegriesel'],
+  80:['🌦️','Schauer'],81:['🌦️','Schauer'],82:['⛈️','starke Schauer'],
+  85:['🌨️','Schneeschauer'],86:['🌨️','Schneeschauer'],
+  95:['⛈️','Gewitter'],96:['⛈️','Gewitter mit Hagel'],99:['⛈️','Gewitter mit Hagel']
+};
+const windDir = deg => ['N','NO','O','SO','S','SW','W','NW'][Math.round(deg/45)%8];
+let WX = null, wxLat = null, wxLon = null, wxKey = null;
+async function loadWeather(lat, lon){
+  try{
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+      `&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m` +
+      `&wind_speed_unit=kmh&timezone=auto`;
+    const res = await fetch(url);
+    if(!res.ok) return;
+    WX = (await res.json()).current;
+    renderWeather();
+  }catch(e){ /* letzter bekannter Stand bleibt stehen, kein Fehler an die Nutzerin */ }
+}
+function renderWeather(){
+  const el = document.getElementById('wxLine');
+  if(!el || !WX){ if(el) el.style.display='none'; return; }
+  const code = WX_CODES[WX.weather_code] || ['','—'];
+  const gust = WX.wind_gusts_10m;
+  const windy = WX.wind_speed_10m >= 30 || (gust!=null && gust >= 45);
+  el.style.display = 'flex';
+  el.innerHTML =
+    `<span>${code[0]} ${code[1]}</span>` +
+    `<span class="wxval">${one(WX.temperature_2m)}° <span style="color:var(--muted)">(gefühlt ${one(WX.apparent_temperature)}°)</span></span>` +
+    `<span class="${windy?'wxwarn':'wxval'}">💨 ${num(WX.wind_speed_10m)} km/h aus ${windDir(WX.wind_direction_10m)}${gust!=null?', Böen '+num(gust):''}</span>` +
+    (WX.precipitation>0 ? `<span class="wxval">🌧️ ${one(WX.precipitation)} mm/h</span>` : '');
+}
+function maybeLoadWeather(c){
+  const withGps = [...c.list].reverse().find(e=> e.lat!=null && e.lon!=null);
+  if(!withGps){ WX=null; wxKey=null; renderWeather(); return; }
+  wxLat = withGps.lat; wxLon = withGps.lon;
+  const key = wxLat.toFixed(3)+','+wxLon.toFixed(3);
+  if(key !== wxKey){ wxKey = key; loadWeather(wxLat, wxLon); }
+}
+setInterval(()=>{ if(wxLat!=null) loadWeather(wxLat, wxLon); }, 900000);
+
 /* ---------- Karte (Leaflet, wird erst beim Öffnen nachgeladen) ---------- */
 let mapObj = null, mapLayer = null;
 function ensureLeaflet(cb){
@@ -498,6 +554,7 @@ function renderSource(c){
 function render(){
   const c = compute();
   renderMetrics(c); renderLadder(c); renderDays(c); renderLog(c); renderSource(c);
+  maybeLoadWeather(c);
   if(EDIT) renderDirty();
   if(mapObj && document.getElementById('mapDetails').open) renderMap(c);
 }

@@ -115,6 +115,15 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
 - Karte: Leaflet + OpenStreetMap-Tiles, per CDN erst beim Öffnen von
   `<details id="mapDetails">` nachgeladen (`ensureLeaflet()`), kein Impact auf die
   normale Ladezeit.
+- Wetter: kompakte Zeile im Masthead (`#wxLine`), Quelle
+  [Open-Meteo](https://open-meteo.com/) (kein API-Key, CORS-fähig, direkt aus dem
+  Browser). Gekoppelt an die Koordinaten der **letzten Meldung mit `lat`/`lon`**, nicht
+  an eine feste Startnummer-Position. Läuft über ein eigenes `setInterval` (15 Min),
+  bewusst entkoppelt vom 5-Min-`data.json`-Poll — Wetter aktualisiert sich unabhängig
+  davon, ob neue Positionsdaten reinkommen. Zeigt nur, was fürs Radfahren zählt:
+  Temperatur/gefühlte Temperatur, Wind (Stärke/Richtung/Böen, ab 30 km/h bzw. 45 km/h
+  Böen farblich hervorgehoben), Niederschlag falls >0. Kein Icon/Zeile ohne
+  GPS-Position (noch keine automatische Meldung erfasst).
 - `render()` läuft alle 60s (lokal neu berechnet) und alle 5 Min wird `data.json`
   neu vom Server geholt. Log-Zeilen werden bei jedem `render()` komplett neu gebaut
   — ein manuell aufgeklappter GPS-Detail-Toggle fällt beim nächsten Tick wieder
