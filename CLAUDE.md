@@ -112,19 +112,31 @@ Zwei verschiedene Dinge mit zwei verschiedenen Problemen:
 öffentlicher Server. Profil in `CONFIG.routeProfile`, aktuell `trekking`.
 
 **Warum `trekking` und nicht `fastbike`?** Messung am 2026-07-20 auf den ersten
-beiden Segmenten — Tracker-Delta als Referenz für die Länge, Manuels eigene
-Erwartung von ~5.400 hm bis Flåm als Referenz für die Höhe:
+beiden Segmenten — Tracker-Delta als Referenz für die Länge:
 
-| Profil | Länge Seg1 / Seg2 | Summe hm | hochgerechnet bis Flåm |
-|---|---|---|---|
-| `trekking` | +2,66 / −0,36 km | 372 | ~5.740 ← gewählt |
-| `fastbike` | +1,63 / +0,57 km | 553 | ~8.550 |
-| `shortest` | +0,52 / −0,58 km | 472 | ~7.300 |
+| Profil | Länge Seg1 / Seg2 | Summe hm |
+|---|---|---|
+| `trekking` | +2,66 / −0,36 km | 372 ← gewählt |
+| `fastbike` | +1,63 / +0,57 km | 553 |
+| `shortest` | +0,52 / −0,58 km | 472 |
 
 Die Länge entscheidet nichts (jedes Profil gewinnt ein Segment), die Höhe schon:
-`fastbike` nimmt im Gudbrandsdal die andere, hügeligere Talseite. Das gewählte
-Profil steht in jedem Eintrag als `climbSrc` (`"brouter:trekking"`), ein Wechsel
-plus `--backfill --force` bleibt dadurch nachvollziehbar.
+`fastbike` nimmt im Gudbrandsdal die andere, hügeligere Talseite und liefert 49 %
+mehr Höhenmeter für dieselbe Strecke — ein Indiz dafür, dass es systematisch
+umwegiger routet, nicht dass es genauer wäre. Das gewählte Profil steht in jedem
+Eintrag als `climbSrc` (`"brouter:trekking"`), ein Wechsel plus
+`--backfill --force` bleibt dadurch nachvollziehbar.
+
+(Frühere Fassung dieser Notiz rechnete die Segmentwerte linear auf 700 km bis
+Flåm hoch und verglich das mit „Manuels ~5.400 hm bis Flåm“ — das beruhte auf
+einem Missverständnis: Manuel meinte damit die *morgige Restetappe* ab der
+aktuellen Position [Sør-Fron, km 405] nach Flåm [km 700], also 295 km, nicht die
+Gesamtstrecke ab Trondheim. Die beiden vermessenen Segmente lagen zudem in einem
+Flusstal mit vergleichsweise sanftem Profil (~800–950 hm/100 km); die Etappe nach
+Flåm quert das Hochgebirge vor den Fjorden und dürfte deutlich steiler sein. Eine
+lineare Hochrechnung war deshalb ohnehin nicht aussagekräftig für die
+Profil-Wahl — die blieb aus dem harten Indiz oben: `fastbike` nimmt nachweislich
+den Umweg über die falsche Talseite.)
 `fastbike-asphalt-avoid-unsafe` gibt es auf dem öffentlichen Server nicht (HTTP 500). Liefert Höhe je Stützpunkt in der Geometrie
 (`[lon, lat, ele]`), `track-length`, und entscheidend `filtered ascend` — eine
 bereits entrauschte Höhenmeter-Summe. `climbDown` = `filtered ascend` − `plain-ascend`.
@@ -263,11 +275,25 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   flacher aus als die Poebene. Nicht auf „einfaches“ Sampling zurückbauen.
 - Der Testmodus (sichtbare Kennzeichnung am Höhenprofil, 20.07.2026) ist mit dem
   Umbau auf die echte Spur entfallen — die Zahlen sind seitdem keine Schätzung
-  über geratene Routen mehr. Offen bleibt der Abgleich mit Manuels eigener Angabe
-  von ~5.400 hm bis Flåm.
+  über geratene Routen mehr. Offen bleibt ein Abgleich für den 21.07.2026: Manuel
+  rechnet für seine **morgige Etappe** Sør-Fron (km 405) → Flåm (km 700, CP1, also
+  295 km) mit rund 5.400 hm. Der passende Vergleich ist `climbUp` aus
+  `profile.json` **speziell für dieses Zeitfenster** (`cumClimbAt()` am Anfang und
+  Ende der Etappe, nicht die Gesamtsumme seit Trondheim) gegen diese 5.400 hm —
+  nicht gegen eine Hochrechnung der bisherigen sanften Flusstal-Kilometer, die
+  Etappe quert vermutlich deutlich steileres Gelände vor den Fjorden.
 - Karte: Leaflet + OpenStreetMap-Tiles, per CDN erst beim Öffnen von
   `<details id="mapDetails">` nachgeladen (`ensureLeaflet()`), kein Impact auf die
-  normale Ladezeit.
+  normale Ladezeit. `track.json` wird genauso lazy geholt (`ensureTrack()`) — es ist
+  die größte Datei und wird sonst nirgends gebraucht.
+  Gezeichnet wird die **echte Spur** (vorher nur eine Gerade zwischen den
+  stündlichen Meldungen, die Kurven abschnitt), mit dunkler Unterlage darunter für
+  Lesbarkeit auf bunten Kacheln. `findStops()` erkennt Pausen: aufeinanderfolgende
+  Spurpunkte im Umkreis von 150 m, die länger als 40 Minuten dort bleiben. Ein
+  Tracker-Ausfall sieht anders aus (nächster Punkt weit weg, keine Ansammlung).
+  Die **laufende** Pause bekommt keinen eigenen Marker — sie läge unter dem
+  Messingpunkt der aktuellen Position und wäre unklickbar, ihre Angaben stehen
+  deshalb in dessen Sprechblase.
 - Wetter: kompakte Zeile im Masthead (`#wxLine`), Quelle
   [Open-Meteo](https://open-meteo.com/) (kein API-Key, CORS-fähig, direkt aus dem
   Browser). Gekoppelt an die Koordinaten der **letzten Meldung mit `lat`/`lon`**, nicht
