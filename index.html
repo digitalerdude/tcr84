@@ -131,6 +131,7 @@
   .profbox .gl{stroke:var(--line)}
   .profbox .pl{stroke:var(--brass)}
   .profbox .cpl,.profbox .gd{stroke:var(--ice)}
+  .profbox .pband{fill:var(--brass);opacity:.55}
   .profbox .pdot{fill:var(--brass);stroke:var(--night)}
   .profbox .pmark{fill:var(--ice);opacity:.55}
   .profbox .pcur{fill:var(--ice)}
@@ -138,11 +139,6 @@
   .profnote + .profnote{margin-top:10px}
   /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
   #profileWrap details{margin-top:-1px}
-  .h2row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
-  .tag{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
-       border:1px solid var(--warn);color:var(--warn);border-radius:999px;padding:3px 8px;line-height:1}
-  .testnote{border-left:3px solid var(--warn);background:var(--panel2);padding:9px 12px;
-            margin-top:12px;font-size:13px;line-height:1.6}
 
   table{width:100%;border-collapse:collapse;font-size:14px}
   th{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
@@ -200,7 +196,7 @@
 
       <div id="editArea"></div>
 
-      <h2 class="h2row">Höhenprofil <span class="tag" id="profTest" style="display:none">Testmodus</span></h2>
+      <h2>Höhenprofil</h2>
       <div id="profileWrap"></div>
 
       <h2>Kilometer pro Tag</h2>
@@ -296,6 +292,20 @@ async function loadRemote(){
     adopt(await res.json()); SOURCE = 'data.json'; return true;
   }catch(e){ return false; }
 }
+/* Das Höhenprofil liegt in einer eigenen Datei: es wächst auf einige Hundert
+   Kilobyte und ändert sich nur, wenn Manuel fährt — es alle 5 Minuten mit
+   data.json mitzuladen wäre Verschwendung. Eigener, langsamerer Takt. */
+let PROFILE = null;
+async function loadProfile(){
+  try{
+    const res = await fetch('profile.json?t=' + Date.now(), {cache:'no-store'});
+    if(!res.ok) return false;
+    const p = await res.json();
+    if(Array.isArray(p.points) && p.points.length) { PROFILE = p; return true; }
+  }catch(e){ /* Board funktioniert auch ohne Profil, nur ohne Höhenteil */ }
+  return false;
+}
+
 async function loadAll(){
   if(await loadRemote()) return;
   const d = hashParam('d');
@@ -344,12 +354,17 @@ function compute(){
      geschätzten Höhenmeter im Segment davor (siehe update-tracker.mjs). Beides
      optional — Meldungen ohne GPS haben nichts davon, und die Summen zählen
      deshalb ausdrücklich nur den abgedeckten Teil der Strecke. */
-  const eleList = list.filter(e=> e.ele!=null);
-  const ele = eleList.length ? Number(eleList[eleList.length-1].ele) : null;
-  const climbUp = list.reduce((s,e)=> s + (Number(e.climbUp)||0), 0);
-  const climbDown = list.reduce((s,e)=> s + (Number(e.climbDown)||0), 0);
-  const climbKm = list.reduce((s,e)=> s + (e.climbUp!=null ? (Number(e.climbKm)||0) : 0), 0);
-  const eleMax = eleList.length ? Math.max(...eleList.map(e=> Number(e.ele))) : null;
+  const P = PROFILE;
+  const climbUp = P ? Math.round(P.climbUp) : 0;
+  const climbDown = P ? Math.round(P.climbDown) : 0;
+  const climbKm = P ? Number(P.routedKm) : 0;
+  // Renn-Kilometer je gerouteten Kilometer: BRouter rechnet die Strecke etwas
+  // anders als der Tracker (418 gegen 405 km). Damit das Profil auf derselben
+  // Achse liegt wie Leiter und Log, wird es beim Zeichnen gestreckt.
+  const kmScale = (P && P.routedKm > 0 && km > 0) ? km / P.routedKm : 1;
+  const eleMax = P ? Math.max(...P.points.map(p=> p[1])) : null;
+  const ele = P ? P.points[P.points.length-1][1]
+                : (list.filter(e=> e.ele!=null).pop() || {}).ele ?? null;
   let state = 'warn';
   if(!last) state = '';
   else if(rest === 0) state = 'good';
@@ -357,7 +372,7 @@ function compute(){
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
   return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,state,
-          eleList,ele,eleMax,climbUp,climbDown,climbKm};
+          ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
 
 /* ---------- Ansicht ---------- */
@@ -399,9 +414,10 @@ function renderMetrics(c){
     if(c.roll) p.push(`Zwischen den letzten beiden Meldungen: <strong>${one(c.roll)} km/h</strong> ${
       c.roll > c.avg ? '— über dem Gesamtschnitt, also ein Fahrblock ohne längere Pause.'
                      : '— unter dem Gesamtschnitt, da lag vermutlich Schlaf drin.'}`);
-    if(c.last.climbUp!=null && c.last.climbUp > 0)
-      p.push(`Dabei rund <strong>${num(c.last.climbUp)} Höhenmeter</strong> bergauf${
-        c.last.climbDown > c.last.climbUp*1.5 ? ' — netto war das Segment aber deutlich abwärts.' : '.'}`);
+    const lastCl = c.list.length >= 2 ? climbBetween(c.list[c.list.length-2].ts, c.last.ts) : null;
+    if(lastCl && lastCl.up > 0)
+      p.push(`Dabei rund <strong>${num(lastCl.up)} Höhenmeter</strong> bergauf${
+        lastCl.down > lastCl.up*1.5 ? ' — netto ging es aber deutlich abwärts.' : '.'}`);
     if(c.nextCp) p.push(`Bis ${c.nextCp.nm}: <strong>${num(c.nextCp.km-c.km)} km</strong>${
       c.avg? `, bei gleichem Schnitt rund ${dur((c.nextCp.km-c.km)/c.avg*3.6e6)}.` : '.'}`);
     const age = (c.now-new Date(c.last.ts))/3.6e6;
@@ -435,34 +451,51 @@ function renderLadder(c){
    resize-Handler unten. */
 const esc = s => String(s).replace(/[<>&]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
 
-/* Testmodus: die Höhenmeter sind geschätzt (siehe Erklärkasten unter dem
-   Diagramm) und werden am Abend des 21.07.2026 gegen Manuels eigene Angabe
-   geprüft — er rechnet für die Strecke bis Flåm mit rund 5.400 hm. Bis dahin
-   trägt der Abschnitt eine sichtbare Kennzeichnung, damit niemand die Zahlen
-   für gesichert hält. Danach hier auf false stellen. */
-const PROFILE_TEST = true;
-const PROFILE_TEST_REF = { hm: 5400, km: 700, nm: 'Flåm', bis: 'Abend des 21.07.2026' };
+/* profile.json hält je Block nur den kumulierten Stand am Blockende fest
+   ([tEnd, kmEnde, cumUp, cumDown]; ein Block ist knapp eine Stunde Fahrt).
+   Für beliebige Zeitpunkte dazwischen wird linear interpoliert — das ist
+   genau genug, um einer Meldung oder einem Kalendertag Höhenmeter
+   zuzuordnen, und spart, jeden Stützpunkt einzeln zu speichern. */
+function cumClimbAt(unixSec){
+  const P = PROFILE;
+  if(!P || !Array.isArray(P.chunks) || !P.chunks.length) return null;
+  const ch = P.chunks, lastCh = ch[ch.length-1];
+  if(unixSec >= lastCh[0]) return {up:lastCh[2], down:lastCh[3], km:lastCh[1]};
+  let prevT = P.startUnix != null ? P.startUnix : ch[0][0], prevUp = 0, prevDown = 0, prevKm = 0;
+  for(const [t,km,up,down] of ch){
+    if(unixSec <= t){
+      const f = t > prevT ? (unixSec - prevT)/(t - prevT) : 1;
+      return {up: prevUp + (up-prevUp)*f, down: prevDown + (down-prevDown)*f, km: prevKm + (km-prevKm)*f};
+    }
+    prevT = t; prevUp = up; prevDown = down; prevKm = km;
+  }
+  return {up:prevUp, down:prevDown, km:prevKm};
+}
+// Höhenmeter zwischen zwei Zeitpunkten (ts-Strings wie in data.json).
+function climbBetween(tsA, tsB){
+  const a = cumClimbAt(new Date(tsA).getTime()/1000);
+  const b = cumClimbAt(new Date(tsB).getTime()/1000);
+  if(!a || !b) return null;
+  return {up: Math.max(Math.round(b.up-a.up), 0), down: Math.max(Math.round(b.down-a.down), 0)};
+}
 let PROF = null; // gerenderter Zustand für die Zeigersteuerung
 
 function renderProfile(c){
   const wrap = document.getElementById('profileWrap');
-  document.getElementById('profTest').style.display = PROFILE_TEST ? '' : 'none';
   const wasOpen = !!wrap.querySelector('details')?.open;
 
-  /* Zwei Ebenen: `pts` ist die dichte Höhenlinie (rund ein Stützpunkt je
-     Kilometer, kommt als `track` pro Segment aus dem Scraper), `marks` sind
-     die eigentlichen Meldungen. Ohne `track` — etwa bei von Hand
-     nachgetragenen Einträgen — fällt die Linie auf die Meldungen zurück. */
-  const marks = c.eleList.map(e=> ({
-    km:Number(e.km), ele:Number(e.ele), ts:e.ts, place:e.place||'',
-    up:e.climbUp!=null?Number(e.climbUp):null, down:e.climbDown!=null?Number(e.climbDown):null
-  }));
-  const pts = [];
-  c.list.forEach(e=>{
-    if(Array.isArray(e.track)) e.track.forEach(([km,ele])=> pts.push({km:Number(km), ele:Number(ele)}));
-    else if(e.ele!=null) pts.push({km:Number(e.km), ele:Number(e.ele)});
-  });
-  pts.sort((a,b)=> a.km-b.km);
+  /* Die Höhenlinie kommt aus profile.json und folgt der echten gefahrenen
+     Spur, mit einem Stützpunkt alle 500 m. Die Kilometer darin sind BRouters
+     gerechnete Streckenlänge und werden hier auf die Renn-Kilometer des
+     Trackers gestreckt (`kmScale`). `marks` sind die Meldungen aus data.json,
+     auf dieselbe Achse gelegt. */
+  const pts = PROFILE
+    ? PROFILE.points.map(([k,e])=> ({km: k*c.kmScale, ele: e}))
+    : [];
+  const marks = c.list.filter(e=> e.lat!=null).map(e=> ({
+    km:Number(e.km), ts:e.ts, place:e.place||'',
+    ele: pts.length ? eleAtKm(pts, Number(e.km)) : (e.ele!=null?Number(e.ele):null)
+  })).filter(m=> m.ele!=null);
 
   const strip = [
     ['Aktuelle Höhe', c.ele!=null? num(c.ele):'–', 'm ü. NN', ''],
@@ -478,7 +511,8 @@ function renderProfile(c){
   if(pts.length < 2){
     wrap.innerHTML = `<div class="hmstrip">${strip}</div>
       <div class="profbox"><div class="empty" style="border:none;padding:22px 8px">
-        Ab zwei Meldungen mit GPS-Position zeichnet sich hier das Höhenprofil.</div></div>`;
+        Das Höhenprofil wird aus der aufgezeichneten Spur berechnet und erscheint,
+        sobald der erste Abschnitt ausgewertet ist.</div></div>`;
     PROF = null; return;
   }
 
@@ -493,10 +527,32 @@ function renderProfile(c){
   const Y = e  => T + (eTop - e)/(eTop - eBot) * (H - T - B);
   const base = H - B;
 
-  const line = pts.map((p,i)=> `${i?'L':'M'}${X(p.km).toFixed(1)},${Y(p.ele).toFixed(1)}`).join('');
-  // line beginnt mit "M…", für die Fläche wird daraus ein "L…" am Fußpunkt-Start
-  const area = `M${X(pts[0].km).toFixed(1)},${base}L` + line.slice(1) +
-               `L${X(pts[pts.length-1].km).toFixed(1)},${base}Z`;
+  /* Aggregieren statt Ausdünnen. Am Ende des Rennens stehen ~9.600
+     Stützpunkte einer Diagrammbreite von 340 Pixeln gegenüber — ein Pixel
+     wäre dann rund 14 km. Würde man jeden n-ten Punkt nehmen, verschwänden
+     genau die Pässe: ein Gipfel zwischen zwei Stichproben ist einfach weg,
+     und die Alpen sähen flacher aus als die Poebene. Stattdessen bekommt
+     jede Pixelspalte das Minimum UND das Maximum ihrer Höhen. Die Silhouette
+     bleibt damit ehrlich, nur die Feinstruktur dazwischen fällt weg — und
+     die will bei 14 km je Pixel ohnehin niemand sehen. */
+  const cols = [];
+  for(const p of pts){
+    const xi = Math.round(X(p.km));
+    const last = cols[cols.length-1];
+    if(last && last.x === xi){ last.lo = Math.min(last.lo, p.ele); last.hi = Math.max(last.hi, p.ele); last.n++; }
+    else cols.push({x: xi, lo: p.ele, hi: p.ele, km: p.km, n: 1});
+  }
+  const topLine = cols.map((q,i)=> `${i?'L':'M'}${q.x},${Y(q.hi).toFixed(1)}`).join('');
+  // Fläche unter der Gipfellinie …
+  const area = `M${cols[0].x},${base}L` + topLine.slice(1) +
+               `L${cols[cols.length-1].x},${base}Z`;
+  // … und das Band zwischen Tal- und Gipfelhöhe je Spalte. Wo eine Spalte nur
+  // einen Punkt enthält (herangezoomt), fällt es auf null zusammen — dann
+  // trägt allein die Linie, deshalb wird die immer zusätzlich gezeichnet.
+  const band = cols.length > 1
+    ? `M` + cols.map(q=> `${q.x},${Y(q.hi).toFixed(1)}`).join('L') + 'L' +
+      cols.slice().reverse().map(q=> `${q.x},${Y(q.lo).toFixed(1)}`).join('L') + 'Z'
+    : '';
 
   // Gitternetz: drei Höhenlinien, auf 50er/100er gerundet damit die Beschriftung ruhig bleibt
   const stepRaw = (eTop - eBot)/3;
@@ -534,7 +590,8 @@ function renderProfile(c){
          </linearGradient></defs>
          ${grid}
          <path d="${area}" fill="url(#profFill)"/>
-         <path class="pl" d="${line}" fill="none" stroke-width="1.8"
+         ${band ? `<path class="pband" d="${band}"/>` : ''}
+         <path class="pl" d="${topLine}" fill="none" stroke-width="1.6"
                stroke-linejoin="round" stroke-linecap="round"/>
          ${cps}
          <line class="gl" x1="${L}" y1="${base}" x2="${W-R}" y2="${base}"/>
@@ -550,33 +607,28 @@ function renderProfile(c){
        <summary>Wie das Höhenprofil entsteht</summary>
        <div class="setbody">
          <p class="profnote" style="margin-top:14px">
-           Der Live-Tracker meldet nur Position und Kilometerstand, keine Höhenmeter. Dieses
-           Board fragt ihn alle 30 Minuten ab — zwischen zwei hier gespeicherten Meldungen
-           liegen also etliche Kilometer, in denen jeder Anstieg unsichtbar wäre.
+           Der Tracker an Manuels Rad speichert seine Position etwa alle fünf Minuten. Diese
+           Aufzeichnung ist öffentlich abrufbar, und das Board holt sie sich stündlich komplett —
+           die Linie oben folgt also der <strong>tatsächlich gefahrenen Strecke</strong>, nicht
+           einer angenommenen. Aktuell sind das ${num(PROFILE ? PROFILE.points.length : 0)}
+           Stützpunkte über ${num(c.km)} km.
          </p>
          <p class="profnote">
-           Deshalb wird für jedes Segment die wahrscheinlichste Radroute zwischen den beiden
-           GPS-Punkten gerechnet (<a href="https://brouter.de/" target="_blank" rel="noopener">BRouter</a>,
-           Profil „Trekking“) und deren Höhenprofil ausgewertet. Die Linie oben zeigt rund
-           einen Stützpunkt je Kilometer, die Punkte darauf sind die echten Meldungen.
+           Höhenmeter meldet der Tracker allerdings nicht, und seine rohe GPS-Höhe taugt nicht
+           zum Aufsummieren — sie schwankt um rund 20 Meter, und jeder Messfehler nach oben
+           würde als Anstieg mitgezählt. Genau deshalb zeigen Radcomputer oft zu viele
+           Höhenmeter an. Stattdessen wird die aufgezeichnete Spur an
+           <a href="https://brouter.de/" target="_blank" rel="noopener">BRouter</a> übergeben,
+           das die Punkte auf das Straßennetz legt, die Lücken dazwischen füllt und die
+           Höhenmeter aus einem Geländemodell entrauscht aufsummiert.
          </p>
          <p class="profnote">
-           Bleiben zwei Unschärfen: das TCR hat freie Routenwahl, gefahren wurde also
-           vielleicht anders als gerechnet. Und das Profil beginnt erst bei ${num(x0)} km —
-           ab da liefert der Tracker GPS-Positionen, die ${num(x0)} km davor fehlen in allen
-           Summen. Die Höhe an der Meldung stammt aus derselben Route; die rohe GPS-Höhe des
-           Trackers steht in <code>data.json</code> als <code>eleGps</code> daneben.
+           Was bleibt: zwischen zwei aufgezeichneten Punkten liegen im Schnitt 1,6 km, deren
+           Verlauf gerechnet und nicht gemessen ist. Kurze Wellen darin fehlen, die Summe
+           fällt also eher etwas zu niedrig aus. Und die Streckenlänge weicht leicht von der
+           des Trackers ab (${num(c.climbKm)} gegen ${num(c.km)} km) — fürs Diagramm wird sie
+           auf dessen Kilometer gestreckt.
          </p>
-         ${PROFILE_TEST ? `<div class="testnote">
-           <strong>Testmodus.</strong> Manuel rechnet für die Strecke bis ${PROFILE_TEST_REF.nm}
-           mit rund ${num(PROFILE_TEST_REF.hm)} Höhenmetern. Dieses Board zählt bisher
-           ${num(c.climbUp)} hm auf ${num(c.climbKm)} gerouteten Kilometern${
-             c.climbKm > 0 ? `, im gleichen Verhältnis weitergerechnet wären es auf den
-             ${num(PROFILE_TEST_REF.km)} km bis ${PROFILE_TEST_REF.nm}
-             rund <strong>${num(Math.round(c.climbUp/c.climbKm*PROFILE_TEST_REF.km/50)*50)} hm</strong>` : ''}.
-           Ob die Schätzmethode taugt, wird am ${PROFILE_TEST_REF.bis} entschieden — die
-           Hochrechnung ist grob, sie zieht die Steilheit eines Teilstücks über die ganze Etappe.
-         </div>` : ''}
        </div>
      </details>`;
 
@@ -584,26 +636,55 @@ function renderProfile(c){
   // wäre ein Zuklappen mitten im Lesen hier echt ärgerlich.
   if(wasOpen){ const d = wrap.querySelector('details'); if(d) d.open = true; }
 
-  PROF = {pts, marks, X, Y, L, R, W, T, base, cur};
+  PROF = {pts, cols, marks, X, Y, L, R, W, T, base, cur, kmScale:c.kmScale};
   bindProfilePointer();
   showProfileRead(-1);
 }
 
-/* i = Index in die dichte Linie, -1 = Ausgangszustand (letzte Meldung).
+// Höhe an einem Renn-Kilometer, linear zwischen den Stützpunkten interpoliert.
+function eleAtKm(pts, km){
+  if(!pts.length) return null;
+  if(km <= pts[0].km) return pts[0].ele;
+  for(let i=1;i<pts.length;i++){
+    if(pts[i].km >= km){
+      const a = pts[i-1], b = pts[i], span = b.km - a.km;
+      return Math.round(span > 0 ? a.ele + (b.ele-a.ele)*(km-a.km)/span : b.ele);
+    }
+  }
+  return pts[pts.length-1].ele;
+}
+
+/* i = Spaltenindex, -1 = Ausgangszustand (aktuelle Position).
    Ortsname und Zeit gibt es nur, wenn der Zeiger nah genug an einer echten
    Meldung steht — dazwischen weiß das Board weder das eine noch das andere. */
 function showProfileRead(i){
   const el = document.getElementById('profRead');
   if(!el || !PROF) return;
-  const p = i < 0 ? PROF.cur : PROF.pts[i];
-  if(!p) return;
-  const seg = PROF.marks.find(m=> m.km >= p.km - 0.05) || PROF.cur;
-  const near = Math.abs(seg.km - p.km) < Math.max((PROF.pts[PROF.pts.length-1].km - PROF.pts[0].km)/60, .8);
+  const q = i < 0 ? null : PROF.cols[i];
+  const km = q ? q.km : PROF.cur.km;
+  const ele = q ? q.hi : PROF.cur.ele;
+  const span = PROF.pts[PROF.pts.length-1].km - PROF.pts[0].km;
+  const near = PROF.marks.find(m=> Math.abs(m.km - km) < Math.max(span/60, .8));
+  // Höhenmeter bis zu diesem Punkt: die Blöcke in profile.json tragen ihren
+  // kumulierten Stand samt gerouteter Kilometer, also nach km interpolierbar.
+  let cum = null;
+  if(PROFILE && PROFILE.chunks && PROFILE.chunks.length){
+    const routedKm = km / (PROF.kmScale || 1);
+    let prevKm = 0, prevUp = 0;
+    for(const [,kmEnd,up] of PROFILE.chunks){
+      if(routedKm <= kmEnd){
+        const f = kmEnd > prevKm ? (routedKm-prevKm)/(kmEnd-prevKm) : 1;
+        cum = Math.round(prevUp + (up-prevUp)*f); break;
+      }
+      prevKm = kmEnd; prevUp = up;
+    }
+    if(cum === null) cum = Math.round(PROFILE.chunks[PROFILE.chunks.length-1][2]);
+  }
   el.innerHTML =
-    `<span><span class="rv">${num(p.ele)} m</span> bei ${num(p.km)} km</span>` +
-    (near && seg.place ? `<span>${esc(seg.place)}</span>` : '') +
-    (seg.up!=null ? `<span>Segment <span class="rv">↑ ${num(seg.up)}</span> / ↓ ${num(seg.down)} hm</span>` : '') +
-    (near ? `<span style="opacity:.7">${fmt(seg.ts)}</span>` : '');
+    `<span><span class="rv">${num(ele)} m</span> bei ${num(km)} km</span>` +
+    (q && q.n > 1 ? `<span style="opacity:.7">Tal ${num(q.lo)} m</span>` : '') +
+    (cum !== null ? `<span>bis hier <span class="rv">↑ ${num(cum)}</span> hm</span>` : '') +
+    (near ? `<span>${esc(near.place)}</span><span style="opacity:.7">${fmt(near.ts)}</span>` : '');
 }
 
 function bindProfilePointer(){
@@ -614,11 +695,11 @@ function bindProfilePointer(){
     const r = svg.getBoundingClientRect();
     const px = (ev.clientX - r.left) / r.width * PROF.W;   // Bildschirm- → SVG-Koordinaten
     let best = 0, bd = Infinity;
-    PROF.pts.forEach((p,i)=>{ const d = Math.abs(PROF.X(p.km)-px); if(d<bd){ bd=d; best=i; } });
-    const p = PROF.pts[best];
-    guide.setAttribute('x1', PROF.X(p.km)); guide.setAttribute('x2', PROF.X(p.km));
+    PROF.cols.forEach((q,i)=>{ const d = Math.abs(q.x-px); if(d<bd){ bd=d; best=i; } });
+    const q = PROF.cols[best];
+    guide.setAttribute('x1', q.x); guide.setAttribute('x2', q.x);
     guide.setAttribute('opacity', '.45');
-    cursor.setAttribute('cx', PROF.X(p.km)); cursor.setAttribute('cy', PROF.Y(p.ele));
+    cursor.setAttribute('cx', q.x); cursor.setAttribute('cy', PROF.Y(q.hi));
     cursor.setAttribute('opacity', '1');
     showProfileRead(best);
   };
@@ -643,11 +724,30 @@ function renderDays(c){
   const w = document.getElementById('daysWrap');
   if(c.list.length < 2){ w.innerHTML = '<div class="empty">Ab zwei Meldungen erscheint hier die Tagesleistung.</div>'; return; }
   const byDay = {}, upDay = {};
-  for(let i=1;i<c.list.length;i++){
-    const a=c.list[i-1], b=c.list[i];
-    const key = b.ts.slice(0,10);
-    byDay[key] = (byDay[key]||0) + Math.max(Number(b.km)-Number(a.km), 0);
-    if(b.climbUp!=null) upDay[key] = (upDay[key]||0) + Number(b.climbUp);
+  if(PROFILE && PROFILE.chunks && PROFILE.chunks.length){
+    /* Aus der aufgezeichneten Spur, nicht aus den Meldungen: die decken erst
+       ab der ersten eigenen Erfassung ab, die Spur reicht bis Trondheim
+       zurück. Sonst stünden hier Tageswerte, die sich nicht zur Gesamtsumme
+       addieren. Kalendertage in lokaler Zeit, passend zu `ts` in data.json. */
+    const dayKey = d => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    const first = new Date((PROFILE.startUnix ?? PROFILE.chunks[0][0]) * 1000);
+    const lastT = PROFILE.chunks[PROFILE.chunks.length-1][0] * 1000;
+    for(let d = new Date(first.getFullYear(), first.getMonth(), first.getDate());
+        d.getTime() <= lastT; d.setDate(d.getDate()+1)){
+      const from = Math.max(d.getTime()/1000, PROFILE.startUnix ?? 0);
+      const to = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1).getTime()/1000;
+      const a = cumClimbAt(from), b = cumClimbAt(Math.min(to, lastT/1000));
+      if(!a || !b) continue;
+      const key = dayKey(d);
+      byDay[key] = Math.max((b.km - a.km) * c.kmScale, 0);
+      upDay[key] = Math.max(Math.round(b.up - a.up), 0);
+    }
+  } else {
+    for(let i=1;i<c.list.length;i++){
+      const a=c.list[i-1], b=c.list[i];
+      const key = b.ts.slice(0,10);
+      byDay[key] = (byDay[key]||0) + Math.max(Number(b.km)-Number(a.km), 0);
+    }
   }
   const keys = Object.keys(byDay).sort();
   const max = Math.max(...keys.map(k=>byDay[k]), 1);
@@ -671,6 +771,7 @@ function renderLog(c){
       d = dh>0 ? one((Number(e.km)-Number(prev.km))/dh)+' km/h' : '–';
     }
     const hasGps = e.lat!=null && e.lon!=null;
+    const cl = prev ? climbBetween(prev.ts, e.ts) : null;
     const detailId = 'det'+e.id;
     const main = `<tr class="logRow${hasGps?' hasDetail':''}" ${hasGps?`data-target="${detailId}"`:''}>
       <td class="num">${fmt(e.ts)}</td>
@@ -682,8 +783,8 @@ function renderLog(c){
     const detail = hasGps ? `<tr class="logDetail" id="${detailId}" style="display:none"><td colspan="${cols}">
         <div class="dk">
           <span>${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}</span>
-          ${e.ele!=null?`<span>${num(Number(e.ele))} m ü. NN${e.eleSrc==='dem'?' (Geländemodell)':''}</span>`:''}
-          ${e.climbUp!=null?`<span>↑ ${num(Number(e.climbUp))} / ↓ ${num(Number(e.climbDown))} hm seit davor</span>`:''}
+          ${e.ele!=null?`<span>${num(Number(e.ele))} m ü. NN</span>`:''}
+          ${cl?`<span>↑ ${num(cl.up)} / ↓ ${num(cl.down)} hm seit davor</span>`:''}
           ${e.speed!=null?`<span>${one(e.speed)} km/h bei Erfassung</span>`:''}
           <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank" rel="noopener">Google Maps ↗</a>
         </div>
@@ -810,8 +911,8 @@ function renderSource(c){
     : `Werte werden seit dem 20.07.2026 automatisiert alle 30 Minuten vom offiziellen Live-Tracker abgefragt
        (erkennbar an „GPS" bei der Meldung); vereinzelte Einträge sind von Hand nachgetragen.
        Quelle: <code>${SOURCE}</code>.<br>
-       Höhen und Höhenmeter sind geschätzt${PROFILE_TEST?' und noch im Testmodus':''} — wie sie
-       zustande kommen, steht ausklappbar unter dem Höhenprofil.<br>
+       Das Höhenprofil folgt der aufgezeichneten Spur des Trackers, die Höhenmeter darin sind
+       gerechnet — wie genau, steht ausklappbar unter dem Höhenprofil.<br>
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
 }
 
@@ -942,6 +1043,7 @@ async function addEntry(){
 /* ---------- Start ---------- */
 (async function init(){
   await loadAll();
+  await loadProfile();
   if(EDIT){
     // im Bearbeiten-Modus haben lokale, ungespeicherte Änderungen Vorrang vor data.json
     try{
@@ -953,7 +1055,12 @@ async function addEntry(){
   }
   render();
   setInterval(render, 60000);
-  if(!EDIT) setInterval(async ()=>{ if(await loadRemote()) render(); }, 300000);
+  if(!EDIT){
+    setInterval(async ()=>{ if(await loadRemote()) render(); }, 300000);
+    // Profil in eigenem, langsamerem Takt — es ist die größte Datei und
+    // ändert sich nur, wenn eine neue Stunde Fahrt ausgewertet wurde.
+    setInterval(async ()=>{ if(await loadProfile()) render(); }, 900000);
+  }
 })();
 </script>
 </body>

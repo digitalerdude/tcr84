@@ -10,7 +10,8 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 |---|---|
 | `index.html` | Die ganze App: Vanilla-JS, kein Build-Step. CSS-Variablen in `:root` sind das Design-System (`--night`, `--panel`, `--brass`, `--mono` etc.) — neue UI hält sich daran, keine Hardcoded-Farben. |
 | `data.json` | Der Datenspeicher. Wird von GitHub Pages ausgeliefert, `index.html` lädt ihn per `fetch('data.json?t=...')`. Schreibrechte nur über Git-Commit ins Repo (kein Server, kein Backend). |
-| `track.json` | Archiv der **echten gefahrenen Spur** aus dem GPX-Export des Trackers, siehe unten. Wird bei jedem Lauf komplett neu geschrieben. Noch von nichts im Frontend gelesen. |
+| `track.json` | Archiv der **echten gefahrenen Spur** aus dem GPX-Export des Trackers, siehe unten. Wird bei jedem Lauf komplett neu geschrieben. Rohdaten, vom Frontend nicht gelesen. |
+| `profile.json` | Das daraus gerechnete Höhenprofil (Stützpunkte + kumulierte Höhenmeter je Block). **Einzige Quelle für alle Höhenangaben im Board.** Eigener Ladetakt im Frontend (15 Min), weil es die größte Datei ist. |
 | `tools/update-tracker.mjs` | Automatisierter Scraper, siehe unten. |
 | `tools/package.json` | Playwright-Dependency für den Scraper. `cd tools && npm install`. |
 
@@ -161,20 +162,45 @@ Landet in `track.json` als kompakte Arrays `[lat, lon, eleGps, unixSec]`.
 werden — sie streuen mit ~20 m gegen das Geländemodell und ergäben über die ersten
 405 km 3.379 statt ~2.750 hm.
 
-**Offene, gemessene Erkenntnis (2026-07-20):** die aktuelle Schätzung über
-BRouter-Segmente *zwischen unseren Meldungen* liegt zu hoch, weil sie die Route
-dazwischen errät. Für dasselbe 44,6-km-Stück:
+### profile.json — die Höhenrechnung
+
+`updateProfile()` schreibt das Profil **inkrementell** fort: pro Lauf wird nur das
+neu hinzugekommene Ende der Spur an BRouter geschickt (bei stündlichem Abruf ~12
+neue Punkte = ein bis zwei Anfragen). Die Spurpunkte gehen als **Wegpunktkette**
+rein (`lonlats=a|b|c|…`), BRouter legt sie aufs Straßennetz und füllt nur die
+Lücken von im Schnitt 1,6 km. Ein kompletter Neuaufbau über 4.800 km wäre sonst
+jede Stunde ein paar hundert Anfragen an einen Gratis-Dienst.
+
+```jsonc
+{
+  "startUnix": 1784484000,   // Nullpunkt für die Interpolation
+  "throughUnix": 1784571485, // bis hierhin verarbeitet
+  "anchor": [lat, lon, unix],// letzter verarbeiteter Punkt = Start des nächsten Blocks
+  "routedKm": 418.2, "climbUp": 3536, "climbDown": 3283,
+  "points": [[routedKm, m], …],          // alle 500 m
+  "chunks": [[tEnd, kmEnd, cumUp, cumDown], …]  // kumuliert am Blockende
+}
+```
+
+`chunks` hält bewusst nur den Stand am Blockende — das Board interpoliert dazwischen
+linear (`cumClimbAt()`) und kann so Höhenmeter für beliebige Zeiträume ableiten:
+je Meldung im Log, je Kalendertag in den Balken. Ein Block ist knapp eine Stunde
+Fahrt (`waypointsPerRequest: 10` × ~5 Minuten).
+
+**Warum die Kilometer skaliert werden:** `routedKm` ist BRouters Streckenlänge und
+liegt ~3 % über der des Trackers (418 gegen 405 km). Das Frontend streckt beim
+Zeichnen mit `kmScale = km / routedKm`, damit Profil, Leiter und Log auf derselben
+Achse liegen. Getestet, dass das *nicht* am GPS-Zittern liegt: `minTrackPointMeters`
+von 60 auf 150 und 300 zu erhöhen ändert die Gesamtlänge nicht.
+
+**Messvergleich, der zu diesem Aufbau geführt hat (2026-07-20)**, alles auf demselben
+44,6-km-Stück:
 
 | Methode | Länge | ↑ hm |
 |---|---|---|
-| BRouter zwischen den 4 Meldungen (aktuell im Board) | 45,0 km | 372 |
-| BRouter **entlang der echten Spurpunkte** (20er-Blöcke als Wegpunkte) | 44,4 km | **301** |
-| rohe GPS-Höhe | — | verrauscht, zu hoch |
-
-Der Umbau darauf steht noch aus. Er würde zusätzlich die größte Lücke schließen:
-das Profil beginnt aktuell erst bei 360 km (erste eigene GPS-Meldung), die Spur
-reicht dagegen bis Trondheim zurück. Dabei zu beachten: BRouter nicht bei jedem
-Lauf über die ganze Spur laufen lassen, sondern nur über das neue Ende.
+| BRouter nur zwischen unseren 4 Meldungen | 45,0 km | 372 |
+| BRouter entlang der echten Spurpunkte | 44,4 km | **301** |
+| rohe GPS-Höhe aufsummiert | — | über 405 km 3.379 statt 3.536, aus Rauschen |
 
 Race-Window-Guard: läuft nur zwischen `settings.start` und `settings.deadline + 1 Tag`
 (liest das direkt aus `data.json`), damit der geplante Job vor/nach dem Rennen
@@ -228,12 +254,17 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   Meldungen als Punkte darauf. Farben über CSS-Klassen (`.pl`, `.gl`, `.pdot` …)
   statt `var()` in SVG-Präsentationsattributen. Zeiger per `pointermove`/`pointerdown`
   auf einem transparenten `<rect>`, also auch auf Touch bedienbar.
-- **Testmodus Höhenprofil:** `PROFILE_TEST = true` im Script blendet eine
-  „Testmodus“-Kennzeichnung neben der Überschrift ein und hängt einen Prüfkasten in
-  den Erklärkasten: Manuel rechnet bis Flåm (700 km) mit rund 5.400 hm, das Board
-  rechnet seinen bisherigen hm/km-Schnitt dagegen hoch. Auswertung war für den Abend
-  des 21.07.2026 geplant — **danach hier auf `false` stellen**, sonst steht die
-  Kennzeichnung für immer da. Referenzwerte in `PROFILE_TEST_REF`.
+- Höhenprofil-Diagramm: **aggregieren, nicht ausdünnen.** Am Ende stehen ~9.600
+  Stützpunkte einer Breite von 340 Pixeln gegenüber, ein Pixel ist dann ~14 km.
+  Jede Pixelspalte bekommt Minimum *und* Maximum ihrer Höhen (`cols` in
+  `renderProfile()`), gezeichnet als Band zwischen beiden plus Linie auf der
+  Gipfelhöhe. Würde man stattdessen jeden n-ten Punkt nehmen, verschwänden die
+  Pässe — ein Gipfel zwischen zwei Stichproben ist weg, und die Alpen sähen
+  flacher aus als die Poebene. Nicht auf „einfaches“ Sampling zurückbauen.
+- Der Testmodus (sichtbare Kennzeichnung am Höhenprofil, 20.07.2026) ist mit dem
+  Umbau auf die echte Spur entfallen — die Zahlen sind seitdem keine Schätzung
+  über geratene Routen mehr. Offen bleibt der Abgleich mit Manuels eigener Angabe
+  von ~5.400 hm bis Flåm.
 - Karte: Leaflet + OpenStreetMap-Tiles, per CDN erst beim Öffnen von
   `<details id="mapDetails">` nachgeladen (`ensureLeaflet()`), kein Impact auf die
   normale Ladezeit.

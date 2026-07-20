@@ -17,7 +17,8 @@
  *   node update-tracker.mjs --commit --push  # also `git push`
  *   node update-tracker.mjs --headed         # show the browser (debugging)
  *   node update-tracker.mjs --dump=rider.json  # dump the raw ridersArray entry for inspection
- *   node update-tracker.mjs --backfill       # only fill missing ele/climb on existing entries
+ *   node update-tracker.mjs --backfill       # rebuild the elevation profile from the archived track (no browser)
+ *   node update-tracker.mjs --backfill --force   # ... from scratch, e.g. after changing the routing profile
  */
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -29,6 +30,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const DATA_JSON_PATH = path.join(REPO_ROOT, 'data.json');
 const TRACK_JSON_PATH = path.join(REPO_ROOT, 'track.json');
+const PROFILE_JSON_PATH = path.join(REPO_ROOT, 'profile.json');
 
 const CONFIG = {
   trackerUrl: 'https://www.followmychallenge.com/live/tcrno12/',
@@ -36,25 +38,30 @@ const CONFIG = {
   riderName: 'Manuel Kaufer',
   // Skip writing a new entry if the distance barely moved since the last one.
   minKmDelta: 1,
-  /* BRouter-Profil für die Höhenmeter-Schätzung. Vergleich am 2026-07-20 auf
-     den ersten beiden Segmenten (Tracker-Delta als Referenz für die Länge,
-     Manuels eigene Erwartung von ~5.400 hm bis Flåm als Referenz für die Höhe):
-
-       Profil     Länge Seg1/Seg2   Summe hm   hochgerechnet bis Flåm
-       trekking   +2,66 / −0,36 km      372    ~5.740   ← gewählt
-       fastbike   +1,63 / +0,57 km      553    ~8.550
-       shortest   +0,52 / −0,58 km      472    ~7.300
-
-     Die Länge allein entscheidet nichts (jedes Profil gewinnt ein Segment),
-     die Höhe schon: `fastbike` nimmt im Gudbrandsdal die andere, hügeligere
-     Talseite und liegt 58 % über Manuels Erwartung, `trekking` 6 %. Sollte
-     die Auswertung am Abend des 21.07. etwas anderes zeigen: hier ändern,
-     dann `--backfill --force` — das Profil steht in jedem Eintrag als
-     `climbSrc`, alte und neue Werte bleiben unterscheidbar. */
+  /* BRouter-Profil. Seit die echte Spur bekannt ist, füllt es nur noch die
+     Lücken zwischen gemessenen Punkten im Abstand von ~1,6 km — die Wahl
+     wiegt also viel weniger schwer als früher, wo sie 30-km-Lücken zu raten
+     hatte. Damals gemessen (2026-07-20): `trekking` traf Manuels Erwartung
+     bis Flåm auf 6 % genau, `fastbike` lag 58 % darüber, weil es im
+     Gudbrandsdal die andere, hügeligere Talseite nimmt.
+     Nach einer Änderung `--backfill --force` laufen lassen. */
   routeProfile: 'trekking',
-  // Don't try to route/climb-sample absurdly long gaps (tracker was offline
-  // for hours) — the guessed route gets too speculative to be worth showing.
-  maxSegmentKm: 250,
+  // Wegpunkte je BRouter-Anfrage. 10 Spurpunkte sind bei ~5 Minuten Abstand
+  // knapp eine Stunde Fahrt — fein genug, um Höhenmeter zeitlich einzelnen
+  // Meldungen zuzuordnen, und grob genug, dass ein Lauf ein bis zwei
+  // Anfragen braucht statt zwanzig.
+  waypointsPerRequest: 10,
+  // Spurpunkte, die weniger als das vom Vorgänger entfernt sind, fliegen
+  // raus: steht der Fahrer, liefert der Tracker Dutzende Punkte auf demselben
+  // Fleck, und BRouter kann zwischen identischen Koordinaten nicht routen.
+  // (60 / 150 / 300 m getestet — auf die Gesamtlänge wirkt sich das kaum aus,
+  // die Spurpunkte liegen ohnehin im Median 1,6 km auseinander. Also der
+  // kleinste Wert, der seinen Zweck erfüllt, und maximale Spurtreue.)
+  minTrackPointMeters: 60,
+  // Stützpunkt-Abstand der gespeicherten Höhenlinie.
+  profileSampleMeters: 500,
+  // Pause zwischen BRouter-Anfragen — öffentlicher Gratis-Dienst.
+  brouterDelayMs: 1200,
 };
 
 const args = process.argv.slice(2);
@@ -103,26 +110,28 @@ async function reverseGeocode(lat, lon) {
 }
 
 /* ---------- Höhe & Höhenmeter ----------------------------------------
- * `ele` — die Höhe AN der Meldung, `climbUp`/`climbDown` — die Höhenmeter
- * ZWISCHEN zwei Meldungen. Letztere kann man aus den Meldungen selbst nicht
- * ableiten: bei ~35 km Abstand liegt jeder Anstieg zwischen den Stützpunkten.
+ * Gerechnet wird entlang der ECHTEN gefahrenen Spur (track.json, aus dem
+ * GPX-Export des Trackers, ~1 Punkt alle 5 Minuten). BRouter bekommt diese
+ * Punkte als Wegpunktkette und füllt nur die Lücken dazwischen mit dem
+ * Straßennetz auf; die Höhenmeter kommen aus seiner entrauschten Summe
+ * (`filtered ascend`). Ergebnis landet in profile.json.
  *
- * Quelle für alles Streckenbezogene ist BRouter (brouter.de, die Engine
- * hinter vielen Rad-Navi-Apps): Radprofil `trekking`, und — entscheidend —
- * eine eigene, entrauschte Höhenmeter-Summe (`filtered ascend`).
+ * Zwei verworfene Ansätze, damit sie niemand zurückholt:
  *
- * Warum nicht OSRM + Höhen-API punktweise abfragen (erster Ansatz, verworfen
- * am 2026-07-20): der öffentliche OSRM-Demo-Server routet nur mit Auto-
- * Profil (19,4 km statt der real gefahrenen 17,8 km), und das punktweise
- * Aufsummieren roher DEM-Werte alle ~230 m produziert massive Artefakte —
- * im Testsegment sprang das Gelände um 190 m auf 500 m Strecke (38 %
- * Steigung, unmöglich für eine Straße), weil die geratene Route eine
- * Hangflanke streift. Ergebnis waren 423 statt 103 Höhenmetern, also gut
- * das Vierfache. Eine Steigungs- und Rauschfilterung von Hand brachte nur
- * ~8 %; BRouter macht das schon richtig. Nicht zurückbauen.
+ * 1. OSRM + punktweise DEM-Abfrage (2026-07-20). Der öffentliche OSRM-Demo
+ *    routet nur mit Auto-Profil, und das Aufsummieren roher DEM-Werte alle
+ *    ~230 m erzeugt Artefakte: im Testsegment sprang das Gelände um 190 m
+ *    auf 500 m Strecke (38 % Steigung, unmöglich für eine Straße), weil die
+ *    geratene Route eine Hangflanke streift. 423 statt 103 hm. Filter von
+ *    Hand brachten nur ~8 %.
+ * 2. BRouter nur zwischen unseren eigenen Meldungen (2026-07-20). Lag 19 %
+ *    zu hoch (372 statt 301 hm auf demselben Stück), weil zwischen zwei
+ *    Meldungen 30 km Route geraten werden mussten. Genau das erledigt die
+ *    echte Spur.
  *
- * Bleibt eine Schätzung: TCR hat freie Routenwahl, BRouter rät die
- * wahrscheinlichste Radroute zwischen zwei Meldungen.
+ * Die rohe GPS-Höhe aus dem GPX ist KEINE Alternative: sie streut mit ~20 m
+ * und ergäbe über die ersten 405 km 3.379 statt der gerechneten ~3.540 —
+ * zufällig ähnlich, aber aus lauter Messrauschen zusammengesetzt.
  */
 async function fetchJson(url, opts = {}) {
   const res = await fetch(url, {
@@ -144,65 +153,149 @@ async function demElevation(points) {
   return data.elevation;
 }
 
-// Radroute zwischen zwei Punkten inklusive Höhe je Stützpunkt. Die GeoJSON-
-// Koordinaten sind [lon, lat, ele].
-async function brouterSegment(a, b) {
-  const url = `https://brouter.de/brouter?lonlats=${a[1]},${a[0]}|${b[1]},${b[0]}` +
+const EARTH_R = 6371000;
+const toRad = d => d * Math.PI / 180;
+function haversine(a, b) {
+  const dLat = toRad(b[0] - a[0]), dLon = toRad(b[1] - a[1]);
+  const x = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(a[0])) * Math.cos(toRad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_R * Math.asin(Math.sqrt(x));
+}
+
+/* Radroute DURCH eine Folge von Wegpunkten (nicht nur zwischen zweien) —
+   BRouter nimmt beliebig viele `lonlats`, durch die Trennung mit `|`.
+   Genau das macht die echte Spur nutzbar: die Route wird alle ~1,6 km an
+   einem gemessenen GPS-Punkt festgenagelt, dazwischen füllt BRouter mit
+   dem Straßennetz auf. Die GeoJSON-Koordinaten sind [lon, lat, ele]. */
+async function brouterRoute(points) {
+  const ll = points.map(p => `${p[1].toFixed(6)},${p[0].toFixed(6)}`).join('|');
+  const url = `https://brouter.de/brouter?lonlats=${ll}` +
               `&profile=${CONFIG.routeProfile}&alternativeidx=0&format=geojson`;
   const data = await fetchJson(url);
   const f = data.features && data.features[0];
-  if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates)) return null;
-  return { coords: f.geometry.coordinates, props: f.properties || {} };
+  if (!f || !f.geometry || !Array.isArray(f.geometry.coordinates) || f.geometry.coordinates.length < 2) return null;
+  const p = f.properties || {};
+  const up = Number(p['filtered ascend']);      // bereits entrauscht, siehe oben
+  const net = Number(p['plain-ascend']);        // Netto-Höhendifferenz, kann negativ sein
+  const len = Number(p['track-length']);
+  if (!isFinite(up) || !isFinite(net) || !isFinite(len)) return null;
+  return { coords: f.geometry.coordinates, up: Math.round(up), down: Math.round(up - net), km: len / 1000 };
 }
 
-/* Liefert {up, down, routeKm, track} oder null, wenn irgendein Schritt
-   scheitert — Höhenmeter sind Beiwerk, sie dürfen den Lauf nie kippen.
-
-   `track` ist die ausgedünnte Höhenlinie des Segments, [[km, m], …] mit
-   ABSOLUTEN Renn-Kilometern: die Routenlänge wird dafür auf das km-Delta
-   der beiden Meldungen gestreckt, damit die Punkte auf derselben Achse
-   liegen wie alles andere im Board. Rund ein Stützpunkt je Kilometer —
-   das reicht optisch und hält data.json klein. */
-function thinTrack(coords, kmFrom, kmTo) {
-  const kmSpan = Number(kmTo) - Number(kmFrom);
-  if (!(kmSpan > 0)) return null;
-  const n = Math.min(Math.max(Math.round(kmSpan), 4), 60);
-  const step = (coords.length - 1) / n;
-  const out = [];
-  for (let i = 0; i <= n; i++) {
-    const c = coords[Math.round(i * step)];
-    if (!c || typeof c[2] !== 'number') continue;
-    out.push([Math.round((Number(kmFrom) + kmSpan * (i / n)) * 10) / 10, Math.round(c[2])]);
-  }
-  return out.length >= 2 ? out : null;
-}
-
-async function segmentClimb(from, to) {
+// Ein Block, mit einem Rettungsversuch: schlägt BRouter für die ganze
+// Wegpunktkette fehl (kommt vor, wenn ein GPS-Punkt weit abseits jeder
+// Straße liegt), wird sie einmal halbiert.
+async function routeChunk(points, depth = 0) {
   try {
-    if (from.lat == null || to.lat == null) return null;
-    if (Math.abs(Number(to.km) - Number(from.km)) > CONFIG.maxSegmentKm) {
-      log(`segment > ${CONFIG.maxSegmentKm} km, skipping climb estimate.`);
-      return null;
-    }
-    const seg = await brouterSegment([from.lat, from.lon], [to.lat, to.lon]);
-    if (!seg || seg.coords.length < 2) return null;
-    const up = Number(seg.props['filtered ascend']);
-    const net = Number(seg.props['plain-ascend']);   // Netto-Höhendifferenz, kann negativ sein
-    const trackLen = Number(seg.props['track-length']);
-    if (!isFinite(up) || !isFinite(net)) return null;
-    return {
-      up: Math.round(up),
-      down: Math.round(up - net),
-      routeKm: isFinite(trackLen) ? Math.round(trackLen / 100) / 10 : null,
-      track: thinTrack(seg.coords, from.km, to.km),
-      src: 'brouter:' + CONFIG.routeProfile,
-      endEle: typeof seg.coords[seg.coords.length - 1][2] === 'number'
-        ? Math.round(seg.coords[seg.coords.length - 1][2]) : null,
-    };
+    const r = await brouterRoute(points);
+    if (r) return [r];
   } catch (e) {
-    log('climb estimate failed (ignored):', e.message);
-    return null;
+    log(`  BRouter-Block (${points.length} Wegpunkte) fehlgeschlagen: ${e.message}`);
   }
+  if (depth >= 1 || points.length < 4) return null;
+  const mid = Math.floor(points.length / 2);
+  await new Promise(r => setTimeout(r, CONFIG.brouterDelayMs));
+  const a = await routeChunk(points.slice(0, mid + 1), depth + 1);
+  await new Promise(r => setTimeout(r, CONFIG.brouterDelayMs));
+  const b = await routeChunk(points.slice(mid), depth + 1);
+  return (a && b) ? [...a, ...b] : null;
+}
+
+/* Höhenlinie eines Blocks auf feste Abstände ausdünnen. Gerechnet wird über
+   die tatsächliche Punktfolge (Haversine), am Ende auf BRouters
+   `track-length` skaliert — die ist genauer als die Summe der Sehnen. */
+function sampleCoords(route, kmOffset) {
+  const c = route.coords;
+  const cum = [0];
+  for (let i = 1; i < c.length; i++) cum.push(cum[i - 1] + haversine([c[i - 1][1], c[i - 1][0]], [c[i][1], c[i][0]]));
+  const total = cum[cum.length - 1];
+  const scale = total > 0 ? (route.km * 1000) / total : 1;
+  const out = [];
+  let nextAt = 0;
+  for (let i = 0; i < c.length; i++) {
+    const d = cum[i] * scale;
+    if (d >= nextAt || i === c.length - 1) {
+      if (typeof c[i][2] === 'number') out.push([Math.round((kmOffset + d / 1000) * 100) / 100, Math.round(c[i][2])]);
+      nextAt = d + CONFIG.profileSampleMeters;
+    }
+  }
+  return out;
+}
+
+function emptyProfile() {
+  return {
+    source: `brouter:${CONFIG.routeProfile} entlang der echten GPS-Spur`,
+    note: 'points = [routedKm, m]. chunks = [tEnd, kmEnd, cumUp, cumDown] — kumuliert am Blockende, dazwischen linear interpolierbar.',
+    updated: null, throughUnix: 0, startUnix: null, anchor: null,
+    routedKm: 0, climbUp: 0, climbDown: 0,
+    points: [], chunks: [],
+  };
+}
+
+function loadProfile() {
+  try { return JSON.parse(readFileSync(PROFILE_JSON_PATH, 'utf8')); } catch { return null; }
+}
+
+/* Baut das Höhenprofil entlang der echten Spur fort — inkrementell, es wird
+   pro Lauf nur das neu hinzugekommene Ende geroutet (bei stündlichem Abruf
+   also ~12 neue Spurpunkte, ein bis zwei BRouter-Anfragen). Ein kompletter
+   Neuaufbau über 4.800 km wäre sonst jede Stunde ein paar hundert Anfragen
+   an einen Gratis-Dienst.
+   Die Kilometer sind BRouters gerechnete Streckenlänge, nicht die
+   Renn-Kilometer des Trackers — das Board skaliert das beim Zeichnen. */
+async function updateProfile(trackPoints, { rebuild = false } = {}) {
+  const prev = rebuild ? null : loadProfile();
+  const prof = (prev && prev.source === emptyProfile().source) ? prev : emptyProfile();
+  if (prev && prof !== prev) log('Profil-Quelle hat sich geändert, baue neu auf.');
+
+  // Neue Punkte einsammeln und dabei ausdünnen: steht Manuel, liegen zig
+  // Punkte übereinander, und BRouter kann zwischen identischen Koordinaten
+  // nicht routen.
+  let last = prof.anchor;
+  const fresh = [];
+  for (const [lat, lon, , t] of trackPoints) {
+    if (t <= prof.throughUnix) continue;
+    if (last && haversine([lat, lon], [last[0], last[1]]) < CONFIG.minTrackPointMeters) continue;
+    fresh.push([lat, lon, t]);
+    last = [lat, lon, t];
+  }
+  if (!fresh.length) return { prof, added: 0, requests: 0 };
+
+  const seq = prof.anchor ? [prof.anchor, ...fresh] : fresh;
+  // Startzeit merken: die Blöcke halten nur ihr Ende fest, für die
+  // Interpolation vor dem ersten Blockende braucht das Board einen Nullpunkt.
+  if (prof.startUnix == null) prof.startUnix = seq[0][2];
+  const step = CONFIG.waypointsPerRequest - 1;     // ein Punkt Überlappung an der Naht
+  let requests = 0, added = 0;
+
+  for (let i = 0; i + 1 < seq.length; i += step) {
+    const chunk = seq.slice(i, i + CONFIG.waypointsPerRequest);
+    if (chunk.length < 2) break;
+    const routes = await routeChunk(chunk.map(p => [p[0], p[1]]));
+    requests++;
+    if (!routes) {
+      log(`  Block ab ${new Date(chunk[0][2] * 1000).toISOString()} übersprungen (BRouter liefert nichts).`);
+    } else {
+      for (const r of routes) {
+        prof.points.push(...sampleCoords(r, prof.routedKm));
+        prof.routedKm = Math.round((prof.routedKm + r.km) * 100) / 100;
+        prof.climbUp += r.up;
+        prof.climbDown += r.down;
+      }
+      added += chunk.length - 1;
+    }
+    // Auch bei übersprungenem Block weiterrücken, sonst hängt der Lauf für
+    // immer an derselben kaputten Stelle.
+    const end = chunk[chunk.length - 1];
+    prof.throughUnix = end[2];
+    prof.anchor = end;
+    prof.chunks.push([end[2], prof.routedKm, prof.climbUp, prof.climbDown]);
+    await new Promise(r => setTimeout(r, CONFIG.brouterDelayMs));
+  }
+
+  prof.updated = new Date().toISOString();
+  writeFileSync(PROFILE_JSON_PATH, JSON.stringify(prof) + '\n');
+  return { prof, added, requests };
 }
 
 async function fetchRiderState() {
@@ -320,6 +413,13 @@ function saveTrack(gpx, deviceId) {
   if (!gpx) return null;
   const points = parseGpx(gpx);
   if (points.length < 2) { log('GPX enthielt keine brauchbaren Punkte, übersprungen.'); return null; }
+  const prevLen = (loadTrack() || { points: [] }).points.length;
+  if (points.length < prevLen) {
+    // Sollte nicht vorkommen; wenn der Export doch irgendwann kürzt, ist die
+    // archivierte Fassung die vollständigere und darf nicht überschrieben werden.
+    log(`WARNUNG: GPX liefert nur ${points.length} Punkte, archiviert sind ${prevLen}. Nicht überschrieben.`);
+    return null;
+  }
   writeFileSync(TRACK_JSON_PATH, JSON.stringify({
     source: 'followmychallenge GPX export',
     deviceId,
@@ -327,7 +427,11 @@ function saveTrack(gpx, deviceId) {
     fields: ['lat', 'lon', 'eleGps', 'unixSec'],
     points,
   }) + '\n');
-  return points.length;
+  return points;
+}
+
+function loadTrack() {
+  try { return JSON.parse(readFileSync(TRACK_JSON_PATH, 'utf8')); } catch { return null; }
 }
 
 function loadData() {
@@ -345,41 +449,45 @@ function git(...cmdArgs) {
 // Committet data.json und track.json zusammen, aber nur, wenn sich wirklich
 // etwas geändert hat — sonst bricht `git commit` den ganzen Lauf ab.
 function commitAll(message) {
-  git('add', 'data.json', 'track.json');
+  git('add', 'data.json', 'track.json', 'profile.json');
   if (!git('diff', '--cached', '--name-only').trim()) { log('nothing changed, no commit.'); return; }
   git('commit', '-m', message);
   log('committed.');
   if (FLAGS.push) { git('push'); log('pushed.'); }
 }
 
-// Trägt `ele`/`climbUp`/`climbDown`/`track` auf bestehenden Einträgen nach,
-// die vor dem Höhen-Feature geschrieben wurden. Läuft ohne Browser, rührt
-// nichts an, was schon einen Wert hat (außer mit --force), und lässt Einträge
-// ohne Koordinaten in Ruhe — die sind nicht rekonstruierbar.
-async function backfill() {
-  const data = loadData();
-  const entries = (data.entries || []).slice().sort((a, b) => new Date(a.ts) - new Date(b.ts));
-  const force = args.includes('--force');
-  let changed = 0;
+/* Baut das Höhenprofil aus der archivierten Spur neu auf und räumt die
+   Felder der alten, geratenen Schätzung von den Einträgen ab. Läuft ohne
+   Browser — die Spur liegt ja schon in track.json.
 
-  for (let i = 1; i < entries.length; i++) {
-    const a = entries[i - 1], b = entries[i];
-    if (a.lat == null || b.lat == null) continue;
-    if (b.climbUp != null && !force) continue;
-    const climb = await segmentClimb(a, b);
-    if (!climb) continue;
-    b.climbUp = climb.up; b.climbDown = climb.down;
-    if (climb.routeKm != null) b.climbKm = climb.routeKm;
-    if (climb.track) b.track = climb.track;
-    b.climbSrc = climb.src;
-    if (climb.endEle != null) { b.ele = climb.endEle; b.eleSrc = 'route'; }
-    changed++;
-    log(`  ${b.ts} ${b.place||'?'}: ↑${climb.up} ↓${climb.down} hm over ~${climb.routeKm} km`);
-    await new Promise(r => setTimeout(r, 1500)); // höflich zum öffentlichen BRouter-Server
+   Mit `--force` von Null an (nötig nach einem Wechsel des Routing-Profils),
+   sonst nur das noch nicht verarbeitete Ende. */
+async function backfill() {
+  const force = args.includes('--force');
+  const track = loadTrack();
+  if (!track || !track.points) {
+    log('track.json fehlt — erst einen normalen Lauf machen, der holt die Spur.');
+    return;
   }
 
-  // Übrig bleiben Meldungen, die kein Segment abbekommen haben (die erste mit
-  // GPS, oder eine nach einer zu langen Lücke) — die bekommen einen DEM-Wert.
+  log(`Profil aus ${track.points.length} Spurpunkten${force ? ' (kompletter Neuaufbau)' : ''}…`);
+  const { prof, added, requests } = await updateProfile(track.points, { rebuild: force });
+  log(`profile.json: +${added} Spurpunkte in ${requests} Anfragen → ${prof.routedKm} km, ` +
+      `↑${prof.climbUp} ↓${prof.climbDown} hm, ${prof.points.length} Stützpunkte.`);
+
+  const data = loadData();
+  const entries = (data.entries || []).slice().sort((a, b) => new Date(a.ts) - new Date(b.ts));
+  let changed = 0;
+
+  // Reste der alten Segment-Schätzung entfernen — die Höhenmeter stehen jetzt
+  // ausschließlich in profile.json, doppelte Wahrheiten wären nur verwirrend.
+  for (const e of entries) {
+    for (const k of ['climbUp', 'climbDown', 'climbKm', 'climbSrc', 'track']) {
+      if (k in e) { delete e[k]; changed++; }
+    }
+    if (e.eleSrc === 'route') { delete e.ele; delete e.eleSrc; changed++; }
+  }
+
   const missingEle = entries.filter(e => e.lat != null && e.ele == null);
   if (missingEle.length) {
     for (let i = 0; i < missingEle.length; i += 100) {
@@ -392,20 +500,13 @@ async function backfill() {
     log(`backfilled ${missingEle.length} elevation(s) from DEM.`);
   }
 
-  if (!changed) { log('backfill: nothing to do.'); return; }
   data.entries = entries;
   data.updated = new Date().toISOString();
   saveData(data);
-  log(`backfill: ${changed} field group(s) written.`);
+  log(`data.json: ${changed} Altfeld(er) aufgeräumt.`);
 
-  if (FLAGS.commit) {
-    git('add', 'data.json');
-    git('commit', '-m', 'Backfill elevation and climb data on existing entries');
-    log('committed.');
-    if (FLAGS.push) { git('push'); log('pushed.'); }
-  } else {
-    log('dry run — not committed. Pass --commit (and --push) to publish.');
-  }
+  if (FLAGS.commit) commitAll('Rebuild elevation profile from the real GPS track');
+  else log('dry run — not committed. Pass --commit (and --push) to publish.');
 }
 
 async function main() {
@@ -428,8 +529,16 @@ async function main() {
     log(`warning: last report is ${rider.lastReportMins} min old — tracker may be offline/asleep.`);
   }
 
-  const trackPoints = saveTrack(gpx, rider.deviceId);
-  if (trackPoints) log(`track.json: ${trackPoints} Spurpunkte archiviert.`);
+  const trackPoints = saveTrack(gpx, rider.deviceId) || (loadTrack() || {}).points;
+  if (trackPoints) log(`track.json: ${trackPoints.length} Spurpunkte archiviert.`);
+
+  if (trackPoints) {
+    try {
+      const { prof, added, requests } = await updateProfile(trackPoints);
+      log(`profile.json: +${added} Spurpunkte in ${requests} Anfragen → ` +
+          `${prof.routedKm} km, ↑${prof.climbUp} ↓${prof.climbDown} hm gesamt.`);
+    } catch (e) { log('Profilfortschreibung fehlgeschlagen (ignoriert):', e.message); }
+  }
 
   const data = loadData();
   const entries = data.entries || [];
@@ -460,16 +569,9 @@ async function main() {
   // Quelle mehr als die Rohmessung, deshalb gewinnt der Routenwert.
   if (rider.altitude != null) entry.eleGps = Math.round(rider.altitude);
 
-  const climb = last ? await segmentClimb(last, entry) : null;
-  if (climb) {
-    entry.climbUp = climb.up;
-    entry.climbDown = climb.down;
-    if (climb.routeKm != null) entry.climbKm = climb.routeKm;
-    if (climb.track) entry.track = climb.track;
-    entry.climbSrc = climb.src;
-    if (climb.endEle != null) { entry.ele = climb.endEle; entry.eleSrc = 'route'; }
-    log(`climb since last entry: ↑${climb.up} ↓${climb.down} hm over ~${climb.routeKm} km`);
-  }
+  // Höhenmeter stehen nicht mehr am Eintrag: die kommen aus profile.json,
+  // das entlang der echten Spur rechnet und dessen kumulierte Werte das
+  // Board für beliebige Zeiträume interpolieren kann. Eine Wahrheit, ein Ort.
   if (entry.ele == null && entry.lat != null) {
     try {
       const [e] = await demElevation([[entry.lat, entry.lon]]);
