@@ -188,10 +188,17 @@ anderer ID-Namespace als die internen `ridersArray`-Keys).
 ## Automatisierung (launchd)
 
 `~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — läuft
-alle 30 Minuten (`StartInterval: 1800`, seit 2026-07-20; davor stündlich — der
-Tracker selbst meldet deutlich häufiger, `lastReportMins` lag im Test bei 2–7
-Minuten, stündliches Abfragen hat also unnötig Auflösung verschenkt), ruft
-`update-tracker.mjs --commit --push` auf. `RunAtLoad` ist gesetzt: ein
+stündlich (`StartInterval: 3600`), ruft
+`update-tracker.mjs --commit --push` auf.
+
+**Warum stündlich reicht:** kurzzeitig stand das Intervall auf 30 Minuten, um mehr
+Auflösung fürs Höhenprofil zu bekommen. Das ist seit dem GPX-Fund hinfällig — der
+Export liefert bei *jedem* Abruf die volle 5-Minuten-Spur seit dem Start, die
+Profilauflösung hängt also gar nicht am Intervall. Daran hängt nur noch die Frische
+der Kopfzahlen (km-Stand, Platz, „letzte Meldung vor…“), und dafür reicht stündlich.
+Dagegen stehen 24 statt 48 Chromium-Starts und Commits pro Tag.
+
+`RunAtLoad` ist gesetzt: ein
 `launchctl bootstrap` nach dem Editieren startet den Job **sofort** mit, inklusive
 Push — vor dem Neuladen also schauen, was gerade uncommittet im Baum liegt.
 Läuft in der GUI-Session des Users (nicht als reiner Daemon), das ist nötig, damit
