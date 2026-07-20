@@ -81,7 +81,15 @@ async function reverseGeocode(lat, lon) {
 }
 
 async function fetchRiderState() {
-  const browser = await chromium.launch({ headless: !FLAGS.headed });
+  // Cloudflare's WAF hard-blocks Playwright's headless mode here (fingerprint-
+  // based, not IP-based — confirmed 2026-07-20: headless got "Attention
+  // Required", the exact same real window that passes in --headed mode
+  // sails through). So we always launch headed and, for unattended runs,
+  // just push the window off-screen instead of fighting the fingerprint.
+  const browser = await chromium.launch({
+    headless: false,
+    args: FLAGS.headed ? [] : ['--window-position=2400,2400', '--window-size=1024,768'],
+  });
   try {
     const page = await browser.newPage();
     log('opening tracker (passing Cloudflare check)…');
@@ -182,6 +190,7 @@ async function main() {
     note: rider.rank != null ? `Platz ${rider.rank}` : '',
   };
   if (rider.lat != null) { entry.lat = rider.lat; entry.lon = rider.lon; }
+  if (rider.currentSpeed != null) { entry.speed = rider.currentSpeed; }
 
   entries.push(entry);
   data.entries = entries;

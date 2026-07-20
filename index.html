@@ -117,6 +117,14 @@
   .del{background:none;border:none;color:#5D7382;cursor:pointer;font-size:16px;padding:0 4px}
   .del:hover{color:var(--alert)}
   .empty{color:var(--muted);font-size:14px;border:1px dashed var(--line);padding:16px;text-align:center}
+  tr.logRow.hasDetail{cursor:pointer}
+  tr.logRow.hasDetail:hover td{background:var(--panel2)}
+  .gpsMark{color:var(--muted);font-size:11px}
+  tr.logDetail td{padding:2px 8px 12px 0;border-bottom:1px solid #1C2C39;background:var(--panel2)}
+  tr.logDetail .dk{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+  tr.logDetail .dk a{color:var(--brass)}
+  #mapWrap{height:320px;border-radius:2px;overflow:hidden}
+  #mapWrap .leaflet-container{background:var(--panel);font-family:var(--display)}
   details{border:1px solid var(--line);background:var(--panel);margin-top:22px}
   summary{cursor:pointer;padding:12px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
           text-transform:uppercase;color:var(--muted)}
@@ -161,6 +169,16 @@
 
       <h2>Positionslog</h2>
       <div id="log"></div>
+
+      <details id="mapDetails">
+        <summary>Karte</summary>
+        <div class="setbody">
+          <div id="mapWrap"></div>
+          <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+            Nur Meldungen mit GPS-Koordinaten (automatisch aus dem Live-Tracker erfasst) erscheinen hier.
+          </p>
+        </div>
+      </details>
     </section>
   </div>
 
@@ -378,6 +396,7 @@ function renderDays(c){
 function renderLog(c){
   const el = document.getElementById('log');
   if(!c.list.length){ el.innerHTML = '<div class="empty">Noch keine Positionen erfasst.</div>'; return; }
+  const cols = EDIT ? 5 : 4;
   const rows = [...c.list].reverse().map((e,i,arr)=>{
     const prev = arr[i+1];
     let d = '–';
@@ -385,20 +404,80 @@ function renderLog(c){
       const dh = (new Date(e.ts)-new Date(prev.ts))/3.6e6;
       d = dh>0 ? one((Number(e.km)-Number(prev.km))/dh)+' km/h' : '–';
     }
-    return `<tr>
+    const hasGps = e.lat!=null && e.lon!=null;
+    const detailId = 'det'+e.id;
+    const main = `<tr class="logRow${hasGps?' hasDetail':''}" ${hasGps?`data-target="${detailId}"`:''}>
       <td class="num">${fmt(e.ts)}</td>
       <td class="num">${num(Number(e.km))} km</td>
       <td class="num">${d}</td>
-      <td>${e.place||''}${e.note? (e.place?' · ':'')+'<span style="color:var(--muted)">'+e.note+'</span>':''}</td>
+      <td>${e.place||''}${e.note? (e.place?' · ':'')+'<span style="color:var(--muted)">'+e.note+'</span>':''}${hasGps?' <span class="gpsMark">▾ GPS</span>':''}</td>
       ${EDIT?`<td style="text-align:right"><button class="del" data-id="${e.id}" aria-label="Meldung löschen">×</button></td>`:''}
     </tr>`;
+    const detail = hasGps ? `<tr class="logDetail" id="${detailId}" style="display:none"><td colspan="${cols}">
+        <div class="dk">
+          <span>${e.lat.toFixed(5)}, ${e.lon.toFixed(5)}</span>
+          ${e.speed!=null?`<span>${one(e.speed)} km/h bei Erfassung</span>`:''}
+          <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank" rel="noopener">Google Maps ↗</a>
+        </div>
+      </td></tr>` : '';
+    return main + detail;
   }).join('');
   el.innerHTML = `<table><thead><tr><th>Zeit</th><th>Stand</th><th>Schnitt seit davor</th><th>Ort / Notiz</th>${EDIT?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table>`;
-  el.querySelectorAll('.del').forEach(b=> b.onclick = async ()=>{
+  el.querySelectorAll('tr.logRow.hasDetail').forEach(r=> r.onclick = (ev)=>{
+    if(ev.target.closest('.del')) return;
+    const d = document.getElementById(r.dataset.target);
+    if(d) d.style.display = d.style.display==='none' ? 'table-row' : 'none';
+  });
+  el.querySelectorAll('.del').forEach(b=> b.onclick = async (ev)=>{
+    ev.stopPropagation();
     S.entries = S.entries.filter(x=> x.id!==b.dataset.id);
     DIRTY = true; await store.set(JSON.stringify(S)); render();
   });
 }
+
+/* ---------- Karte (Leaflet, wird erst beim Öffnen nachgeladen) ---------- */
+let mapObj = null, mapLayer = null;
+function ensureLeaflet(cb){
+  if(window.L){ cb(); return; }
+  const css = document.createElement('link');
+  css.rel = 'stylesheet';
+  css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+  document.head.appendChild(css);
+  const js = document.createElement('script');
+  js.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  js.onload = cb;
+  document.head.appendChild(js);
+}
+function renderMap(c){
+  const pts = c.list.filter(e=> e.lat!=null && e.lon!=null);
+  const wrap = document.getElementById('mapWrap');
+  if(!pts.length){ wrap.innerHTML = '<div class="empty">Noch keine GPS-Meldungen.</div>'; return; }
+  if(!mapObj){
+    wrap.innerHTML = '';
+    mapObj = L.map('mapWrap');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(mapObj);
+  }
+  if(mapLayer) mapObj.removeLayer(mapLayer);
+  const latlngs = pts.map(p=> [p.lat, p.lon]);
+  const group = L.layerGroup();
+  L.polyline(latlngs, {color:'#D9A441', weight:3}).addTo(group);
+  pts.forEach((p,i)=>{
+    const last = i===pts.length-1;
+    L.circleMarker([p.lat,p.lon], {
+      radius: last?7:4, color: last?'#D9A441':'#7F98A6', fillColor: last?'#D9A441':'#7F98A6',
+      fillOpacity:1, weight:1
+    }).bindPopup(`${num(Number(p.km))} km · ${fmt(p.ts)}`).addTo(group);
+  });
+  group.addTo(mapObj);
+  mapLayer = group;
+  mapObj.fitBounds(latlngs, {padding:[24,24]});
+  setTimeout(()=> mapObj.invalidateSize(), 50);
+}
+document.getElementById('mapDetails').addEventListener('toggle', function(){
+  if(this.open) ensureLeaflet(()=> renderMap(compute()));
+});
 
 function renderSource(c){
   const line = document.getElementById('sourceLine');
@@ -419,6 +498,7 @@ function render(){
   const c = compute();
   renderMetrics(c); renderLadder(c); renderDays(c); renderLog(c); renderSource(c);
   if(EDIT) renderDirty();
+  if(mapObj && document.getElementById('mapDetails').open) renderMap(c);
 }
 
 /* ---------- Bearbeiten ---------- */
