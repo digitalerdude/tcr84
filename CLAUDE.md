@@ -294,6 +294,22 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   Die **laufende** Pause bekommt keinen eigenen Marker — sie läge unter dem
   Messingpunkt der aktuellen Position und wäre unklickbar, ihre Angaben stehen
   deshalb in dessen Sprechblase.
+  Die Spur zeigt nur, **dass** er stand, nie warum — Schlaf, Panne und Einkauf
+  sehen identisch aus. Deshalb heißt es überall neutral „Pause“; keine Texte
+  einbauen, die auf Schlaf schließen.
+  `fitBounds` läuft nur beim ersten Zeichnen (`mapFitted`): `renderMap()` hängt am
+  60s-`render()`, ein Einpassen bei jedem Durchlauf würde herangezoomte Ansichten
+  wegreißen.
+- **Das Höhenprofil wird zweimal gezeichnet**, beide Male von `renderProfileInto()`,
+  unterschieden über `prefix` für die Element-IDs (zwei Diagramme mit denselben IDs
+  wären nicht ansprechbar; Zustand je Instanz in `PROFS[prefix]`):
+  `renderProfile()` — eigenständig im Board, mit Kennzahlenstreifen und Erklärkasten.
+  `renderMapProfile()` — nackt unter der Karte, dafür **an sie gekoppelt**: der
+  Zeiger schiebt über `onHover` einen Marker (hohler heller Ring, absichtlich anders
+  als die gefüllten Punkte für Pausen und Position) über die Karte mit.
+  Kilometer → Koordinate macht `latLonAtKm()` über die aufsummierte Spurlänge,
+  normiert auf die Renn-Kilometer. Gegenprobe bei 181 km: 62,615 °N / 11,371 °O bei
+  670 m — das ist Røros (62,57 / 11,38, 630 m).
 - Wetter: kompakte Zeile im Masthead (`#wxLine`), Quelle
   [Open-Meteo](https://open-meteo.com/) (kein API-Key, CORS-fähig, direkt aus dem
   Browser). Gekoppelt an die Koordinaten der **letzten Meldung mit `lat`/`lon`**, nicht

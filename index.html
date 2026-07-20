@@ -135,6 +135,10 @@
   .profbox .pdot{fill:var(--brass);stroke:var(--night)}
   .profbox .pmark{fill:var(--ice);opacity:.55}
   .profbox .pcur{fill:var(--ice)}
+  /* Zweitfassung des Profils unter der Karte: sitzt bündig darunter, ohne
+     eigene Kennzahlen — die stehen schon oben im Board. */
+  .mapprof{margin-top:10px}
+  .mapprof .profbox{padding:8px 10px 4px}
   .profnote{font-size:13px;color:var(--muted);margin:0;line-height:1.6}
   .profnote + .profnote{margin-top:10px}
   /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
@@ -214,6 +218,7 @@
         <summary>Karte</summary>
         <div class="setbody">
           <div id="mapWrap"></div>
+          <div id="mapProfileWrap" class="mapprof"></div>
           <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
             Die Linie ist die tatsächlich aufgezeichnete Spur des Trackers, nicht die Verbindung
             zwischen den Meldungen. Helle Punkte sind Pausen ab 40 Minuten, der Messingpunkt ist
@@ -420,7 +425,7 @@ function renderMetrics(c){
       c.state==='warn' ? 'gerade so, ohne Reserve.' : 'mit Reserve.'}`);
     if(c.roll) p.push(`Zwischen den letzten beiden Meldungen: <strong>${one(c.roll)} km/h</strong> ${
       c.roll > c.avg ? '— über dem Gesamtschnitt, also ein Fahrblock ohne längere Pause.'
-                     : '— unter dem Gesamtschnitt, da lag vermutlich Schlaf drin.'}`);
+                     : '— unter dem Gesamtschnitt, da lag also eine längere Pause drin.'}`);
     const lastCl = c.list.length >= 2 ? climbBetween(c.list[c.list.length-2].ts, c.last.ts) : null;
     if(lastCl && lastCl.up > 0)
       p.push(`Dabei rund <strong>${num(lastCl.up)} Höhenmeter</strong> bergauf${
@@ -458,6 +463,12 @@ function renderLadder(c){
    resize-Handler unten. */
 const esc = s => String(s).replace(/[<>&]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
 
+/* Das Höhenprofil wird zweimal gezeichnet: eigenständig im Board und noch
+   einmal in der aufgeklappten Karte, dort an sie gekoppelt. Beide Male
+   dieselbe Funktion, unterschieden nur durch `prefix` für die Element-IDs —
+   zwei Diagramme mit denselben IDs wären sonst nicht ansprechbar. */
+const PROFS = {};
+
 /* profile.json hält je Block nur den kumulierten Stand am Blockende fest
    ([tEnd, kmEnde, cumUp, cumDown]; ein Block ist knapp eine Stunde Fahrt).
    Für beliebige Zeitpunkte dazwischen wird linear interpoliert — das ist
@@ -487,8 +498,20 @@ function climbBetween(tsA, tsB){
 }
 let PROF = null; // gerenderter Zustand für die Zeigersteuerung
 
+// Das eigenständige Diagramm im Board: mit Kennzahlenstreifen und Erklärkasten.
 function renderProfile(c){
-  const wrap = document.getElementById('profileWrap');
+  renderProfileInto(c, {wrapId:'profileWrap', prefix:'prof', strip:true, explain:true});
+}
+// Die gekoppelte Zweitfassung unter der Karte: nur das Diagramm, dafür schiebt
+// der Zeiger einen Marker über die Karte mit.
+function renderMapProfile(c){
+  renderProfileInto(c, {wrapId:'mapProfileWrap', prefix:'mprof', strip:false, explain:false,
+                        onHover: showMapPosition, onLeave: hideMapPosition});
+}
+
+function renderProfileInto(c, o){
+  const wrap = document.getElementById(o.wrapId);
+  if(!wrap) return;
   const wasOpen = !!wrap.querySelector('details')?.open;
 
   /* Die Höhenlinie kommt aus profile.json und folgt der echten gefahrenen
@@ -504,7 +527,7 @@ function renderProfile(c){
     ele: pts.length ? eleAtKm(pts, Number(e.km)) : (e.ele!=null?Number(e.ele):null)
   })).filter(m=> m.ele!=null);
 
-  const strip = [
+  const strip = !o.strip ? '' : [
     ['Aktuelle Höhe', c.ele!=null? num(c.ele):'–', 'm ü. NN', ''],
     ['Höhenmeter bergauf', c.climbUp? num(c.climbUp):'–', 'hm',
       c.climbKm>0 ? num(c.climbUp/c.climbKm*100)+' hm je 100 km' : ''],
@@ -514,13 +537,14 @@ function renderProfile(c){
     `<div class="cell"><div class="k">${k}</div>
      <div class="v">${v}${u?` <span class="u">${u}</span>`:''}</div>
      ${n?`<div class="n">${n}</div>`:''}</div>`).join('');
+  const stripHtml = o.strip ? `<div class="hmstrip">${strip}</div>` : '';
 
   if(pts.length < 2){
-    wrap.innerHTML = `<div class="hmstrip">${strip}</div>
-      <div class="profbox"><div class="empty" style="border:none;padding:22px 8px">
+    wrap.innerHTML = stripHtml +
+      `<div class="profbox"><div class="empty" style="border:none;padding:22px 8px">
         Das Höhenprofil wird aus der aufgezeichneten Spur berechnet und erscheint,
         sobald der erste Abschnitt ausgewertet ist.</div></div>`;
-    PROF = null; return;
+    PROFS[o.prefix] = null; return;
   }
 
   const W = Math.max(wrap.clientWidth || 340, 260);
@@ -585,18 +609,18 @@ function renderProfile(c){
   const dots = marks.map((m,i)=>
     `<circle class="${i===marks.length-1?'pdot':'pmark'}" cx="${X(m.km).toFixed(1)}" cy="${Y(m.ele).toFixed(1)}"
              r="${i===marks.length-1?4.5:2.4}" ${i===marks.length-1?'stroke-width="1.5"':''}/>`).join('');
-  wrap.innerHTML =
-    `<div class="hmstrip">${strip}</div>
-     <div class="profbox">
-       <div class="profread" id="profRead"></div>
-       <svg id="profSvg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
+  const P = o.prefix;
+  wrap.innerHTML = stripHtml +
+    `<div class="profbox">
+       <div class="profread" id="${P}Read"></div>
+       <svg id="${P}Svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
             aria-label="Höhenprofil der gefahrenen Strecke, aktuell ${num(cur.ele)} Meter">
-         <defs><linearGradient id="profFill" x1="0" y1="0" x2="0" y2="1">
+         <defs><linearGradient id="${P}Fill" x1="0" y1="0" x2="0" y2="1">
            <stop offset="0%" stop-color="#D9A441" stop-opacity=".34"/>
            <stop offset="100%" stop-color="#D9A441" stop-opacity="0"/>
          </linearGradient></defs>
          ${grid}
-         <path d="${area}" fill="url(#profFill)"/>
+         <path d="${area}" fill="url(#${P}Fill)"/>
          ${band ? `<path class="pband" d="${band}"/>` : ''}
          <path class="pl" d="${topLine}" fill="none" stroke-width="1.6"
                stroke-linejoin="round" stroke-linecap="round"/>
@@ -604,13 +628,14 @@ function renderProfile(c){
          <line class="gl" x1="${L}" y1="${base}" x2="${W-R}" y2="${base}"/>
          <text x="${L}" y="${H-7}" font-size="9.5">${num(x0)} km</text>
          <text x="${W-R}" y="${H-7}" text-anchor="end" font-size="9.5">${num(x1)} km</text>
-         <line class="gd" id="profGuide" x1="0" y1="${T}" x2="0" y2="${base}" stroke-width="1" opacity="0"/>
+         <line class="gd" id="${P}Guide" x1="0" y1="${T}" x2="0" y2="${base}" stroke-width="1" opacity="0"/>
          ${dots}
-         <circle class="pcur" id="profCursor" cx="0" cy="0" r="4" opacity="0"/>
-         <rect id="profHit" x="${L}" y="${T}" width="${W-L-R}" height="${base-T}" fill="transparent"/>
+         <circle class="pcur" id="${P}Cursor" cx="0" cy="0" r="4" opacity="0"/>
+         <rect id="${P}Hit" x="${L}" y="${T}" width="${W-L-R}" height="${base-T}" fill="transparent"/>
        </svg>
-     </div>
-     <details>
+     </div>` +
+    (!o.explain ? '' :
+    `<details>
        <summary>Wie das Höhenprofil entsteht</summary>
        <div class="setbody">
          <p class="profnote" style="margin-top:14px">
@@ -637,15 +662,16 @@ function renderProfile(c){
            auf dessen Kilometer gestreckt.
          </p>
        </div>
-     </details>`;
+     </details>`);
 
   // Der Erklärkasten überlebt das 60s-Neuzeichnen — anders als beim Log-Detail
   // wäre ein Zuklappen mitten im Lesen hier echt ärgerlich.
   if(wasOpen){ const d = wrap.querySelector('details'); if(d) d.open = true; }
 
-  PROF = {pts, cols, marks, X, Y, L, R, W, T, base, cur, kmScale:c.kmScale};
-  bindProfilePointer();
-  showProfileRead(-1);
+  PROFS[o.prefix] = {pts, cols, marks, X, Y, L, R, W, T, base, cur,
+                     kmScale:c.kmScale, totalKm:c.km, opt:o};
+  bindProfilePointer(o.prefix);
+  showProfileRead(o.prefix, -1);
 }
 
 // Höhe an einem Renn-Kilometer, linear zwischen den Stützpunkten interpoliert.
@@ -664,8 +690,9 @@ function eleAtKm(pts, km){
 /* i = Spaltenindex, -1 = Ausgangszustand (aktuelle Position).
    Ortsname und Zeit gibt es nur, wenn der Zeiger nah genug an einer echten
    Meldung steht — dazwischen weiß das Board weder das eine noch das andere. */
-function showProfileRead(i){
-  const el = document.getElementById('profRead');
+function showProfileRead(prefix, i){
+  const PROF = PROFS[prefix];
+  const el = document.getElementById(prefix + 'Read');
   if(!el || !PROF) return;
   const q = i < 0 ? null : PROF.cols[i];
   const km = q ? q.km : PROF.cur.km;
@@ -694,10 +721,12 @@ function showProfileRead(i){
     (near ? `<span>${esc(near.place)}</span><span style="opacity:.7">${fmt(near.ts)}</span>` : '');
 }
 
-function bindProfilePointer(){
-  const svg = document.getElementById('profSvg'), hit = document.getElementById('profHit');
+function bindProfilePointer(prefix){
+  const PROF = PROFS[prefix];
+  const svg = document.getElementById(prefix + 'Svg'), hit = document.getElementById(prefix + 'Hit');
   if(!svg || !hit || !PROF) return;
-  const guide = document.getElementById('profGuide'), cursor = document.getElementById('profCursor');
+  const guide = document.getElementById(prefix + 'Guide');
+  const cursor = document.getElementById(prefix + 'Cursor');
   const move = ev=>{
     const r = svg.getBoundingClientRect();
     const px = (ev.clientX - r.left) / r.width * PROF.W;   // Bildschirm- → SVG-Koordinaten
@@ -708,11 +737,13 @@ function bindProfilePointer(){
     guide.setAttribute('opacity', '.45');
     cursor.setAttribute('cx', q.x); cursor.setAttribute('cy', PROF.Y(q.hi));
     cursor.setAttribute('opacity', '1');
-    showProfileRead(best);
+    showProfileRead(prefix, best);
+    if(PROF.opt.onHover) PROF.opt.onHover(q.km, PROF.totalKm);
   };
   const leave = ()=>{
     guide.setAttribute('opacity','0'); cursor.setAttribute('opacity','0');
-    showProfileRead(-1);
+    showProfileRead(prefix, -1);
+    if(PROF.opt.onLeave) PROF.opt.onLeave();
   };
   hit.addEventListener('pointermove', move);
   hit.addEventListener('pointerdown', move);
@@ -724,7 +755,11 @@ function bindProfilePointer(){
 let profResizeT = null;
 addEventListener('resize', ()=>{
   clearTimeout(profResizeT);
-  profResizeT = setTimeout(()=> renderProfile(compute()), 180);
+  profResizeT = setTimeout(()=>{
+    const c = compute();
+    renderProfile(c);
+    if(document.getElementById('mapDetails').open) renderMapProfile(c);
+  }, 180);
 });
 
 function renderDays(c){
@@ -862,7 +897,7 @@ function maybeLoadWeather(c){
 setInterval(()=>{ if(wxLat!=null) loadWeather(wxLat, wxLon); }, 900000);
 
 /* ---------- Karte (Leaflet, wird erst beim Öffnen nachgeladen) ---------- */
-let mapObj = null, mapLayer = null;
+let mapObj = null, mapLayer = null, mapFitted = false;
 function ensureLeaflet(cb){
   if(window.L){ cb(); return; }
   const css = document.createElement('link');
@@ -898,7 +933,9 @@ function metersBetween(a, b){
 /* Pausen aus der Spur: aufeinanderfolgende Punkte, die im Umkreis von 150 m um
    den Beginn der Ansammlung bleiben. Bleibt der Fahrer dort länger als 40
    Minuten, ist das eine Pause — beim TCR die eigentlich interessante
-   Information, weil sich daran Schlafstrategie und Zeitverlust ablesen lassen.
+   Information — wobei die Spur nur zeigt, DASS er stand, nie warum: Schlaf,
+   Reifenpanne und Supermarkt sehen darin identisch aus. Deshalb heißt es
+   überall neutral „Pause", nie „Schlaf".
    Ein Ausfall des Trackers sieht anders aus: dann liegt der nächste Punkt weit
    entfernt und bildet gar keine Ansammlung. */
 function findStops(points, minMinutes = 40, radiusM = 150){
@@ -915,6 +952,59 @@ function findStops(points, minMinutes = 40, radiusM = 150){
   }
   return stops;
 }
+/* Kilometer → Position auf der Karte. Das Höhenprofil kennt nur Kilometer und
+   Höhe, die Spur nur Koordinaten und Zeit — verbunden werden sie über die
+   aufsummierte Länge der Spur. Die liegt (Sehnen zwischen Punkten im Abstand
+   von 1,6 km) etwas unter der echten Streckenlänge, deshalb wird am Ende auf
+   die Renn-Kilometer normiert statt mit absoluten Metern gerechnet. */
+let TRACK_KM = null;
+function trackKmIndex(){
+  if(TRACK_KM || !TRACK) return TRACK_KM;
+  const p = TRACK.points;
+  let cum = 0;
+  const arr = [[0, p[0][0], p[0][1]]];
+  for(let i=1;i<p.length;i++){
+    cum += metersBetween(p[i-1], p[i]);
+    arr.push([cum, p[i][0], p[i][1]]);
+  }
+  TRACK_KM = {arr, total: cum};
+  return TRACK_KM;
+}
+function latLonAtKm(km, totalKm){
+  const idx = trackKmIndex();
+  if(!idx || !(totalKm > 0)) return null;
+  const target = km / totalKm * idx.total;
+  const a = idx.arr;
+  if(target <= 0) return [a[0][1], a[0][2]];
+  for(let i=1;i<a.length;i++){
+    if(a[i][0] >= target){
+      const span = a[i][0] - a[i-1][0];
+      const f = span > 0 ? (target - a[i-1][0]) / span : 0;
+      return [a[i-1][1] + (a[i][1]-a[i-1][1])*f, a[i-1][2] + (a[i][2]-a[i-1][2])*f];
+    }
+  }
+  return [a[a.length-1][1], a[a.length-1][2]];
+}
+
+/* Der Marker, den das gekoppelte Höhenprofil über die Karte schiebt. Bewusst
+   ein hohler heller Ring statt eines gefüllten Punktes — gefüllte Punkte sind
+   auf dieser Karte schon vergeben (Pausen hell, aktuelle Position Messing),
+   und ein Zeiger soll sich von echten Orten unterscheiden. */
+let mapHoverMarker = null;
+function showMapPosition(km, totalKm){
+  if(!mapObj || !TRACK) return;
+  const pos = latLonAtKm(km, totalKm);
+  if(!pos) return;
+  if(!mapHoverMarker){
+    mapHoverMarker = L.circleMarker(pos, {
+      radius: 9, color:'#E9E4D8', weight: 3, fill: false, interactive: false
+    }).addTo(mapObj);
+  } else mapHoverMarker.setLatLng(pos);
+}
+function hideMapPosition(){
+  if(mapHoverMarker && mapObj){ mapObj.removeLayer(mapHoverMarker); mapHoverMarker = null; }
+}
+
 const hhmm = unix => new Date(unix*1000).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
 const dhm = mins => mins >= 60 ? `${Math.floor(mins/60)} h ${Math.round(mins%60)} min` : `${Math.round(mins)} min`;
 
@@ -971,11 +1061,15 @@ function renderMap(c){
 
   group.addTo(mapObj);
   mapLayer = group;
-  mapObj.fitBounds(latlngs, {padding:[24,24]});
+  // Nur beim ersten Zeichnen einpassen: renderMap läuft im 60s-Takt mit, ein
+  // fitBounds bei jedem Durchlauf würde herangezoomte Ansichten wegreißen.
+  if(!mapFitted){ mapObj.fitBounds(latlngs, {padding:[24,24]}); mapFitted = true; }
   setTimeout(()=> mapObj.invalidateSize(), 50);
+  // Das gekoppelte Höhenprofil darunter, gleiche Kilometer-Achse wie die Karte.
+  renderMapProfile(c);
 }
 document.getElementById('mapDetails').addEventListener('toggle', async function(){
-  if(!this.open) return;
+  if(!this.open){ hideMapPosition(); return; }
   await ensureTrack();
   ensureLeaflet(()=> renderMap(compute()));
 });
