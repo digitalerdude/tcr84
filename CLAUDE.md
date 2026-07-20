@@ -236,9 +236,10 @@ Profilauflösung hängt also gar nicht am Intervall. Daran hängt nur noch die F
 der Kopfzahlen (km-Stand, Platz, „letzte Meldung vor…“), und dafür reicht stündlich.
 Dagegen stehen 24 statt 48 Chromium-Starts und Commits pro Tag.
 
-`RunAtLoad` ist gesetzt: ein
-`launchctl bootstrap` nach dem Editieren startet den Job **sofort** mit, inklusive
-Push — vor dem Neuladen also schauen, was gerade uncommittet im Baum liegt.
+`RunAtLoad` ist **`false`**: ein `launchctl bootstrap` startet den Job also *nicht*
+sofort, sondern **setzt den Stundentakt neu auf**. Nach einem Neuladen dauert es
+dadurch bis zu einer vollen Stunde bis zum nächsten Lauf — wer sofort ein Ergebnis
+will, nimmt `launchctl kickstart -k gui/$(id -u)/com.digitalerdude.tcr84-tracker-updater`.
 Läuft in der GUI-Session des Users (nicht als reiner Daemon), das ist nötig, damit
 der "headed"-Chromium-Start funktioniert (siehe oben).
 
