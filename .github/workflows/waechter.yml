@@ -1,0 +1,125 @@
+# Wächter über den Datenstand — läuft in GitHubs Cloud, NICHT auf dem Mac.
+#
+# Warum es das gibt: der Scraper fängt sich seit dem 21.07.2026 selbst (drei
+# Anläufe je Lauf, Job tickt alle 15 Minuten und holt einen Fehlschlag von
+# allein nach). Das deckt vorübergehende Aussetzer ab. Was es NICHT deckt, ist
+# ein dauerhafter Defekt — Chromium nach einem Update kaputt, Cloudflare
+# sperrt systematisch, Netz zu Hause weg. Dagegen hilft kein Wiederholen,
+# sondern nur, dass jemand davon erfährt.
+#
+# Deshalb prüft dieser Job stündlich von außen, wie alt `live.ts` in data.json
+# ist, und legt bei Überschreitung ein Issue an — GitHub schickt die Mail. Er
+# schweigt außerhalb des Rennens und nachts (ein zugeklappter Mac ist kein
+# Defekt), und er schließt das Issue wieder, sobald Daten nachkommen.
+name: Wächter
+
+on:
+  schedule:
+    - cron: '25 * * * *'   # stündlich zur 25. Minute (UTC)
+  workflow_dispatch:        # von Hand auslösbar, zum Ausprobieren
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Ab hier gilt der Datenstand als hängend. Ein gesundes System
+            // schreibt mindestens stündlich (Job tickt alle 15 min, arbeitet
+            // ab 50 min Alter) — 3 Stunden lassen also mehreren
+            // Fehlschlägen hintereinander Platz, bevor jemand geweckt wird.
+            const SCHWELLE_MIN = 180;
+            // Nachtruhe in lokaler Zeit: nachts ist der Mac oft legitim aus,
+            // eine Meldung um 3 Uhr hilft niemandem. Was um 23 Uhr auffällt,
+            // meldet der Lauf um 7 Uhr.
+            const RUHE_AB = 23, RUHE_BIS = 7;
+            const TITEL = 'Tracker-Abruf hängt';
+
+            const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+            const st = data.settings || {};
+
+            /* data.json trägt lokale Zeit OHNE Zeitzonen-Suffix (siehe
+               CLAUDE.md). Hier läuft alles in UTC, ein nacktes `new Date(ts)`
+               wäre also um zwei Stunden daneben. Das Rennen liegt komplett in
+               der Sommerzeit, deshalb ist +02:00 durchgehend richtig. */
+            const alsLokal = s => new Date(s + '+02:00');
+
+            const jetzt = new Date();
+            const start = alsLokal(st.start);
+            const ende = new Date(alsLokal(st.deadline).getTime() + 24 * 3600 * 1000);
+
+            // Offenes Wächter-Issue suchen (Pull Requests kommen hier mit raus).
+            const liste = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', per_page: 100,
+            });
+            const offen = liste.data.find(i => !i.pull_request && i.title === TITEL);
+
+            if (jetzt < start || jetzt > ende) {
+              core.info('Außerhalb des Rennfensters — nichts zu tun.');
+              return;
+            }
+
+            const lv = data.live && data.live.ts ? alsLokal(data.live.ts) : null;
+            const altMin = lv && isFinite(lv) ? Math.round((jetzt - lv) / 60000) : null;
+            core.info(`Live-Stand ist ${altMin === null ? 'unbekannt' : altMin + ' min'} alt.`);
+
+            // Alles in Ordnung: ein offenes Issue wieder schließen.
+            if (altMin !== null && altMin < SCHWELLE_MIN) {
+              if (offen) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: offen.number,
+                  body: `Es läuft wieder — der Live-Stand ist ${altMin} min alt (${data.live.km} km). Automatisch geschlossen.`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: offen.number, state: 'closed',
+                });
+                core.info('Wieder in Ordnung, Issue geschlossen.');
+              }
+              return;
+            }
+
+            const stunde = Number(jetzt.toLocaleString('en-GB', {
+              timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false,
+            }));
+            if (stunde >= RUHE_AB || stunde < RUHE_BIS) {
+              core.info(`Nachtruhe (${stunde} Uhr lokal) — Meldung wartet bis ${RUHE_BIS} Uhr.`);
+              return;
+            }
+
+            if (offen) {
+              core.info(`Issue #${offen.number} ist schon offen — keine zweite Meldung.`);
+              return;
+            }
+
+            const alt = altMin === null ? 'unbekannt (live fehlt in data.json)' : `${Math.floor(altMin/60)} h ${altMin%60} min`;
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: TITEL,
+              body: [
+                `Der letzte erfolgreiche Abruf ist **${alt}** her (Schwelle: ${SCHWELLE_MIN} min).`,
+                data.live ? `Letzter Stand: ${data.live.km} km, Platz ${data.live.rank}, \`live.ts\` = ${data.live.ts}.` : '',
+                '',
+                'Der Scraper wiederholt sich selbst (drei Anläufe je Lauf, Tick alle 15 Minuten).',
+                'Dass es trotzdem so lange still ist, spricht für etwas Dauerhaftes:',
+                '',
+                '- Mac aus, im Ruhezustand oder ohne Netz — dann ist alles in Ordnung, es holt nach dem Aufwachen von selbst auf.',
+                '- `launchctl list | grep tcr84` — läuft der Job noch?',
+                '- `tail -40 tools/update-tracker.log` — woran scheitert er?',
+                '- Cloudflare sperrt systematisch, oder die Tracker-Seite hat sich geändert (`window.ridersArray`).',
+                '',
+                'Sofort aufholen: `cd tools && node update-tracker.mjs --commit --push`',
+                '',
+                '_Dieses Issue schließt sich von selbst, sobald wieder Daten ankommen._',
+              ].filter(Boolean).join('\n'),
+            });
+            core.info('Issue angelegt.');

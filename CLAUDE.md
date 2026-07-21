@@ -415,7 +415,8 @@ sehr viel zusammenkommen, damit eine Lücke entsteht.
 
 **Was das NICHT abfängt:** einen dauerhaften Defekt (Chromium nach einem Update
 kaputt, Cloudflare sperrt systematisch, Seitenstruktur geändert, Netz zu Hause
-weg). Dagegen hilft kein Wiederholen, sondern nur eine Benachrichtigung.
+weg). Dagegen hilft kein Wiederholen, sondern nur eine Benachrichtigung — dafür
+gibt es den Wächter (siehe unten).
 
 **Schlafender Mac:** `StartInterval` feuert verpasste Läufe nach dem Aufwachen
 nach — zugeklappt passiert nichts, nach dem Öffnen holt der Job von selbst auf.
@@ -439,6 +440,38 @@ tail -f ~/Projekte/tcr84/tools/update-tracker.log                     # Log
 launchctl kickstart -k gui/$(id -u)/com.digitalerdude.tcr84-tracker-updater  # sofort auslösen
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist  # stoppen
 ```
+
+## .github/workflows/waechter.yml — der Wächter
+
+Läuft in **GitHubs Cloud, nicht auf dem Mac** — das ist der ganze Punkt: er
+merkt auch dann etwas, wenn der Mac das Problem *ist*. Stündlich (`cron`,
+zusätzlich von Hand über `workflow_dispatch` auslösbar) prüft er, wie alt
+`live.ts` in `data.json` ist, und legt ab `SCHWELLE_MIN` (180) ein Issue an;
+GitHub verschickt die Mail. Kommen wieder Daten, kommentiert und schließt er
+es von selbst.
+
+Drei Regeln, damit er nicht zum Nörgler wird:
+
+- **Nur im Rennfenster** (`settings.start` … `deadline` + 1 Tag, direkt aus
+  `data.json`) — davor und danach schweigt er.
+- **Nachtruhe 23–7 Uhr lokal.** Nachts ist der Mac oft legitim aus, und eine
+  Meldung um 3 Uhr hilft niemandem; was um 23 Uhr auffällt, meldet der Lauf um
+  7 Uhr.
+- **Ein Issue, nicht stündlich eins.** Vor dem Anlegen wird nach einem offenen
+  mit demselben Titel gesucht.
+
+**Die Zeitzone ist hier die Falle**, schärfer als sonst: der Runner läuft in
+**UTC**, `live.ts` trägt lokale Zeit *ohne* Suffix. Ein nacktes `new Date(ts)`
+wäre zwei Stunden daneben — also `alsLokal()` mit `+02:00`. Das Rennen liegt
+komplett in der Sommerzeit, deshalb ist der feste Offset richtig; für ein
+Rennen über den Zeitumstellungstermin müsste das anders gelöst werden.
+
+Die 180 Minuten haben Luft mit Absicht: ein gesundes System schreibt
+mindestens stündlich, also darf mehrfach hintereinander etwas schiefgehen,
+bevor jemand behelligt wird. Getestet wurde die eingebettete Logik vor dem
+ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
+(10 Zweige: frisch/alt, Tag/Nacht, vor/im/nach dem Rennen, Issue schon offen,
+`live` fehlt, Grenzfälle 179 und 181 Minuten).
 
 ## index.html — UI-Konventionen
 
