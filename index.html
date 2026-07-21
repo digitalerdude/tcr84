@@ -32,7 +32,7 @@
   .titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-top:6px}
   .cap{font-family:var(--mono);font-size:42px;font-weight:600;color:var(--brass);line-height:1}
   h1{font-size:27px;font-weight:700;letter-spacing:-.02em;margin:0}
-  .sub{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;line-height:1.9}
+  .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:11px;line-height:1.8}
   .sub a{color:var(--muted)}
   .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
         border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--muted);white-space:nowrap}
@@ -40,10 +40,17 @@
   .pill.warn{color:var(--warn);border-color:var(--warn)}
   .pill.alert{color:var(--alert);border-color:var(--alert)}
 
-  .wxline{font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-top:8px;
-          display:flex;gap:14px;flex-wrap:wrap;align-items:center}
+  .wxline{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+          display:flex;gap:2px 14px;flex-wrap:wrap;align-items:center}
   .wxline .wxval{color:var(--ice)}
   .wxline .wxwarn{color:var(--warn)}
+  /* Der "Jetzt"-Streifen: alles was sich laufend ändert (Live-Stand + Wetter) in
+     einem abgesetzten Kasten. Vorher standen Meta-, Live- und Wetterzeile in
+     derselben Formatierung untereinander — drei gleich laute Zeilen, in denen
+     nicht zu sehen war, was Momentaufnahme ist und was seit Wochen feststeht. */
+  .nowbar{display:flex;flex-wrap:wrap;align-items:center;gap:3px 20px;margin-top:13px;
+          border:1px solid var(--line);background:var(--panel);padding:9px 13px}
+  .nowbar .wx{opacity:.68}
 
   .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
   .ladder-panel{position:sticky;top:18px}
@@ -185,13 +192,15 @@
       <h1>Manuel Kaufer</h1>
       <span class="pill" id="statusPill">lädt…</span>
     </div>
+    <div class="nowbar" id="nowbar" style="display:none">
+      <div class="wxline" id="liveLine" style="display:none"></div>
+      <div class="wxline wx" id="wxLine" style="display:none"></div>
+    </div>
     <div class="sub" id="sourceLine">
-      Start 19.07.2026, 20:00 CEST · Zeitlimit 08.08.2026 ·
+      Start 19.07.2026, 20:00 CEST · Limit 08.08.2026 ·
       <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
       <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>
     </div>
-    <div class="wxline" id="liveLine" style="display:none"></div>
-    <div class="wxline" id="wxLine" style="display:none"></div>
   </header>
 
   <div class="cols">
@@ -455,11 +464,20 @@ function renderMetrics(c){
    der Fahrer, bleibt es stundenlang stumm und das Board wirkt eingefroren.
    `data.live` schreibt der Scraper dagegen bei JEDEM Lauf.
    Drei Zustände, bewusst unterscheidbar: Pause / unterwegs / Abruf hängt. */
+/* Der Streifen selbst verschwindet, sobald weder Live-Stand noch Wetter etwas
+   zu sagen haben — ein leerer Kasten unter dem Namen wäre sonst sichtbar. */
+function syncNowbar(){
+  const bar = document.getElementById('nowbar');
+  if(!bar) return;
+  const sichtbar = [...bar.children].some(k => k.style.display !== 'none');
+  bar.style.display = sichtbar ? 'flex' : 'none';
+}
+
 function renderLive(c){
   const el = document.getElementById('liveLine');
   const lv = S.live;
   if(!el) return;
-  if(!lv || !lv.ts){ el.style.display = 'none'; return; }
+  if(!lv || !lv.ts){ el.style.display = 'none'; syncNowbar(); return; }
   el.style.display = 'flex';
 
   const alterAbruf = (c.now - new Date(lv.ts)) / 6e4;      // Minuten seit unserem letzten Blick
@@ -481,8 +499,9 @@ function renderLive(c){
   teile.push(`<span class="wxval">${num(Number(lv.km))} km</span>`);
   if(lv.rank!=null) teile.push(`<span>Platz ${lv.rank}</span>`);
   if(lv.fixMinsAgo!=null && alterAbruf <= 150)
-    teile.push(`<span style="opacity:.75">Trackermeldung ${num(lv.fixMinsAgo)} min alt</span>`);
+    teile.push(`<span style="opacity:.75">Meldung vor ${num(lv.fixMinsAgo)} min</span>`);
   el.innerHTML = teile.join('');
+  syncNowbar();
 }
 
 function renderLadder(c){
@@ -923,7 +942,7 @@ async function loadWeather(lat, lon){
 }
 function renderWeather(){
   const el = document.getElementById('wxLine');
-  if(!el || !WX){ if(el) el.style.display='none'; return; }
+  if(!el || !WX){ if(el){ el.style.display='none'; syncNowbar(); } return; }
   const code = WX_CODES[WX.weather_code] || ['','—'];
   const gust = WX.wind_gusts_10m;
   const windy = WX.wind_speed_10m >= 30 || (gust!=null && gust >= 45);
@@ -933,6 +952,7 @@ function renderWeather(){
     `<span class="wxval">${one(WX.temperature_2m)}° <span style="color:var(--muted)">(gefühlt ${one(WX.apparent_temperature)}°)</span></span>` +
     `<span class="${windy?'wxwarn':'wxval'}">💨 ${num(WX.wind_speed_10m)} km/h aus ${windDir(WX.wind_direction_10m)}${gust!=null?', Böen '+num(gust):''}</span>` +
     (WX.precipitation>0 ? `<span class="wxval">🌧️ ${one(WX.precipitation)} mm/h</span>` : '');
+  syncNowbar();
 }
 function maybeLoadWeather(c){
   const withGps = [...c.list].reverse().find(e=> e.lat!=null && e.lon!=null);
@@ -1124,18 +1144,16 @@ document.getElementById('mapDetails').addEventListener('toggle', async function(
 function renderSource(c){
   const line = document.getElementById('sourceLine');
   const stand = c.last ? 'Stand ' + fmt(c.last.ts) : 'noch kein Stand';
-  line.innerHTML = `${stand} · Start 19.07.2026, 20:00 CEST · Zeitlimit 08.08.2026 ·
+  line.innerHTML = `${stand} · Start 19.07.2026, 20:00 CEST · Limit 08.08.2026 ·
     <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
     <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>`;
   document.getElementById('foot').innerHTML = EDIT
     ? `Bearbeiten-Modus. Quelle gerade: <code>${SOURCE}</code>. Änderungen sind erst öffentlich, wenn du
        <code>data.json</code> im Repo ersetzt oder den frischen Link verschickst.<br>
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`
-    : `Werte werden seit dem 20.07.2026 automatisiert alle 30 Minuten vom offiziellen Live-Tracker abgefragt
-       (erkennbar an „GPS" bei der Meldung); vereinzelte Einträge sind von Hand nachgetragen.
-       Quelle: <code>${SOURCE}</code>.<br>
-       Das Höhenprofil folgt der aufgezeichneten Spur des Trackers, die Höhenmeter darin sind
-       gerechnet — wie genau, steht ausklappbar unter dem Höhenprofil.<br>
+    : `Werte werden seit dem 20.07.2026 automatisiert stündlich vom offiziellen Live-Tracker abgefragt
+       (erkennbar an „GPS" bei der Meldung); vereinzelte Einträge sind von Hand nachgetragen. Quelle: <code>${SOURCE}</code>.<br>
+       Das Höhenprofil folgt der aufgezeichneten Spur des Trackers, die Höhenmeter darin sind gerechnet — wie genau, steht ausklappbar unter dem Höhenprofil.<br>
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
 }
 
