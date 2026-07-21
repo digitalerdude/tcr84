@@ -26,6 +26,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { runChecks } from './check.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -72,6 +73,7 @@ const FLAGS = {
   headed: args.includes('--headed'),
   backfill: args.includes('--backfill'),
   places: args.includes('--places'),
+  fixts: args.includes('--fixts'),
   dump: (args.find(a => a.startsWith('--dump=')) || '').split('=')[1] || null,
 };
 
@@ -194,7 +196,13 @@ async function brouterRoute(points) {
   const net = Number(p['plain-ascend']);        // Netto-Höhendifferenz, kann negativ sein
   const len = Number(p['track-length']);
   if (!isFinite(up) || !isFinite(net) || !isFinite(len)) return null;
-  return { coords: f.geometry.coordinates, up: Math.round(up), down: Math.round(up - net), km: len / 1000 };
+  /* `down` kann rechnerisch knapp negativ werden: `filtered ascend` ist
+     entrauscht, `plain-ascend` nicht, und auf einem durchgehend steigenden
+     Block liegt die entrauschte Summe manchmal 1 hm unter der Netto-Differenz.
+     Bergab-Höhenmeter unter null gibt es aber nicht, und aufaddiert ließe das
+     die kumulierte Reihe in profile.json fallen (2× passiert bis 21.07.2026,
+     von check.mjs gefunden). */
+  return { coords: f.geometry.coordinates, up: Math.round(up), down: Math.max(0, Math.round(up - net)), km: len / 1000 };
 }
 
 // Ein Block, mit einem Rettungsversuch: schlägt BRouter für die ganze
@@ -480,8 +488,25 @@ function git(...cmdArgs) {
   return execFileSync('git', cmdArgs, { cwd: REPO_ROOT, encoding: 'utf8' });
 }
 
-// Committet data.json und track.json zusammen, aber nur, wenn sich wirklich
-// etwas geändert hat — sonst bricht `git commit` den ganzen Lauf ab.
+/* Nach jedem Lauf gegen die Invarianten prüfen: data.json, track.json und
+   profile.json beschreiben dieselbe Fahrt und müssen sich gegenseitig
+   bestätigen. Läuft bewusst NACH dem Schreiben und VOR dem Commit, damit im
+   Log steht, was mit genau diesem Stand veröffentlicht wurde — bricht aber
+   nichts ab: eine verletzte Invariante ist ein Grund hinzusehen, kein Grund,
+   den frischen Live-Stand wegzuwerfen. */
+function checkAndLog() {
+  try {
+    const f = runChecks();
+    for (const [stufe, text] of f) if (stufe !== 'ok') log(`CHECK ${stufe}: ${text}`);
+    const fehler = f.filter(x => x[0] === 'FEHLER').length;
+    log(`check: ${f.length - fehler} von ${f.length} Prüfungen sauber.`);
+  } catch (e) { log('check.mjs fehlgeschlagen (ignoriert):', e.message); }
+}
+
+// Committet data.json, track.json und profile.json zusammen, aber nur, wenn
+// sich wirklich etwas geändert hat — sonst bricht `git commit` den Lauf ab.
+// Die drei Dateien werden namentlich gestaged: der stündliche Job soll keine
+// nebenher offenen Quelltextänderungen mit einsammeln.
 function commitAll(message) {
   git('add', 'data.json', 'track.json', 'profile.json');
   if (!git('diff', '--cached', '--name-only').trim()) { log('nothing changed, no commit.'); return; }
@@ -543,6 +568,88 @@ async function backfill() {
   else log('dry run — not committed. Pass --commit (and --push) to publish.');
 }
 
+/* ---- Der Zeitstempel einer Meldung ist die Zeit ihres GPS-Punkts ----
+ *
+ * Bis zum 21.07.2026 trug `ts` den Zeitpunkt UNSERES Abrufs. Position, km,
+ * Tempo und Platz stammen aber alle vom letzten Fix davor — bisher 1–4
+ * Minuten früher, bei schlafendem Tracker auch mal 35. check.mjs hat es
+ * gefunden: jede Meldung liegt auf 0–1 m genau auf einem Punkt aus
+ * track.json, aber auf einem, der ein paar Minuten älter ist.
+ *
+ * Genau das macht den Bestand korrigierbar: der wahre Messzeitpunkt steht in
+ * der Spur, er muss nur nachgeschlagen werden. Deshalb EINE Regel für neue
+ * und alte Einträge statt zweier Konventionen im selben Feld.
+ *
+ * `tsSrc` hält fest, woher die Zeit stammt — dieselbe Konvention wie `eleSrc`
+ * und `climbSrc`:
+ *   'track'  aus der aufgezeichneten Spur (genau, der Normalfall)
+ *   'fix'    aus `jetzt − lastReportMins` (Spur fehlt; auf ganze Minuten grob)
+ *   'scrape' Zeitpunkt des Abrufs (weder Spur noch Fix-Alter — alte Konvention)
+ *   fehlt    von Hand gesetzter Eintrag, nie angefasst
+ */
+const TS_MAX_METERS = 50;   // weiter weg ist es nicht derselbe Punkt, dann lieber nichts ändern
+
+/* Sucht den Spurpunkt, an dem eine Meldung entstanden ist — über den ORT,
+   nicht über die Zeit. Die Zeit ist ja gerade das Gesuchte. */
+function trackTimeAt(points, lat, lon) {
+  if (!points || !points.length) return null;
+  let best = null, bd = Infinity;
+  for (const p of points) {
+    const d = haversine([lat, lon], [p[0], p[1]]);
+    if (d < bd) { bd = d; best = p; }
+  }
+  return bd <= TS_MAX_METERS ? { unix: best[3], meters: bd } : null;
+}
+
+/* Zeitstempel bestehender Einträge auf den Messzeitpunkt korrigieren. Ohne
+ * Browser und ohne Netz — die Spur liegt in track.json. Idempotent: der
+ * nächstgelegene Spurpunkt bleibt derselbe, egal wie oft es läuft.
+ * Einträge ohne lat/lon sind von Hand gesetzt und werden nicht angefasst. */
+async function fixTimestamps() {
+  const track = loadTrack();
+  if (!track || !track.points || !track.points.length) {
+    log('track.json fehlt — erst einen normalen Lauf machen, der holt die Spur.');
+    return;
+  }
+  const data = loadData();
+  const entries = data.entries || [];
+  let changed = 0, ohneSpur = 0, blockiert = 0;
+
+  entries.forEach((e, i) => {
+    if (e.lat == null || e.lon == null) return;           // von Hand gesetzt
+    const hit = trackTimeAt(track.points, e.lat, e.lon);
+    if (!hit) { ohneSpur++; return; }
+    const neu = localIsoNoTZ(new Date(hit.unix * 1000));
+    if (neu === e.ts) { e.tsSrc = 'track'; return; }
+    /* Nie vor den Vorgänger rutschen. Die Korrektur zieht Zeitstempel um
+       Minuten nach hinten; lägen zwei Meldungen dicht beieinander, könnten
+       sie sonst die Reihenfolge tauschen — und das Board rechnet Tempo aus
+       aufeinanderfolgenden Zeilen. */
+    const vor = entries[i - 1];
+    if (vor && new Date(neu) <= new Date(vor.ts)) {
+      log(`  ${e.ts} → ${neu} übersprungen: läge vor der Meldung davor (${vor.ts}).`);
+      blockiert++;
+      return;
+    }
+    const deltaMin = (new Date(e.ts) - new Date(neu)) / 60000;
+    log(`  ${e.ts} → ${neu}  (−${deltaMin.toFixed(0)} min, ${hit.meters.toFixed(0)} m vom Spurpunkt)`);
+    e.ts = neu;
+    e.tsSrc = 'track';
+    changed++;
+  });
+
+  if (ohneSpur) log(`${ohneSpur} Eintrag/Einträge ohne passenden Spurpunkt (>${TS_MAX_METERS} m) — unverändert.`);
+  if (blockiert) log(`${blockiert} Korrektur(en) wegen Reihenfolge verworfen.`);
+  if (!changed) { log('nichts zu korrigieren.'); return; }
+
+  data.updated = new Date().toISOString();
+  saveData(data);
+  log(`data.json: ${changed} Zeitstempel auf den Messzeitpunkt korrigiert.`);
+  checkAndLog();
+  if (FLAGS.commit) commitAll(`Zeitstempel auf den Messzeitpunkt korrigiert (${changed} Einträge)`);
+  else log('dry run — not committed. Pass --commit (and --push) to publish.');
+}
+
 /* Ortsnamen bestehender Einträge neu auflösen — nötig nach einer Änderung an
  * reverseGeocode(), sonst stehen alte grobe und neue feine Namen im selben Log
  * nebeneinander. Kein Browser nötig, nur Nominatim. Deren Nutzungsregeln
@@ -574,6 +681,7 @@ async function refreshPlaces() {
 async function main() {
   if (FLAGS.places) return refreshPlaces();
   if (FLAGS.backfill) return backfill();
+  if (FLAGS.fixts) return fixTimestamps();
 
   const data0 = loadData();
   const windowStart = new Date(data0.settings.start);
@@ -629,15 +737,36 @@ async function main() {
     log(`km barely changed since last entry (${last.km} → ${rider.km}), skipping entry.`);
     data.updated = new Date().toISOString();
     saveData(data);
+    checkAndLog();
     if (FLAGS.commit) commitAll(`Auto-update: Live-Stand ${rider.km} km${stop ? ', Pause' : ''}`);
     return;
   }
 
   const place = rider.lat != null ? await reverseGeocode(rider.lat, rider.lon) : (last ? last.place : '');
 
+  /* Zeitstempel = Zeitpunkt der MESSUNG, nicht des Abrufs (siehe die Notiz
+     über fixTimestamps()). Die Spur des laufenden Abrufs liegt schon vor,
+     also dieselbe Regel wie beim Nachkorrigieren des Bestands: der Spurpunkt
+     unter der gemeldeten Position gibt die Zeit. `lastReportMins` ist nur der
+     Notnagel — es ist auf ganze Minuten gerundet. */
+  let ts = localIsoNoTZ(), tsSrc = 'scrape';
+  const hit = rider.lat != null ? trackTimeAt(trackPoints, rider.lat, rider.lon) : null;
+  if (hit) { ts = localIsoNoTZ(new Date(hit.unix * 1000)); tsSrc = 'track'; }
+  else if (rider.lastReportMins != null) {
+    ts = localIsoNoTZ(new Date(Date.now() - rider.lastReportMins * 60000));
+    tsSrc = 'fix';
+  }
+  // Nie vor die Meldung davor rutschen — das Board rechnet Tempo aus
+  // aufeinanderfolgenden Zeilen.
+  if (last && new Date(ts) <= new Date(last.ts)) {
+    log(`Messzeit ${ts} läge vor der letzten Meldung (${last.ts}) — Abrufzeit verwendet.`);
+    ts = localIsoNoTZ(); tsSrc = 'scrape';
+  }
+
   const entry = {
     id: String(Date.now()),
-    ts: localIsoNoTZ(),
+    ts,
+    tsSrc,
     km: rider.km,
     place,
     note: rider.rank != null ? `Platz ${rider.rank}` : '',
@@ -666,6 +795,7 @@ async function main() {
   data.updated = new Date().toISOString();
   saveData(data);
   log('wrote entry:', entry);
+  checkAndLog();
 
   if (FLAGS.commit) {
     commitAll(`Auto-update: ${entry.km} km, ${entry.place || '?'} (${entry.note})`);

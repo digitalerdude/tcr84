@@ -162,6 +162,13 @@
   tr.logRow.hasDetail{cursor:pointer}
   tr.logRow.hasDetail:hover td{background:var(--panel2)}
   .gpsMark{color:var(--muted);font-size:11px}
+  tr.logPause td{padding:7px 8px;border-bottom:1px solid #1C2C39;background:var(--panel2);
+                 font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.04em}
+  tr.logPause .pv{color:var(--bone)}
+  .logMore{width:100%;background:var(--panel);border:1px solid var(--line);border-top:none;
+           cursor:pointer;padding:11px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+           text-transform:uppercase;color:var(--muted);text-align:left}
+  .logMore:hover{color:var(--bone);background:var(--panel2)}
   tr.logDetail td{padding:2px 8px 12px 0;border-bottom:1px solid #1C2C39;background:var(--panel2)}
   tr.logDetail .dk{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
   tr.logDetail .dk a{color:var(--brass)}
@@ -498,8 +505,12 @@ function renderLive(c){
 
   teile.push(`<span class="wxval">${num(Number(lv.km))} km</span>`);
   if(lv.rank!=null) teile.push(`<span>Platz ${lv.rank}</span>`);
+  /* `fixMinsAgo` ist das Alter der Trackermeldung ZUM ZEITPUNKT UNSERES ABRUFS,
+     kein laufender Wert. Roh angezeigt stand hier eine Stunde nach dem Abruf
+     immer noch „vor 4 min“. Es muss also mitaltern: Alter beim Abruf plus die
+     Zeit, die seitdem vergangen ist — dieselbe Rechnung wie in renderMetrics. */
   if(lv.fixMinsAgo!=null && alterAbruf <= 150)
-    teile.push(`<span style="opacity:.75">Meldung vor ${num(lv.fixMinsAgo)} min</span>`);
+    teile.push(`<span style="opacity:.75">Meldung vor ${dur((lv.fixMinsAgo + alterAbruf) * 6e4)}</span>`);
   el.innerHTML = teile.join('');
   syncNowbar();
 }
@@ -867,10 +878,56 @@ function renderDays(c){
      <div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>`;
 }
 
+/* Das Log wächst über drei Wochen auf hunderte Zeilen und schob Karte und
+   Fußzeile immer weiter nach unten. Offen stehen deshalb nur die neuesten
+   `LOG_HEAD` Meldungen, der Rest liegt hinter einem Klapper — dieselbe Haltung
+   wie bei der Karte: tiefere Daten einen Klick entfernt, nicht auf der ersten
+   Bildschirmseite.
+   Bewusst KEIN <details>: das darf keine <tr> umschließen, und zwei getrennte
+   Tabellen bekämen unterschiedliche Spaltenbreiten. Also ein zweites <tbody>
+   in derselben Tabelle plus Knopf darunter. */
+const LOG_HEAD = 3;
+let LOG_ALL = false;   // überlebt das 60s-Re-Render, sonst klappt es dauernd zu
+
+/* Pausen aus der Spur, gecacht — findStops() läuft sonst bei jedem der
+   60s-Renderdurchläufe über alle Spurpunkte. Der Cache hängt an `updated`
+   aus track.json, fällt also mit jeder neu geladenen Spur. */
+let STOPS = null, STOPS_KEY = null;
+function trackStops(){
+  if(!TRACK) return [];
+  if(STOPS_KEY !== TRACK.updated){ STOPS = findStops(TRACK.points); STOPS_KEY = TRACK.updated; }
+  return STOPS;
+}
+
 function renderLog(c){
   const el = document.getElementById('log');
   if(!c.list.length){ el.innerHTML = '<div class="empty">Noch keine Positionen erfasst.</div>'; return; }
   const cols = EDIT ? 5 : 4;
+
+  /* Das Log protokolliert Bewegung: unter `minKmDelta` (1 km) entsteht kein
+     Eintrag. Steht der Fahrer, klafft darin eine Lücke — in der Nacht vom
+     20. auf den 21.07.2026 achteinhalb Stunden zwischen zwei Zeilen, mit
+     „1,8 km/h“ daneben und ohne jeden Hinweis, dass der Stillstand die
+     eigentliche Information war. Kopfzeile und Karte wussten davon, das Log
+     nicht. Dieselbe Quelle wie die Kartenmarker (findStops über die echte
+     Spur), damit nicht zwei Stellen verschiedene Pausen behaupten.
+     Was die Pause verursacht hat, steht hier nicht und ist aus der Spur auch
+     nicht ableitbar — deshalb nur „Pause“, nie „Schlaf“. */
+  const letzterPunkt = TRACK ? TRACK.points[TRACK.points.length-1][3] : null;
+  /* Einsortiert nach der MITTE der Pause, nicht nach ihrem Beginn: sie
+     überspannt oft eine Meldung (der Tracker meldet ja weiter, während er
+     steht). Nach dem Beginn einsortiert landete die Nacht vom 20.07. unter
+     der 19:05-Zeile — also gerade nicht in der Lücke, die sie erklärt. */
+  const pausen = (vonMs, bisMs) => trackStops()
+    .filter(s => { const mitte = (s.from + s.to)/2*1000; return mitte > vonMs && mitte <= bisMs; })
+    .sort((a,b) => b.from - a.from)
+    .map(s => {
+      const laeuft = s.to === letzterPunkt;
+      return `<tr class="logPause"><td colspan="${cols}">⏸ Pause
+        <span class="pv">${dhm(laeuft ? (Date.now()/1000 - s.from)/60 : s.mins)}</span> ·
+        ${hhmm(s.from)}–${laeuft ? 'läuft noch' : hhmm(s.to)+' Uhr'}</td></tr>`;
+    }).join('');
+
   const rows = [...c.list].reverse().map((e,i,arr)=>{
     const prev = arr[i+1];
     let d = '–';
@@ -897,9 +954,24 @@ function renderLog(c){
           <a href="https://www.google.com/maps?q=${e.lat},${e.lon}" target="_blank" rel="noopener">Google Maps ↗</a>
         </div>
       </td></tr>` : '';
-    return main + detail;
-  }).join('');
-  el.innerHTML = `<table><thead><tr><th>Zeit</th><th>Stand</th><th>Schnitt seit davor</th><th>Ort / Notiz</th>${EDIT?'<th></th>':''}</tr></thead><tbody>${rows}</tbody></table>`;
+    /* Absteigend sortiert: die Pausen zwischen dieser und der VORHERIGEN
+       Meldung stehen unter dieser Zeile. Sie hängen bewusst am selben
+       Array-Element wie der Eintrag — sonst risse der Klapper unten die
+       Pause von ihrem Zeitraum weg. Über der neuesten Meldung steht, was
+       seither passiert ist (typisch: die laufende Pause). */
+    const davor = prev ? new Date(prev.ts).getTime() : 0;
+    const oben = i === 0 ? pausen(new Date(e.ts).getTime(), Infinity) : '';
+    return oben + main + detail + pausen(davor, new Date(e.ts).getTime());
+  });
+  const alt = rows.length - LOG_HEAD;
+  el.innerHTML = `<table><thead><tr><th>Zeit</th><th>Stand</th><th>Schnitt seit davor</th><th>Ort / Notiz</th>${EDIT?'<th></th>':''}</tr></thead>` +
+    `<tbody>${rows.slice(0, LOG_HEAD).join('')}</tbody>` +
+    (alt > 0 ? `<tbody id="logOlder"${LOG_ALL?'':' hidden'}>${rows.slice(LOG_HEAD).join('')}</tbody>` : '') +
+    `</table>` +
+    (alt > 0 ? `<button class="logMore" id="logMore">${LOG_ALL
+      ? '▴ Ältere ausblenden' : `▾ ${alt} ältere ${alt===1?'Meldung':'Meldungen'}`}</button>` : '');
+  const more = document.getElementById('logMore');
+  if(more) more.onclick = ()=>{ LOG_ALL = !LOG_ALL; renderLog(c); };
   el.querySelectorAll('tr.logRow.hasDetail').forEach(r=> r.onclick = (ev)=>{
     if(ev.target.closest('.del')) return;
     const d = document.getElementById(r.dataset.target);
@@ -980,12 +1052,22 @@ function ensureLeaflet(cb){
    größte Datei im Repo und für den Rest des Boards nicht nötig. Gleiche Logik
    wie beim Nachladen von Leaflet selbst. */
 let TRACK = null;
-async function ensureTrack(){
-  if(TRACK) return TRACK;
+/* Holt die Spur neu und wirft die davon abgeleiteten Caches weg. Erst am Ende
+   zuweisen: bei einem Fehler bleibt die alte Spur stehen, statt dass Karte und
+   Log kurz leer sind. */
+async function refreshTrack(){
   try{
     const res = await fetch('track.json?t=' + Date.now(), {cache:'no-store'});
-    if(res.ok){ const j = await res.json(); if(Array.isArray(j.points) && j.points.length) TRACK = j; }
-  }catch(e){ /* Karte funktioniert auch ohne, dann eben nur mit den Meldungen */ }
+    if(!res.ok) return false;
+    const j = await res.json();
+    if(!Array.isArray(j.points) || !j.points.length) return false;
+    TRACK = j; TRACK_KM = null; STOPS_KEY = null;
+    return true;
+  }catch(e){ return false; }   // Karte funktioniert auch ohne, dann eben nur mit den Meldungen
+}
+async function ensureTrack(){
+  if(TRACK) return TRACK;
+  await refreshTrack();
   return TRACK;
 }
 
@@ -1301,6 +1383,12 @@ async function addEntry(){
     // Profil in eigenem, langsamerem Takt — es ist die größte Datei und
     // ändert sich nur, wenn eine neue Stunde Fahrt ausgewertet wurde.
     setInterval(async ()=>{ if(await loadProfile()) render(); }, 900000);
+    /* Die Spur erst NACH dem ersten Zeichnen, aber ohne auf die Karte zu
+       warten: sie liefert die Pausenzeilen im Log, und die beantworten die
+       Frage, warum das Log stundenlang stillsteht. Die mobile Startansicht
+       bleibt trotzdem leicht — der erste Rendergang läuft ohne sie. */
+    refreshTrack().then(ok=>{ if(ok) render(); });
+    setInterval(async ()=>{ if(await refreshTrack()) render(); }, 900000);
   }
 })();
 </script>

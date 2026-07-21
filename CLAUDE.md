@@ -13,6 +13,7 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 | `track.json` | Archiv der **echten gefahrenen Spur** aus dem GPX-Export des Trackers, siehe unten. Wird bei jedem Lauf komplett neu geschrieben. Rohdaten, vom Frontend nicht gelesen. |
 | `profile.json` | Das daraus gerechnete Höhenprofil (Stützpunkte + kumulierte Höhenmeter je Block). **Einzige Quelle für alle Höhenangaben im Board.** Eigener Ladetakt im Frontend (15 Min), weil es die größte Datei ist. |
 | `tools/update-tracker.mjs` | Automatisierter Scraper, siehe unten. |
+| `tools/check.mjs` | Invarianten-Prüfung der drei JSON-Dateien gegeneinander, siehe unten. |
 | `tools/package.json` | Playwright-Dependency für den Scraper. `cd tools && npm install`. |
 
 ## data.json-Schema
@@ -30,7 +31,8 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
   "entries": [
     {
       "id": "...",              // String(Date.now())
-      "ts": "2026-07-20T16:52", // WICHTIG: lokale Uhrzeit OHNE Zeitzone, siehe unten
+      "ts": "2026-07-20T16:50", // Zeitpunkt der MESSUNG. Lokale Uhrzeit OHNE Zeitzone, siehe unten
+      "tsSrc": "track",         // woher `ts` stammt: track | fix | scrape (fehlt = von Hand)
       "km": 360.17,
       "place": "Stor-Elvdal",
       "note": "Platz 66",
@@ -110,7 +112,36 @@ node update-tracker.mjs --dump=rider.json    # rohes ridersArray-Objekt für den
 node update-tracker.mjs --backfill            # nur fehlende Höhen-Felder nachtragen (ohne Browser)
 node update-tracker.mjs --backfill --force    # dito, auch vorhandene Werte neu rechnen
 node update-tracker.mjs --places              # Ortsnamen bestehender Einträge neu auflösen (ohne Browser)
+node update-tracker.mjs --fixts               # Zeitstempel auf den Messzeitpunkt korrigieren (ohne Browser)
 ```
+
+### Der Zeitstempel einer Meldung ist die Zeit ihres GPS-Punkts
+
+Bis zum 21.07.2026 trug `ts` den Zeitpunkt **unseres Abrufs**. Position,
+Kilometer, Tempo und Platz stammen aber alle vom letzten Fix davor — damals
+1–4 Minuten früher, bei schlafendem Tracker auch mal 35. Bei 25 km/h waren das
+bis zu 3,4 km Versatz zwischen Zeile und Wirklichkeit. Gefunden hat es
+`check.mjs`: jede Meldung liegt auf 0–1 m genau auf einem Punkt aus
+`track.json` — nur auf einem, der ein paar Minuten älter ist.
+
+Genau das machte den Bestand korrigierbar, statt eine zweite Konvention
+einführen zu müssen: der wahre Messzeitpunkt steht in der Spur und muss nur
+nachgeschlagen werden. Seitdem gilt **eine** Regel für neue und alte Einträge,
+umgesetzt in `trackTimeAt()` — gesucht wird über den **Ort**, denn die Zeit ist
+ja das Gesuchte. Pflichtabstand 50 m, sonst bleibt der Eintrag unangetastet.
+
+`tsSrc` hält fest, woher die Zeit kommt (gleiche Konvention wie `eleSrc` und
+`climbSrc`): `'track'` aus der Spur (genau, Normalfall) · `'fix'` aus
+`jetzt − lastReportMins` (Spur fehlt, auf ganze Minuten gerundet) · `'scrape'`
+Abrufzeit (weder Spur noch Fix-Alter) · **fehlt** = von Hand gesetzt, wird nie
+angefasst.
+
+`--fixts` trägt das auf dem Bestand nach: ohne Browser, ohne Netz, idempotent
+(der nächstgelegene Spurpunkt bleibt derselbe). Am 21.07.2026 einmal über 15
+Einträge gelaufen, Korrekturen 1–5 Minuten. Beide Wege — neuer Eintrag wie
+Nachkorrektur — schieben einen Zeitstempel **nie vor seinen Vorgänger**; das
+Board rechnet Tempo aus aufeinanderfolgenden Zeilen, ein Tausch der
+Reihenfolge würde negative Geschwindigkeiten erzeugen.
 
 ### Ortsnamen (Nominatim)
 
@@ -264,6 +295,57 @@ aktuell `"Manuel Kaufer"`) — sucht in `ridersArray` nach `riderName`-Match, ke
 hartkodiertes Tracker-ID mapping (Tracker-Nummern aus dem Leaderboard sind ein
 anderer ID-Namespace als die internen `ridersArray`-Keys).
 
+## tools/check.mjs — die Invarianten
+
+Kein Test-Framework, kein Netz, keine Abhängigkeiten: ein Skript, das
+`data.json`, `track.json` und `profile.json` **gegeneinander** prüft. Der
+Gedanke dahinter: die drei Dateien beschreiben dieselbe Fahrt aus drei
+Blickwinkeln und müssen sich gegenseitig bestätigen. Die Summe der Tagesbalken
+*muss* die Gesamtstrecke ergeben, die Summe der Tages-Höhenmeter die
+Gesamtsumme, eine Meldung *muss* auf der aufgezeichneten Spur liegen. Bricht
+eine dieser Beziehungen, ist irgendwo eine zweite Wahrheit entstanden — und
+daran sind hier bisher fast alle Fehler entstanden.
+
+```bash
+node check.mjs           # Bericht, Exit 1 nur bei FEHLER
+node check.mjs --quiet   # nur FEHLER und WARNUNG
+```
+
+`update-tracker.mjs` ruft `runChecks()` nach jedem Lauf auf (`checkAndLog()`,
+nach dem Schreiben, vor dem Commit) und protokolliert das Ergebnis ins Log.
+**Bewusst nicht abbrechend:** eine verletzte Invariante ist ein Grund
+hinzusehen, kein Grund, den frischen Live-Stand zu verwerfen.
+
+Drei Stufen: `FEHLER` (Datenstand ist in sich widersprüchlich), `WARNUNG`
+(auffällig, aber erklärbar — Tracker schläft, Job hängt), `ok` (bestandene
+Prüfung, wird mitprotokolliert, damit sichtbar ist *was* geprüft wurde).
+Toleranzen stehen gesammelt in `TOL` oben im Skript, nicht im Code verstreut.
+
+Zwei Eigenheiten, die nicht "vereinfacht" gehören:
+
+- **`cumAt()` dupliziert `cumClimbAt()` aus `index.html` absichtlich.** Prüfte
+  die Prüfung mit dem Code des Boards, könnte sie einen Denkfehler im Board
+  nicht finden, sondern würde ihn nachvollziehen.
+- **Meldung ↔ Spur wird über den ORT verglichen, nicht über die Zeit.** Gesucht
+  ist der Spurpunkt, an dem die Meldung entstand; der Zeitversatz zu ihm ist
+  dann die Aussage (= wie alt der Fix beim Abruf war). Umgekehrt herum schlägt
+  die Prüfung falsch an: bei 30 km/h sind 4 Minuten Versatz 2 km Abstand.
+
+**Beim ersten Lauf (21.07.2026) hat es zwei echte Sachen gefunden:**
+
+1. `climbDown` konnte um 1 hm *fallen*. `down = filtered ascend − plain-ascend`,
+   und auf einem durchgehend steigenden Block liegt die entrauschte Summe
+   manchmal knapp unter der Netto-Differenz. Negative Bergab-Höhenmeter gibt es
+   nicht — in `brouterRoute()` jetzt bei 0 geklemmt. Der Altbestand in
+   `profile.json` behält die beiden Rundungsschritte (ein Neuaufbau wären
+   hunderte BRouter-Anfragen für 2 hm), `check.mjs` kennt sie und meldet sie
+   als bekannt statt als Fehler.
+2. **`entry.ts` war der Zeitpunkt unseres Abrufs, nicht der der Messung** —
+   behoben am selben Tag, siehe „Der Zeitstempel einer Meldung ist die Zeit
+   ihres GPS-Punkts“ oben. `check.mjs` bewacht es weiter: es warnt bei
+   GPS-Meldungen ohne `tsSrc` und wenn irgendwo mehr als 3 Minuten Versatz
+   zwischen Zeitstempel und zugehörigem Spurpunkt stehen bleiben.
+
 ## Automatisierung (launchd)
 
 `~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — läuft
@@ -300,6 +382,35 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   bewusst **standardmäßig eingeklappt** (`<details>`/Klick-Toggle) — die mobile
   Startansicht soll schlank bleiben, tiefere Daten sind einen Klick entfernt, nicht
   auf der ersten Bildschirmseite.
+- **Gespeicherte Dauern altern nicht mit — Zeitstempel schon.** `live.fixMinsAgo`
+  ist das Alter der Trackermeldung *zum Zeitpunkt unseres Abrufs*, kein
+  laufender Wert. Roh angezeigt stand in der Kopfzeile eine Stunde nach dem
+  Abruf immer noch „Meldung vor 1 min“ (behoben 21.07.2026). Gültig ist die
+  Angabe nur zusammen mit `live.ts`: `fixMinsAgo + (jetzt − live.ts)`. Wer eine
+  Dauer aus `data.json` anzeigt, muss sie beim Rendern neu aufaddieren —
+  dieselbe Regel gilt für jedes künftige Feld dieser Art.
+- Positionslog: nur die `LOG_HEAD` (3) neuesten Meldungen stehen offen, der Rest
+  hinter einem Knopf — über drei Wochen werden das hunderte Zeilen. Bewusst
+  **kein `<details>`**: das darf keine `<tr>` umschließen, und zwei getrennte
+  Tabellen bekämen unterschiedliche Spaltenbreiten. Stattdessen ein zweites
+  `<tbody>` in derselben Tabelle. `LOG_ALL` ist eine Modulvariable, damit der
+  aufgeklappte Zustand das 60s-Re-Render überlebt.
+- **Pausenzeilen im Log.** Das Log protokolliert Bewegung — unter `minKmDelta`
+  entsteht kein Eintrag, und ein stehender Fahrer hinterlässt darin eine
+  stumme Lücke (in der Nacht 20./21.07.2026 achteinhalb Stunden zwischen zwei
+  Zeilen, mit „1,8 km/h“ daneben). Kopfzeile und Karte wussten von der Pause,
+  ausgerechnet das Log nicht. Quelle ist dasselbe `findStops()` wie für die
+  Kartenmarker, damit nicht zwei Stellen verschiedene Pausen behaupten.
+  Einsortiert wird nach der **Mitte** der Pause, nicht nach ihrem Beginn: sie
+  überspannt oft eine Meldung (der Tracker meldet ja weiter, während er steht),
+  und nach dem Beginn einsortiert landete die Nacht unter der 19:05-Zeile —
+  also gerade nicht in der Lücke, die sie erklärt.
+- **`track.json` wird nicht mehr nur für die Karte geladen**, sondern nach dem
+  ersten Rendergang im Hintergrund (`refreshTrack()`, danach im 15-Min-Takt wie
+  das Profil) — die Pausenzeilen brauchen es. Der erste Rendergang läuft
+  weiterhin ohne, die mobile Startansicht bleibt also leicht. Abgeleitete
+  Caches (`TRACK_KM`, `STOPS_KEY`) fallen bei jedem Nachladen mit, sonst zeigt
+  die Karte alte Pausen auf neuer Spur.
 - Höhenprofil (`#profileWrap`, `renderProfile()`): handgebautes SVG, **kein
   Chart-Framework**. Wird auf die tatsächliche Container-Breite gerechnet
   (1 SVG-Einheit = 1 px), damit Schriftgrößen auf dem Handy echte Pixel sind statt
