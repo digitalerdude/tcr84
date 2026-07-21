@@ -64,6 +64,17 @@ const CONFIG = {
   profileSampleMeters: 500,
   // Pause zwischen BRouter-Anfragen — öffentlicher Gratis-Dienst.
   brouterDelayMs: 1200,
+  /* Der Abruf hängt an einer fremden Seite hinter Cloudflare; dass er mal
+     nicht durchkommt, ist Betriebsrisiko, kein Fehler. Am 21.07.2026 lief
+     `page.goto` in seinen Timeout und der 17:06-Lauf fiel komplett aus —
+     eine Stunde ohne frischen Live-Stand im Board, obwohl der nächste
+     Versuch 20 Sekunden später geklappt hätte. Also mehrere Anläufe mit
+     jeweils frischem Browser. */
+  abrufVersuche: 3,
+  abrufPauseMs: 20000,
+  // Zeit fürs Laden der Tracker-Seite. Cloudflare-Prüfung plus ein träger
+  // Server brauchen gelegentlich mehr als die ursprünglichen 45 s.
+  gotoTimeoutMs: 60000,
 };
 
 const args = process.argv.slice(2);
@@ -337,7 +348,7 @@ async function fetchRiderState() {
     // Don't wait for networkidle: this site polls continuously in the
     // background (weather widget, update countdown) and network activity
     // never fully quiets down, so networkidle can hang indefinitely.
-    await page.goto(CONFIG.trackerUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+    await page.goto(CONFIG.trackerUrl, { waitUntil: 'domcontentloaded', timeout: CONFIG.gotoTimeoutMs });
 
     const title = await waitForAppReady(page);
     log('page title after load:', title);
@@ -403,6 +414,30 @@ async function fetchRiderState() {
   } finally {
     await browser.close();
   }
+}
+
+/* Mehrere Anläufe, jeder mit frischem Browser — ein hängengebliebener Tab
+   oder eine halb durchlaufene Cloudflare-Prüfung lässt sich nicht reparieren,
+   nur neu aufsetzen. Scheitern alle, wirft die Funktion den letzten Fehler
+   weiter und der Lauf endet wie bisher mit Exit 1.
+   Dauerhaft verloren geht dabei ohnehin nichts: der GPX-Export liefert beim
+   nächsten erfolgreichen Lauf die volle Spur seit dem Start. Es geht allein
+   um den Live-Stand in der Kopfzeile, der sonst eine Stunde stehen bleibt. */
+async function fetchRiderStateMitWiederholung() {
+  let letzterFehler;
+  for (let versuch = 1; versuch <= CONFIG.abrufVersuche; versuch++) {
+    try {
+      if (versuch > 1) log(`Abruf-Versuch ${versuch} von ${CONFIG.abrufVersuche}…`);
+      return await fetchRiderState();
+    } catch (e) {
+      letzterFehler = e;
+      log(`Abruf ${versuch}/${CONFIG.abrufVersuche} fehlgeschlagen: ${String(e.message).split('\n')[0]}`);
+      if (versuch < CONFIG.abrufVersuche) {
+        await new Promise(r => setTimeout(r, CONFIG.abrufPauseMs));
+      }
+    }
+  }
+  throw letzterFehler;
 }
 
 /* ---------- Echte Spur archivieren --------------------------------------
@@ -692,7 +727,7 @@ async function main() {
     return;
   }
 
-  const rider = await fetchRiderState();
+  const rider = await fetchRiderStateMitWiederholung();
   const { gpx, ...riderLog } = rider;   // das GPX ist zigtausend Zeichen, nicht ins Log
   log('rider state:', riderLog);
 

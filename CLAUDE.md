@@ -127,6 +127,19 @@ Punkte (2026-07-20):
   dauerhaft im Hintergrund (Wetter-Widget, Update-Countdown) und wird nie "idle".
   Stattdessen wird auf den Seitentitel gepollt (`waitForAppReady`).
 
+**Wenn ein Lauf scheitert:** Der Abruf hängt an einer fremden Seite hinter
+Cloudflare — dass er gelegentlich nicht durchkommt, ist Betriebsrisiko. Am
+21.07.2026 lief `page.goto` in seinen 45-s-Timeout und der 17:06-Lauf fiel
+komplett aus (1 Fehlschlag auf 22 Läufe). Seitdem: bis zu
+`CONFIG.abrufVersuche` (3) Anläufe mit jeweils frischem Browser, 20 s Pause
+dazwischen, Timeout auf 60 s erhöht. **Dauerhaft verloren geht durch einen
+Fehlschlag ohnehin nichts** — der GPX-Export liefert beim nächsten
+erfolgreichen Lauf die volle Spur seit dem Start, Spur und Höhenprofil holen
+also lückenlos auf. Es fehlt allein eine Log-Zeile, und der Live-Stand in der
+Kopfzeile bleibt bis zum nächsten Lauf stehen (ab 150 min zeigt das Board
+dafür „Abruf hängt“). Nach einem Ausfall reicht ein manueller Lauf, um sofort
+aufzuholen, statt auf die nächste volle Stunde zu warten.
+
 **Nutzung:**
 ```bash
 cd tools
