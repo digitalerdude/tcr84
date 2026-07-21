@@ -371,9 +371,35 @@ function compute(){
   const list = sorted(), last = list[list.length-1] || null;
   const km = last ? Number(last.km) : 0;
   const rest = Math.max(total-km, 0);
-  const elapsedToLast = last ? (new Date(last.ts)-start)/3.6e6 : 0;
+  /* Ein Schnitt ist ein Verhältnis zweier Messungen und darf nur durch die
+     Zeit geteilt werden, zu der die Kilometer auch gemessen wurden. Zwei
+     Fallen stecken darin, beide hier schon dagewesen:
+
+     1. Durch die laufende Rennuhr geteilt, ließe ein Ausfall des Scrapers den
+        Fahrer langsamer werden — eine erfundene Verlangsamung.
+     2. Durch die Zeit der letzten LOG-Meldung geteilt, wird eine Pause
+        unsichtbar: das Log bekommt unter `minKmDelta` keine Zeile, steht der
+        Fahrer, bleibt der Zähler stehen und der Schnitt friert auf dem Wert
+        von vor der Pause ein. In der Nacht vom 20.07.2026 hätte das Board um
+        02:43 Uhr 17,6 km/h behauptet — tatsächlich waren es 13,2.
+
+     Deshalb der frischeste Messpunkt, den wir haben: `live` schreibt der
+     Scraper bei JEDEM Lauf, auch wenn keine Log-Zeile fällig ist. Das ist die
+     eine Stelle, an der `live` in eine Kennzahl einfließt statt nur in eine
+     Aktualitätsangabe — und zwar genau deshalb, weil die Aktualität hier Teil
+     der Rechnung ist. Der Zeitpunkt ist die Messung, nicht der Abruf:
+     `live.ts` minus dem Alter der Trackermeldung. */
+  let mKm = km, mAt = last ? new Date(last.ts) : null;
+  const lv = S.live;
+  if(lv && lv.ts && lv.km != null){
+    const gemessen = new Date(new Date(lv.ts).getTime() - (lv.fixMinsAgo||0)*6e4);
+    if(!mAt || gemessen > mAt){ mKm = Number(lv.km); mAt = gemessen; }
+  }
+  const raceH = (now-start)/3.6e6;              // laufende Rennuhr
+  const measuredH = mAt ? (mAt-start)/3.6e6 : 0; // Rennzeit bis zur frischesten Messung
+  const staleH = mAt ? (now-mAt)/3.6e6 : 0;      // wie weit unser Wissen zurückliegt
   const leftToDl = (dl-now)/3.6e6;
-  const avg = elapsedToLast > 0 ? km/elapsedToLast : 0;
+  const avg = measuredH > 0 ? mKm/measuredH : 0;
   const need = leftToDl > 0 ? rest/leftToDl : Infinity;
   const eta = avg > 0 && rest > 0 ? new Date(now.getTime() + rest/avg*3.6e6) : null;
   const buffer = eta ? (dl-eta) : (rest===0 && last ? dl-new Date(last.ts) : null);
@@ -406,6 +432,7 @@ function compute(){
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
   return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,state,
+          raceH,measuredH,staleH,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
 
@@ -422,7 +449,12 @@ function renderMetrics(c){
         : (c.last ? 'letzte Meldung vor '+dur(c.now-new Date(c.last.ts)) : 'noch keine Meldung'), ''],
     ['Gefahren', c.last? num(c.km):'–', 'km', c.last? one(c.km/c.total*100)+' % der Strecke':'', ''],
     ['Rest bis Kalamata', c.last? num(c.rest):'–', 'km', '', ''],
-    ['Ø-Schnitt gesamt', c.avg? one(c.avg):'–', 'km/h', c.avg? num(c.avg*24)+' km/Tag inkl. Pausen':'', ''],
+    /* Der Zusatz erscheint nur, wenn das Wissen wirklich zurückliegt (ab 1 h,
+       also nach einem ausgefallenen stündlichen Lauf). Im Normalbetrieb wäre
+       er Rauschen — dann sind Rennuhr und Messung ohnehin deckungsgleich. */
+    ['Ø-Schnitt gesamt', c.avg? one(c.avg):'–', 'km/h',
+      c.avg? num(c.avg*24)+' km/Tag inkl. Pausen'
+             + (c.staleH >= 1 ? ' · gemessen bis '+dur(c.staleH*3.6e6)+' zurück' : '') : '', ''],
     ['Soll-Schnitt ab jetzt', isFinite(c.need)&&c.rest>0? one(c.need):'–', 'km/h',
       c.rest===0? 'Ziel erreicht' : isFinite(c.need)? num(c.need*24)+' km/Tag · '+dur(c.dl-c.now)+' übrig':'Zeitlimit vorbei',
       c.rest===0?'good':(c.state==='alert'?'alert':(c.avg && c.need<=c.avg?'good':'warn'))],
@@ -447,7 +479,7 @@ function renderMetrics(c){
       : 'Noch keine Position gemeldet. Sobald der erste Stand eingetragen ist, erscheint hier die Einschätzung.';
   } else {
     const p = [];
-    p.push(`Bei <strong>${one(c.avg)} km/h</strong> im Mittel über die gesamte Rennzeit reicht es ${
+    p.push(`Bei <strong>${one(c.avg)} km/h</strong> im Mittel seit dem Start reicht es ${
       c.rest===0 ? 'nicht mehr zu diskutieren, das Ding ist durch.' :
       c.state==='alert' ? 'nicht bis zum Zeitlimit.' :
       c.state==='warn' ? 'gerade so, ohne Reserve.' : 'mit Reserve.'}`);
@@ -460,8 +492,10 @@ function renderMetrics(c){
         lastCl.down > lastCl.up*1.5 ? ' — netto ging es aber deutlich abwärts.' : '.'}`);
     if(c.nextCp) p.push(`Bis ${c.nextCp.nm}: <strong>${num(c.nextCp.km-c.km)} km</strong>${
       c.avg? `, bei gleichem Schnitt rund ${dur((c.nextCp.km-c.km)/c.avg*3.6e6)}.` : '.'}`);
-    const age = (c.now-new Date(c.last.ts))/3.6e6;
-    if(age > 18) p.push(`Die letzte Meldung ist über ${Math.floor(age)} Stunden alt, die Prognose ist entsprechend weich.`);
+    /* Dieselbe Zeitspanne wie im Kennzahlenstreifen — nicht die letzte
+       LOG-Zeile, die bei einer Pause stundenlang alt ist, ohne dass etwas
+       fehlt. `staleH` misst, wie alt unser Wissen tatsächlich ist. */
+    if(c.staleH > 3) p.push(`Unser letzter Stand ist ${dur(c.staleH*3.6e6)} alt, die Prognose ist entsprechend weich.`);
     v.innerHTML = p.join(' ');
   }
 }

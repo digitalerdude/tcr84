@@ -70,8 +70,32 @@ Board die Kopfzeile (`renderLive()`) mit drei unterscheidbaren Zuständen:
 Pause läuft / unterwegs / **unser Abruf hängt** (ab 150 Min ohne neuen `live.ts`).
 Der dritte ist der wichtigste — ohne ihn ist von außen nicht zu erkennen, ob der
 Fahrer steht oder der launchd-Job tot ist.
-Die Kennzahlen rechnen weiter ausschließlich mit `entries`; `live` fließt nur in
-Anzeigen ein, die Aktualität ausdrücken („zuletzt gesehen vor …“).
+Die Kennzahlen rechnen mit `entries` — mit **einer** Ausnahme, dem Ø-Schnitt
+(seit 21.07.2026, siehe unten). Sonst fließt `live` nur in Anzeigen ein, die
+Aktualität ausdrücken („zuletzt gesehen vor …”).
+
+**Der Ø-Schnitt braucht den frischesten Messpunkt.** Ein Schnitt ist das
+Verhältnis zweier Messungen und darf nur durch die Zeit geteilt werden, zu der
+die Kilometer auch gemessen wurden. Zwei Fallen, beide dagewesen:
+
+1. Durch die **laufende Rennuhr** geteilt (`now − start`) ließe ein Ausfall des
+   Scrapers den Fahrer langsamer werden — eine erfundene Verlangsamung.
+2. Durch die Zeit der **letzten Log-Meldung** geteilt wird eine Pause
+   unsichtbar: unter `minKmDelta` entsteht keine Zeile, der Zähler bleibt
+   stehen und der Schnitt friert auf dem Wert von vor der Pause ein. In der
+   Nacht vom 20.07.2026 hätte das Board um 02:43 Uhr **17,6 km/h** behauptet
+   — tatsächlich waren es **13,2**, ein Drittel zu hoch, und das floss über
+   `eta` direkt in den Puffer auf das Zeitlimit.
+
+Deshalb rechnet `compute()` mit dem frischesten Paar aus Kilometerstand und
+Messzeit, und das ist bei laufender Pause `live` (`live.ts` minus
+`fixMinsAgo` — der Zeitpunkt der Messung, nicht des Abrufs). Drei benannte
+Zeitspannen halten das auseinander: `raceH` (laufende Rennuhr), `measuredH`
+(Rennzeit bis zur frischesten Messung, Nenner des Schnitts) und `staleH` (wie
+weit unser Wissen zurückliegt). `staleH` speist beide Warnhinweise — den
+Zusatz „gemessen bis … zurück“ am Ø-Schnitt ab 1 h und den Satz im
+Einschätzungskasten ab 3 h —, damit Kopfzeile, Kennzahl und Fließtext nicht
+drei verschiedene Alter behaupten.
 
 **Zusätzliche Felder sind sicher:** `renderLog()` und `compute()` ignorieren
 unbekannte Keys, neue optionale Felder (wie `lat`/`lon`/`speed`) brechen nichts.
