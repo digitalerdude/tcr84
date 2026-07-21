@@ -53,29 +53,31 @@
     },
     {
       "id": "1784559126791",
-      "ts": "2026-07-20T16:52",
+      "ts": "2026-07-20T16:50",
       "km": 360.17,
       "place": "Solhaug",
       "note": "Platz 66",
       "lat": 61.772323,
       "lon": 10.21984,
       "ele": 934,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784559924611",
-      "ts": "2026-07-20T17:05",
+      "ts": "2026-07-20T17:00",
       "km": 361.73,
       "place": "Gunstadsætra",
       "note": "Platz 66",
       "lat": 61.76273,
       "lon": 10.199278,
       "ele": 1000,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784563530946",
-      "ts": "2026-07-20T18:05",
+      "ts": "2026-07-20T18:00",
       "km": 387.06,
       "place": "Venabygd",
       "note": "Platz 66",
@@ -83,11 +85,12 @@
       "lon": 10.063495,
       "speed": 38.6,
       "ele": 570,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784567137525",
-      "ts": "2026-07-20T19:05",
+      "ts": "2026-07-20T19:00",
       "km": 404.81,
       "place": "Harpefoss",
       "note": "Platz 66",
@@ -95,11 +98,12 @@
       "lon": 9.870074,
       "speed": 0,
       "ele": 251,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784598243709",
-      "ts": "2026-07-21T03:44",
+      "ts": "2026-07-21T03:43",
       "km": 420.01,
       "place": "Espe",
       "note": "Platz 71",
@@ -107,11 +111,12 @@
       "lon": 9.654457,
       "speed": 24.5,
       "ele": 537,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784601854872",
-      "ts": "2026-07-21T04:44",
+      "ts": "2026-07-21T04:42",
       "km": 433.73,
       "place": "Myreng",
       "note": "Platz 74",
@@ -119,11 +124,12 @@
       "lon": 9.46029,
       "speed": 0,
       "ele": 766,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784605464367",
-      "ts": "2026-07-21T05:44",
+      "ts": "2026-07-21T05:42",
       "km": 448.75,
       "place": "Vollsætra",
       "note": "Platz 78",
@@ -131,11 +137,12 @@
       "lon": 9.33801,
       "speed": 5.6,
       "ele": 844,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784609073164",
-      "ts": "2026-07-21T06:44",
+      "ts": "2026-07-21T06:42",
       "km": 463.75,
       "place": "Nord-Fron",
       "note": "Platz 83",
@@ -143,11 +150,12 @@
       "lon": 9.177978,
       "speed": 0,
       "ele": 1068,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784612681524",
-      "ts": "2026-07-21T07:44",
+      "ts": "2026-07-21T07:42",
       "km": 478.62,
       "place": "Urek",
       "note": "Platz 84",
@@ -155,11 +163,12 @@
       "lon": 8.973632,
       "speed": 12.3,
       "ele": 1049,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784616290836",
-      "ts": "2026-07-21T08:44",
+      "ts": "2026-07-21T08:42",
       "km": 494.06,
       "place": "Raudfjordsanden",
       "note": "Platz 85",
@@ -167,11 +176,12 @@
       "lon": 8.80696,
       "speed": 7.2,
       "ele": 1096,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784628440303",
-      "ts": "2026-07-21T12:07",
+      "ts": "2026-07-21T12:03",
       "km": 532.46,
       "place": "Neset",
       "note": "Platz 102",
@@ -179,11 +189,12 @@
       "lon": 8.666106,
       "speed": 0.2,
       "ele": 466,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784632048622",
-      "ts": "2026-07-21T13:07",
+      "ts": "2026-07-21T13:03",
       "km": 551.48,
       "place": "Nedre Dalen",
       "note": "Platz 114",
@@ -191,11 +202,12 @@
       "lon": 8.386678,
       "speed": 10.1,
       "ele": 497,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784635655853",
-      "ts": "2026-07-21T14:07",
+      "ts": "2026-07-21T14:03",
       "km": 561.75,
       "place": "Tyinkrysset",
       "note": "Platz 117",
@@ -203,11 +215,12 @@
       "lon": 8.25619,
       "speed": 9.2,
       "ele": 815,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784639265848",
-      "ts": "2026-07-21T15:07",
+      "ts": "2026-07-21T15:06",
       "km": 572.71,
       "place": "Grønlistølen",
       "note": "Platz 126",
@@ -215,11 +228,12 @@
       "lon": 8.082614,
       "speed": 20.1,
       "ele": 950,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     },
     {
       "id": "1784642875208",
-      "ts": "2026-07-21T16:07",
+      "ts": "2026-07-21T16:06",
       "km": 599.76,
       "place": "Steinklepp",
       "note": "Platz 136",
@@ -227,10 +241,11 @@
       "lon": 7.851051,
       "speed": 18.5,
       "ele": 408,
-      "eleSrc": "dem"
+      "eleSrc": "dem",
+      "tsSrc": "track"
     }
   ],
-  "updated": "2026-07-21T14:07:55.355Z",
+  "updated": "2026-07-21T14:14:50.253Z",
   "live": {
     "ts": "2026-07-21T16:07",
     "km": 599.76,
