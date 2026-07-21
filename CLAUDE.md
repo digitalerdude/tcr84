@@ -422,6 +422,23 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   die Pause ist verdient“, ab 30 Tages-km, aus `cumClimbAt()` seit
   Mitternacht). Der Zuspruch bleibt neutral zum Grund der Pause — siehe die
   Schlaf-Regel bei der Karte.
+- **Feiermoment beim Kontrollpunkt** (`maybeCelebrate()`/`showCelebration()`):
+  vollflächiger Kasten mit grünem Haken (SVG, zeichnet sich per
+  `stroke-dashoffset` selbst) und Konfetti (~80 `<i>`, gemeinsame Keyframe-
+  Regel, Drift/Drehung/Dauer je Teil über CSS-Variablen — kein Animations-Loop
+  in JS, keine Bibliothek). Kalamata bekommt eine eigene Textfassung
+  („Zieleinlauf“).
+  **Einmal je Gerät und Kontrollpunkt**, gemerkt in `localStorage` unter
+  `tcr84:cpSeen` (Liste der Namen). Ohne diese Sperre ginge das Konfetti bei
+  jedem 60-Sekunden-Tick von `render()` wieder los. Zwei Feinheiten, die
+  Absicht sind: Die Sperre `celebrating` fällt **sofort**, die Gesehen-Marke
+  aber erst, wenn der Kasten nach 600 ms wirklich aufgeht — wer den Tab vorher
+  schließt, hat seine Feier nicht verloren. Und ist `localStorage` blockiert
+  (privates Fenster), hält `SEEN_MEM` die Sperre wenigstens für die Sitzung.
+  Das 24-h-Fenster von `cpReached` ist zugleich der Schutz gegen Verspätetes:
+  wer Tage später zum ersten Mal vorbeischaut, bekommt keine schale Feier.
+  Zum Vorführen/Testen in der Konsole: `tcr84Feier()` · `tcr84Feier('Kalamata')`
+  · `tcr84FeierReset()`.
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in

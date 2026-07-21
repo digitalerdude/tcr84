@@ -172,6 +172,38 @@
   /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
   #profileWrap details{margin-top:-1px}
 
+  /* Feiermoment beim Erreichen eines Kontrollpunkts. Vollflächig, weil der
+     Moment im Rennen selten ist (fünfmal in drei Wochen) — er darf den Blick
+     einmal ganz haben und ist mit einem Klick wieder weg. */
+  .celebrate{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;
+             background:rgba(6,12,18,.84);padding:20px;animation:celFade .3s ease}
+  @keyframes celFade{from{opacity:0}to{opacity:1}}
+  .celPanel{position:relative;background:var(--panel);border:1px solid var(--brass);
+            max-width:390px;width:100%;padding:26px 22px 22px;text-align:center;
+            animation:celPop .45s cubic-bezier(.2,1.25,.4,1)}
+  @keyframes celPop{from{opacity:0;transform:scale(.88) translateY(14px)}to{opacity:1;transform:none}}
+  .celEyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .celPanel h3{font-size:25px;margin:7px 0 0;letter-spacing:-.02em}
+  .celSub{font-family:var(--mono);font-size:12px;color:var(--ice);margin-top:11px;line-height:1.75}
+  .celStats{display:flex;justify-content:center;gap:22px;margin-top:15px;
+            font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .celStats b{display:block;font-size:18px;color:var(--bone);font-weight:600;margin-bottom:3px;letter-spacing:-.02em}
+  .celClose{margin-top:21px;width:100%}
+  /* Der Haken zeichnet sich selbst: Kreis, dann Häkchen — reines
+     stroke-dashoffset, kein Bild und keine Bibliothek. */
+  .celMark{width:72px;height:72px;margin:0 auto;display:block}
+  .celMark .cm-c,.celMark .cm-k{fill:none;stroke:var(--good);stroke-linecap:round;stroke-linejoin:round}
+  .celMark .cm-c{stroke-width:3;stroke-dasharray:170;stroke-dashoffset:170;animation:celDraw .55s ease-out .1s forwards}
+  .celMark .cm-k{stroke-width:4;stroke-dasharray:44;stroke-dashoffset:44;animation:celDraw .35s ease-out .5s forwards}
+  @keyframes celDraw{to{stroke-dashoffset:0}}
+  .confetti{position:fixed;inset:0;z-index:9001;pointer-events:none;overflow:hidden}
+  .confetti i{position:absolute;top:-8vh;display:block;animation:confFall linear forwards}
+  @keyframes confFall{to{transform:translate(var(--dx,0),114vh) rotate(var(--rot,720deg))}}
+  @media (prefers-reduced-motion:reduce){
+    .celPanel{animation:none}
+    .celMark .cm-c,.celMark .cm-k{animation:none;stroke-dashoffset:0}
+  }
+
   table{width:100%;border-collapse:collapse;font-size:14px}
   th{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
      text-align:left;font-weight:500;padding:0 8px 8px 0;border-bottom:1px solid var(--line)}
@@ -442,11 +474,15 @@ function compute(){
   const nextCp = st.cps.find(c=> Number(c.km) > km) || null;
   /* Zuletzt erreichter Kontrollpunkt samt Zeitpunkt (erste Meldung auf oder
      hinter seinem Kilometer). Jünger als 24 h heißt: das Board feiert noch —
-     Einschätzungskasten und Leiter machen den Moment sichtbar, statt ihn im
-     Log versinken zu lassen. Start (km 0) und Ziel sind ausgenommen: das
-     Ziel hat mit `rest === 0` seine eigene Feier. */
+     Einschätzungskasten, Leiter und der Feier-Kasten (`maybeCelebrate()`)
+     machen den Moment sichtbar, statt ihn im Log versinken zu lassen.
+     Kalamata zählt mit: der Zieleinlauf ist der größte dieser Momente. Nur
+     Trondheim (km 0) ist ausgenommen — der Start ist kein Erfolg.
+     Das 24-h-Fenster ist auch der Schutz gegen Verspätetes: wer das Board
+     drei Tage nach CP1 zum ersten Mal öffnet, bekommt keine schale Feier
+     mehr vorgesetzt. */
   let cpReached = null;
-  const passedCp = st.cps.filter(cp=> Number(cp.km) > 0 && Number(cp.km) < total && Number(cp.km) <= km).pop();
+  const passedCp = st.cps.filter(cp=> Number(cp.km) > 0 && Number(cp.km) <= km).pop();
   if(passedCp){
     const hit = list.find(e=> Number(e.km) >= Number(passedCp.km));
     if(hit && (now - new Date(hit.ts)) < 24*3.6e6) cpReached = {cp: passedCp, ts: hit.ts};
@@ -1364,10 +1400,131 @@ function renderSource(c){
        Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
 }
 
+/* ---------- Feiermoment beim Kontrollpunkt ----------
+   Erreicht Manuel einen Kontrollpunkt, bekommt jeder, der das Board öffnet,
+   einmal Konfetti und einen grünen Haken — aber wirklich nur EINMAL je Gerät
+   und Kontrollpunkt, sonst wäre es beim dritten Nachschauen an dem Tag eine
+   Belästigung. Gemerkt wird das in `localStorage`; `render()` läuft im
+   60-Sekunden-Takt, ohne diese Sperre ginge das Konfetti minütlich wieder los.
+
+   Zwei Fälle bleiben bewusst ohne Feier: ein Kontrollpunkt, der länger als
+   24 h zurückliegt (`cpReached` ist dann null — niemand soll Tage später eine
+   schale Feier sehen), und ein Gerät, auf dem localStorage blockiert ist
+   (privates Fenster). Für den zweiten Fall gibt es `SEEN_MEM` als Notnagel:
+   dann hält die Sperre wenigstens, solange der Tab offen ist. */
+const SEEN_KEY = 'tcr84:cpSeen';
+const SEEN_MEM = new Set();
+function seenCps(){
+  try{ return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
+  catch(e){ return new Set(); }
+}
+function markCpSeen(nm){
+  SEEN_MEM.add(nm);
+  try{ localStorage.setItem(SEEN_KEY, JSON.stringify([...seenCps(), nm])); }catch(e){}
+}
+
+let celebrating = false;
+function maybeCelebrate(c){
+  if(celebrating || !c.cpReached) return;
+  const nm = c.cpReached.cp.nm;
+  if(SEEN_MEM.has(nm) || seenCps().has(nm)) return;
+  /* `celebrating` sperrt sofort (render() läuft im 60s-Takt weiter), die
+     Gesehen-Marke fällt aber erst, wenn der Kasten wirklich aufgeht — wer den
+     Tab in den 600 ms davor schließt, soll seine Feier nicht verloren haben. */
+  celebrating = true;
+  // Kurz warten, damit die Feier auf ein fertig gezeichnetes Board fällt
+  // statt gleichzeitig mit ihm aufzuploppen.
+  setTimeout(()=>{ markCpSeen(nm); showCelebration(c, c.cpReached); }, 600);
+}
+
+/* Konfetti aus ~80 winzigen <i>, jedes mit eigener Falldauer, Drift und
+   Drehung über CSS-Variablen — eine gemeinsame Keyframe-Regel, kein
+   Animations-Loop in JS und keine Bibliothek. Räumt sich selbst wieder ab. */
+function confettiRain(){
+  if(matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  const box = document.createElement('div');
+  box.className = 'confetti';
+  const cols = ['#D9A441','#BCD7DE','#86B08C','#E9E4D8'];
+  let html = '';
+  for(let i=0;i<80;i++){
+    const w = (5+Math.random()*6).toFixed(1), h = (7+Math.random()*7).toFixed(1);
+    html += `<i style="left:${(Math.random()*100).toFixed(1)}%;width:${w}px;height:${h}px;` +
+      `background:${cols[i%cols.length]};${Math.random()<.35?'border-radius:50%;':''}` +
+      `--dx:${(Math.random()*90-45).toFixed(0)}px;--rot:${(Math.random()*900-300).toFixed(0)}deg;` +
+      `animation-duration:${(2.6+Math.random()*2).toFixed(2)}s;` +
+      `animation-delay:${(Math.random()*1.3).toFixed(2)}s;` +
+      `opacity:${(.6+Math.random()*.4).toFixed(2)}"></i>`;
+  }
+  box.innerHTML = html;
+  document.body.appendChild(box);
+  setTimeout(()=> box.remove(), 7000);
+}
+
+function showCelebration(c, r){
+  const ziel = Number(r.cp.km) >= c.total;
+  const cum = cumClimbAt(new Date(r.ts).getTime()/1000);
+  const ov = document.createElement('div');
+  ov.className = 'celebrate';
+  ov.setAttribute('role','dialog');
+  ov.setAttribute('aria-modal','true');
+  ov.setAttribute('aria-label', (ziel ? 'Ziel erreicht: ' : 'Kontrollpunkt erreicht: ') + r.cp.nm);
+  ov.innerHTML = `
+    <div class="celPanel">
+      <svg class="celMark" viewBox="0 0 60 60" aria-hidden="true">
+        <circle class="cm-c" cx="30" cy="30" r="27"/>
+        <path class="cm-k" d="M18 31.5 L26.5 40 L43 21"/>
+      </svg>
+      <div class="celEyebrow">${ziel ? 'Zieleinlauf' : 'Kontrollpunkt erreicht'}</div>
+      <h3>${esc(r.cp.nm)}</h3>
+      <div class="celSub">
+        ${ziel ? 'Manuel ist angekommen. 4.800 Kilometer quer durch Europa.'
+               : 'Manuel hat den Kontrollpunkt passiert.'}<br>
+        ${fmt(r.ts)} · nach ${dur(new Date(r.ts)-c.start)} Rennzeit
+      </div>
+      <div class="celStats">
+        <div><b>${num(Number(r.cp.km))}</b>km gefahren</div>
+        ${cum ? `<div><b>${num(Math.round(cum.up))}</b>hm bergauf</div>` : ''}
+      </div>
+      <button class="celClose" id="celClose">${ziel ? 'Was für eine Fahrt!' : 'Weiter geht’s!'}</button>
+    </div>`;
+  document.body.appendChild(ov);
+  confettiRain();
+
+  const zu = ()=>{
+    ov.remove(); celebrating = false;
+    document.removeEventListener('keydown', beiTaste);
+  };
+  const beiTaste = e=>{ if(e.key === 'Escape') zu(); };
+  ov.querySelector('#celClose').onclick = zu;
+  ov.onclick = e=>{ if(e.target === ov) zu(); };   // Klick daneben schließt auch
+  document.addEventListener('keydown', beiTaste);
+  ov.querySelector('#celClose').focus();
+}
+
+/* Zum Ausprobieren und Vorführen in der Browser-Konsole:
+     tcr84Feier()             letzten passierten Kontrollpunkt nochmal feiern
+     tcr84Feier('CP1 Flåm')   einen bestimmten
+     tcr84Feier('Kalamata')   die Zielfassung ansehen
+     tcr84FeierReset()        Gesehen-Markierungen löschen, dann feiert es echt neu */
+window.tcr84Feier = nm=>{
+  const c = compute();
+  const cp = nm ? c.st.cps.find(x=> x.nm === nm) : (c.cpReached || {}).cp;
+  if(!cp) return 'kein Kontrollpunkt gefunden — Namen prüfen: ' + c.st.cps.map(x=>x.nm).join(', ');
+  celebrating = true;
+  showCelebration(c, {cp, ts: (c.cpReached && c.cpReached.ts) || (c.last||{}).ts || c.st.start});
+  return 'ok';
+};
+window.tcr84FeierReset = ()=>{
+  SEEN_MEM.clear();
+  try{ localStorage.removeItem(SEEN_KEY); }catch(e){}
+  return 'zurückgesetzt — beim nächsten erreichten Kontrollpunkt feiert es wieder.';
+};
+
 function render(){
   const c = compute();
   renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
+  maybeCelebrate(c);
   if(EDIT) renderDirty();
   if(mapObj && document.getElementById('mapDetails').open) renderMap(c);
 }
