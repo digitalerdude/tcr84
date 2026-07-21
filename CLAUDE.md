@@ -426,8 +426,14 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   vollflächiger Kasten mit grünem Haken (SVG, zeichnet sich per
   `stroke-dashoffset` selbst) und Konfetti (~80 `<i>`, gemeinsame Keyframe-
   Regel, Drift/Drehung/Dauer je Teil über CSS-Variablen — kein Animations-Loop
-  in JS, keine Bibliothek). Kalamata bekommt eine eigene Textfassung
-  („Zieleinlauf“).
+  in JS, keine Bibliothek). Gilt für **alle** Kontrollpunkte, nicht nur CP1 —
+  der Kasten hängt an `settings.cps`, nicht an einem Namen. Damit sich vier
+  Feiern nicht gleich anfühlen, zeigt er die Stelle in der Kette: Zähler in
+  der Überzeile („Kontrollpunkt 2 von 4“), eine Punktreihe (erledigt gefüllt,
+  kommend hohl, das Ziel als Raute) und das nächste Etappenziel mit Distanz.
+  Gezählt wird über die Kilometer aus der Liste, nicht über Namen — kommt ein
+  CP dazu oder verschiebt sich einer, stimmt der Zähler weiter. Kalamata
+  bekommt eine eigene Textfassung („Zieleinlauf“) und hat kein nächstes Ziel.
   **Einmal je Gerät und Kontrollpunkt**, gemerkt in `localStorage` unter
   `tcr84:cpSeen` (Liste der Namen). Ohne diese Sperre ginge das Konfetti bei
   jedem 60-Sekunden-Tick von `render()` wieder los. Zwei Feinheiten, die
