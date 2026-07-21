@@ -109,7 +109,29 @@ node update-tracker.mjs --headed             # Fenster sichtbar (Debugging)
 node update-tracker.mjs --dump=rider.json    # rohes ridersArray-Objekt für den Fahrer dumpen
 node update-tracker.mjs --backfill            # nur fehlende Höhen-Felder nachtragen (ohne Browser)
 node update-tracker.mjs --backfill --force    # dito, auch vorhandene Werte neu rechnen
+node update-tracker.mjs --places              # Ortsnamen bestehender Einträge neu auflösen (ohne Browser)
 ```
+
+### Ortsnamen (Nominatim)
+
+`reverseGeocode()` fragt mit **`zoom=14`** ab, nicht mit 12. Stufe 12 ist die
+Gemeindeebene, und norwegische Kommunen sind riesig: drei aufeinanderfolgende
+Meldungen am 21.07.2026 über 44 km Fahrt bekamen alle „Nord-Fron" (~1.100 km²)
+und das Log sah aus, als stünde er seit drei Stunden am selben Fleck.
+
+Feldpriorität: `village → hamlet → town → city → suburb → name → municipality →
+county`. `name` steht bewusst **vor** der Gemeinde, aber **hinter** allen echten
+Siedlungsfeldern — auf Stufe 14 ist `name` ein lokaler Flur-/Hofname
+(Vollsætra, Myreng), nicht jedem ein Begriff, aber ein echter Punkt auf der Karte
+statt eines Landkreises. **Nicht auf zoom=16 hochdrehen:** dort ist `name` meist
+der Straßenname (Skåbuvegen), als Ortsangabe unbrauchbar. Bleibt alles leer, ist
+es tatsächlich Niemandsland — dann ist die Gemeinde die ehrliche Antwort und darf
+sich auch wiederholen.
+
+Nach einer Änderung an dieser Kette `--places` laufen lassen, sonst stehen alte
+grobe und neue feine Namen im selben Log nebeneinander. Der Modus fasst nur
+Einträge mit `lat`/`lon` an (von Hand gesetzte bleiben unberührt) und hält 1,1 s
+Abstand je Anfrage — Nominatims Nutzungsregeln erlauben eine pro Sekunde.
 
 ### Höhen und Höhenmeter
 

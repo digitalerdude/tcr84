@@ -19,6 +19,7 @@
  *   node update-tracker.mjs --dump=rider.json  # dump the raw ridersArray entry for inspection
  *   node update-tracker.mjs --backfill       # rebuild the elevation profile from the archived track (no browser)
  *   node update-tracker.mjs --backfill --force   # ... from scratch, e.g. after changing the routing profile
+ *   node update-tracker.mjs --places         # re-resolve place names of existing entries (no browser)
  */
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -70,6 +71,7 @@ const FLAGS = {
   push: args.includes('--push'),
   headed: args.includes('--headed'),
   backfill: args.includes('--backfill'),
+  places: args.includes('--places'),
   dump: (args.find(a => a.startsWith('--dump=')) || '').split('=')[1] || null,
 };
 
@@ -96,14 +98,27 @@ async function waitForAppReady(page, timeoutMs = 40000) {
   return lastTitle; // whatever we last saw, so the caller can log it
 }
 
+/* zoom=14, nicht 12: Stufe 12 ist bei Nominatim die Gemeindeebene, und
+ * norwegische Kommunen sind riesig — Nord-Fron misst rund 1.100 km². Drei
+ * aufeinanderfolgende Meldungen über 44 km Fahrt bekamen dadurch alle denselben
+ * Ortsnamen und das Log sah aus, als stünde er seit Stunden still.
+ *
+ * `name` steht in der Kette VOR der Gemeinde, aber hinter allen echten
+ * Siedlungsfeldern: auf Stufe 14 ist `name` ein lokaler Flur-/Hofname
+ * (Vollsætra, Myreng) — nicht jedem ein Begriff, aber ein echter Punkt auf der
+ * Karte statt eines Landkreises. Auf Stufe 16 wäre `name` dagegen meist der
+ * Straßenname (Skåbuvegen), das ist als Ortsangabe unbrauchbar. Bleibt alles
+ * leer, ist es wirklich Niemandsland — dann ist die Gemeinde die ehrliche
+ * Antwort und darf sich auch wiederholen. */
 async function reverseGeocode(lat, lon) {
   try {
-    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=12&accept-language=de`;
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=de`;
     const res = await fetch(url, { headers: { 'User-Agent': 'tcr84-tracker-updater (personal dotwatch board, github.com/digitalerdude/tcr84)' } });
     if (!res.ok) return '';
     const data = await res.json();
     const a = data.address || {};
-    return a.village || a.town || a.city || a.municipality || a.county || data.name || '';
+    return a.village || a.hamlet || a.town || a.city || a.suburb || data.name ||
+           a.municipality || a.county || '';
   } catch {
     return '';
   }
@@ -528,7 +543,36 @@ async function backfill() {
   else log('dry run — not committed. Pass --commit (and --push) to publish.');
 }
 
+/* Ortsnamen bestehender Einträge neu auflösen — nötig nach einer Änderung an
+ * reverseGeocode(), sonst stehen alte grobe und neue feine Namen im selben Log
+ * nebeneinander. Kein Browser nötig, nur Nominatim. Deren Nutzungsregeln
+ * erlauben eine Anfrage pro Sekunde; das Log hat wenige Dutzend Einträge, das
+ * läuft also in Sekunden durch. Einträge ohne lat/lon sind von Hand gesetzt und
+ * werden nicht angefasst. */
+async function refreshPlaces() {
+  const data = loadData();
+  const entries = (data.entries || []).filter(e => e.lat != null && e.lon != null);
+  log(`${entries.length} Einträge mit Koordinaten — Ortsnamen neu auflösen…`);
+  let changed = 0;
+  for (const e of entries) {
+    const place = await reverseGeocode(e.lat, e.lon);
+    if (place && place !== e.place) {
+      log(`  ${e.ts}  ${e.place || '—'} → ${place}`);
+      e.place = place;
+      changed++;
+    }
+    await new Promise(r => setTimeout(r, 1100));
+  }
+  if (!changed) { log('nichts geändert.'); return; }
+  data.updated = new Date().toISOString();
+  saveData(data);
+  log(`data.json: ${changed} Ortsname(n) verfeinert.`);
+  if (FLAGS.commit) commitAll(`Ortsnamen der Meldungen verfeinert (${changed} Einträge)`);
+  else log('dry run — not committed. Pass --commit (and --push) to publish.');
+}
+
 async function main() {
+  if (FLAGS.places) return refreshPlaces();
   if (FLAGS.backfill) return backfill();
 
   const data0 = loadData();
