@@ -395,21 +395,41 @@ Zwei Eigenheiten, die nicht "vereinfacht" gehören:
 
 ## Automatisierung (launchd)
 
-`~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — läuft
-stündlich (`StartInterval: 3600`), ruft
-`update-tracker.mjs --commit --push` auf.
+`~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — tickt alle
+15 Minuten (`StartInterval: 900`), ruft
+`update-tracker.mjs --commit --push --scheduled` auf.
 
-**Warum stündlich reicht:** kurzzeitig stand das Intervall auf 30 Minuten, um mehr
-Auflösung fürs Höhenprofil zu bekommen. Das ist seit dem GPX-Fund hinfällig — der
-Export liefert bei *jedem* Abruf die volle 5-Minuten-Spur seit dem Start, die
-Profilauflösung hängt also gar nicht am Intervall. Daran hängt nur noch die Frische
-der Kopfzahlen (km-Stand, Platz, „letzte Meldung vor…“), und dafür reicht stündlich.
-Dagegen stehen 24 statt 48 Chromium-Starts und Commits pro Tag.
+**Häufiger ticken, gleich oft arbeiten.** Der Takt sagt nichts darüber, wie oft ein
+Browser startet: `--scheduled` lässt den Lauf **vor** dem Browserstart abbrechen,
+wenn `live.ts` jünger ist als `CONFIG.laufFaelligNachMin` (50 min). Ein nicht
+fälliger Tick kostet dadurch 0,2 Sekunden und keinen Chromium-Start — nach einem
+Erfolg um :06 fallen :21, :36 und :51 stillschweigend durch, es bleibt bei ~24
+echten Läufen am Tag.
+
+**Der Gewinn ist die Erholung.** Scheitert ein Lauf, bleibt `live.ts` alt — und
+schon der nächste Tick arbeitet wieder. Aus „eine Stunde ohne Daten“ wird
+„höchstens eine Viertelstunde“, ohne Zutun. Das ist der Fall, für den es gebaut
+ist: niemand sitzt am Mac, und der Ausfall soll sich von selbst auswachsen.
+Zusammen mit den drei Anläufen *innerhalb* eines Laufs (siehe oben) muss schon
+sehr viel zusammenkommen, damit eine Lücke entsteht.
+
+**Was das NICHT abfängt:** einen dauerhaften Defekt (Chromium nach einem Update
+kaputt, Cloudflare sperrt systematisch, Seitenstruktur geändert, Netz zu Hause
+weg). Dagegen hilft kein Wiederholen, sondern nur eine Benachrichtigung.
+
+**Schlafender Mac:** `StartInterval` feuert verpasste Läufe nach dem Aufwachen
+nach — zugeklappt passiert nichts, nach dem Öffnen holt der Job von selbst auf.
+
+**Warum nicht feiner als 15 Minuten:** die Profilauflösung hängt seit dem GPX-Fund
+nicht am Intervall (der Export liefert bei jedem Abruf die volle 5-Minuten-Spur
+seit dem Start). Am Takt hängt nur die Frische der Kopfzahlen und die
+Erholungszeit nach einem Fehlschlag.
 
 `RunAtLoad` ist **`false`**: ein `launchctl bootstrap` startet den Job also *nicht*
-sofort, sondern **setzt den Stundentakt neu auf**. Nach einem Neuladen dauert es
-dadurch bis zu einer vollen Stunde bis zum nächsten Lauf — wer sofort ein Ergebnis
-will, nimmt `launchctl kickstart -k gui/$(id -u)/com.digitalerdude.tcr84-tracker-updater`.
+sofort, sondern **setzt den Takt neu auf**. Wer sofort ein Ergebnis
+will, nimmt `launchctl kickstart -k gui/$(id -u)/com.digitalerdude.tcr84-tracker-updater`
+oder ruft das Skript direkt auf — ein Lauf von Hand kennt kein `--scheduled` und
+arbeitet deshalb immer sofort.
 Läuft in der GUI-Session des Users (nicht als reiner Daemon), das ist nötig, damit
 der "headed"-Chromium-Start funktioniert (siehe oben).
 

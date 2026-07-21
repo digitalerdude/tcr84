@@ -75,6 +75,15 @@ const CONFIG = {
   // Zeit fürs Laden der Tracker-Seite. Cloudflare-Prüfung plus ein träger
   // Server brauchen gelegentlich mehr als die ursprünglichen 45 s.
   gotoTimeoutMs: 60000,
+  /* Ab welchem Alter des Live-Stands ein geplanter Lauf (`--scheduled`)
+     tatsächlich arbeitet. Der launchd-Job tickt seit 21.07.2026 alle 15
+     Minuten statt stündlich, startet aber nur einen Browser, wenn wirklich
+     etwas fällig ist — sonst endet der Lauf nach Millisekunden.
+     Der Sinn: scheitert ein Lauf, bleibt der Live-Stand alt, und schon der
+     nächste Tick versucht es erneut. Aus „eine Stunde tot“ wird „höchstens
+     eine Viertelstunde“, ohne dass im Normalbetrieb mehr Chromium-Starts
+     anfallen (nach einem Erfolg um :06 überspringen :21, :36 und :51). */
+  laufFaelligNachMin: 50,
 };
 
 const args = process.argv.slice(2);
@@ -85,6 +94,10 @@ const FLAGS = {
   backfill: args.includes('--backfill'),
   places: args.includes('--places'),
   fixts: args.includes('--fixts'),
+  /* Setzt nur der launchd-Job. Von Hand gestartete Läufe sollen immer sofort
+     arbeiten — wer selbst tippt, will jetzt ein Ergebnis und nicht „ist noch
+     frisch genug“ lesen. */
+  scheduled: args.includes('--scheduled'),
   dump: (args.find(a => a.startsWith('--dump=')) || '').split('=')[1] || null,
 };
 
@@ -725,6 +738,19 @@ async function main() {
   if (now < windowStart || now > windowEnd) {
     log(`outside race window (${windowStart.toISOString()} – ${windowEnd.toISOString()}), skipping.`);
     return;
+  }
+
+  /* Fälligkeits-Gatter für den geplanten Lauf. Muss VOR dem Browserstart
+     stehen — der ganze Sinn ist, dass ein nicht fälliger Tick nichts kostet.
+     Fehlt `live` (allererster Lauf) oder ist der Stand alt, wird gearbeitet. */
+  if (FLAGS.scheduled) {
+    const lv = data0.live && data0.live.ts ? new Date(data0.live.ts) : null;
+    const altMin = lv && isFinite(lv) ? (now - lv) / 60000 : Infinity;
+    if (altMin < CONFIG.laufFaelligNachMin) {
+      log(`Live-Stand ist ${Math.round(altMin)} min alt (fällig ab ${CONFIG.laufFaelligNachMin} min) — nichts zu tun.`);
+      return;
+    }
+    log(`Live-Stand ist ${isFinite(altMin) ? Math.round(altMin) + ' min' : 'unbekannt'} alt — Lauf fällig.`);
   }
 
   const rider = await fetchRiderStateMitWiederholung();
