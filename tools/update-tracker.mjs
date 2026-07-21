@@ -731,6 +731,22 @@ async function main() {
     log(`steht seit ${data.live.stopSince} (${Math.round(stop.mins)} min).`);
   }
 
+  /* Rückwärts geht es im Rennen nicht: fällt der gemeldete Stand unter die
+     letzte Meldung (Tracker-Neuberechnung, verrutschte Rider-Zuordnung),
+     wäre der Eintrag sofort ein FEHLER in check.mjs — stünde aber schon in
+     der Historie und als negatives Tempo im Log. Analog zum Zeitstempel-
+     Guard („nie vor den Vorgänger“) wird er gar nicht erst geschrieben.
+     Live-Stand und Spur werden trotzdem veröffentlicht: check.mjs meldet
+     dann live.km < letzter Eintrag, und ein Mensch soll hinsehen. */
+  if (last && rider.km < Number(last.km) - 0.001) {
+    log(`WARNUNG: Tracker-km fällt (${last.km} → ${rider.km}) — kein Eintrag geschrieben.`);
+    data.updated = new Date().toISOString();
+    saveData(data);
+    checkAndLog();
+    if (FLAGS.commit) commitAll(`Auto-update: Live-Stand ${rider.km} km (km-Rückgang, kein Eintrag)`);
+    return;
+  }
+
   // Auch wenn kein neuer Eintrag fällig ist, sind Live-Stand und Spur neu —
   // die werden trotzdem veröffentlicht.
   if (last && Math.abs(rider.km - Number(last.km)) < CONFIG.minKmDelta) {

@@ -40,13 +40,8 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
       "lon": 10.21984,          // optional
       "speed": 7.2,             // optional, km/h bei Erfassung
       "ele": 245,               // optional, Höhe in m an dieser Meldung
-      "eleSrc": "route",        // woher `ele` stammt: route | dem | gps
-      "eleGps": 274,            // optional, rohe GPS-Höhe des Trackers
-      "climbUp": 103,           // optional, geschätzte Höhenmeter seit der Meldung davor
-      "climbDown": 427,         // optional, dito bergab
-      "climbKm": 17.4,          // optional, Länge der gerouteten Strecke des Segments
-      "climbSrc": "brouter:trekking",  // welches Routing-Profil die climb-Werte erzeugt hat
-      "track": [[387.1,569]]    // optional, ausgedünnte Höhenlinie [km, m], absolute Renn-km
+      "eleSrc": "dem",          // woher `ele` stammt: dem | gps
+      "eleGps": 274             // optional, rohe GPS-Höhe des Trackers
     }
   ],
   "updated": "..."
@@ -99,6 +94,12 @@ drei verschiedene Alter behaupten.
 
 **Zusätzliche Felder sind sicher:** `renderLog()` und `compute()` ignorieren
 unbekannte Keys, neue optionale Felder (wie `lat`/`lon`/`speed`) brechen nichts.
+
+**Abgeschaffte Felder (21.07.2026):** `climbUp`/`climbDown`/`climbKm`/`climbSrc`/
+`track` standen früher an den Einträgen (segmentweise geratene Höhenmeter);
+`--backfill` hat sie abgeräumt. Höhenmeter kommen seither ausschließlich aus
+`profile.json` — eine Wahrheit, ein Ort. `eleSrc:'route'` gibt es aus demselben
+Grund nicht mehr, neue Einträge tragen `dem` oder `gps`.
 
 ## tools/update-tracker.mjs — automatischer Live-Tracker-Scraper
 
@@ -154,8 +155,8 @@ nachgeschlagen werden. Seitdem gilt **eine** Regel für neue und alte Einträge,
 umgesetzt in `trackTimeAt()` — gesucht wird über den **Ort**, denn die Zeit ist
 ja das Gesuchte. Pflichtabstand 50 m, sonst bleibt der Eintrag unangetastet.
 
-`tsSrc` hält fest, woher die Zeit kommt (gleiche Konvention wie `eleSrc` und
-`climbSrc`): `'track'` aus der Spur (genau, Normalfall) · `'fix'` aus
+`tsSrc` hält fest, woher die Zeit kommt (gleiche Konvention wie `eleSrc`):
+`'track'` aus der Spur (genau, Normalfall) · `'fix'` aus
 `jetzt − lastReportMins` (Spur fehlt, auf ganze Minuten gerundet) · `'scrape'`
 Abrufzeit (weder Spur noch Fix-Alter) · **fehlt** = von Hand gesetzt, wird nie
 angefasst.
@@ -166,6 +167,12 @@ Einträge gelaufen, Korrekturen 1–5 Minuten. Beide Wege — neuer Eintrag wie
 Nachkorrektur — schieben einen Zeitstempel **nie vor seinen Vorgänger**; das
 Board rechnet Tempo aus aufeinanderfolgenden Zeilen, ein Tausch der
 Reihenfolge würde negative Geschwindigkeiten erzeugen.
+
+Dieselbe Regel gilt seit dem 21.07.2026 für die **Kilometer**: fällt der vom
+Tracker gemeldete Stand unter die letzte Meldung (Neuberechnung serverseitig,
+verrutschte Rider-Zuordnung), wird kein Eintrag geschrieben — nur Live-Stand
+und Spur werden veröffentlicht, und `check.mjs` schlägt über
+`live.km < letzter Eintrag` an, damit ein Mensch hinsieht.
 
 ### Ortsnamen (Nominatim)
 
@@ -219,9 +226,12 @@ beiden Segmenten — Tracker-Delta als Referenz für die Länge:
 Die Länge entscheidet nichts (jedes Profil gewinnt ein Segment), die Höhe schon:
 `fastbike` nimmt im Gudbrandsdal die andere, hügeligere Talseite und liefert 49 %
 mehr Höhenmeter für dieselbe Strecke — ein Indiz dafür, dass es systematisch
-umwegiger routet, nicht dass es genauer wäre. Das gewählte Profil steht in jedem
-Eintrag als `climbSrc` (`"brouter:trekking"`), ein Wechsel plus
-`--backfill --force` bleibt dadurch nachvollziehbar.
+umwegiger routet, nicht dass es genauer wäre. Das gewählte Profil steht im
+`source`-Feld von `profile.json`, ein Wechsel plus `--backfill --force` bleibt
+dadurch nachvollziehbar. (Achtung: ändert man `CONFIG.routeProfile`, passt
+`source` nicht mehr und schon der nächste *stündliche* Lauf baut das Profil
+komplett neu — am Rennende ein paar hundert BRouter-Anfragen. Einen Wechsel
+also nur bewusst zusammen mit `--backfill --force` machen, nicht nebenbei.)
 
 (Frühere Fassung dieser Notiz rechnete die Segmentwerte linear auf 700 km bis
 Flåm hoch und verglich das mit „Manuels ~5.400 hm bis Flåm“ — das beruhte auf
@@ -400,6 +410,40 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
 ## index.html — UI-Konventionen
 
 - Kein Framework, kein Build. Direkt editieren, direkt committen.
+- **Tonlage: das Board soll motivieren, nicht sezieren.** Manuel liest selbst mit.
+  Deshalb gibt es bewusst **keinen Platz-Verlauf/Rang-Trend** — der fällt bei
+  jeder Schlafpause und würde demotivieren (Entscheidung 21.07.2026, nicht
+  wieder vorschlagen). Der aktuelle Platz steht als Momentaufnahme in Kopfzeile
+  und Log, aber nichts zeichnet seine Kurve. Stattdessen feiert das Board:
+  ein frisch erreichter Kontrollpunkt (< 24 h, `cpReached` in `compute()`)
+  bekommt einen 🎉-Satz im Einschätzungskasten und pulsiert golden in der
+  Leiter (`.anchor.fresh`); läuft eine Pause, stellt der Kasten die
+  Tagesleistung daneben („Heute stehen schon X km und ↑ Y hm in den Beinen —
+  die Pause ist verdient“, ab 30 Tages-km, aus `cumClimbAt()` seit
+  Mitternacht). Der Zuspruch bleibt neutral zum Grund der Pause — siehe die
+  Schlaf-Regel bei der Karte.
+- **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
+  Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
+  den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
+  Attributwerten trägt. Wer eine neue Render-Stelle baut: erst escapen.
+- **Kein `?t=`-Cache-Busting mehr** (21.07.2026): alle drei JSON-fetches laufen
+  mit `{cache:'no-cache'}` — der Browser revalidiert per ETag und bekommt von
+  GitHub Pages ein 304 statt eines Volldownloads, wenn nichts neu ist. Mit
+  `?t=` war jede URL neu und track/profile (am Rennende ein paar hundert KB)
+  wurden alle 15 min voll übertragen. Das CDN darf so bis ~10 min alten Stand
+  liefern; bei stündlichem Scraper-Takt egal. Nicht auf `?t=` zurückbauen.
+- **Live-Zeile mit Augenzwinkern:** 🚴 (sanft wippend, `.rideAnim`, respektiert
+  `prefers-reduced-motion`) wenn er fährt, 🚲 (abgestelltes Rad) bei Pause —
+  bewusst kein Schlaf-Symbol, die Spur kennt den Grund nicht.
+- **Tagesstreifen unter den Tagesbalken** (`dayStrip()`): je Tag 24 h von links
+  nach rechts, Messing = Bewegung, abgedunkelt = Standzeit, Tooltip trägt die
+  Summe. Gleiche Quelle wie Karte und Log (`findStops()`/`trackStops()`), damit
+  nicht drei Stellen drei verschiedene Pausen behaupten. Braucht `track.json`,
+  erscheint deshalb erst nach dem Nachladen der Spur — der erste Rendergang
+  bleibt leicht. Heißt „Standzeit“, nie „Schlaf“.
+- **Dauer-Anzeigen (`dur()`, `dhm()`): erst auf Minuten runden, dann zerlegen.**
+  Andersherum entsteht „1 h 60 min“ (119,6 min) bzw. „60 min“ statt „1 h“ —
+  war drin bis 21.07.2026.
 - `EDIT`-Modus (`#edit` im URL-Hash) zeigt das manuelle Eintrags-Formular; der
   öffentliche Board-View bleibt read-only und einfach.
 - Neue optionale Detail-Ebenen (z. B. der GPS-Log-Zeilen-Expand, die Karte) sind
@@ -439,8 +483,8 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   Chart-Framework**. Wird auf die tatsächliche Container-Breite gerechnet
   (1 SVG-Einheit = 1 px), damit Schriftgrößen auf dem Handy echte Pixel sind statt
   hochskalierter Miniaturen — deshalb der entprellte `resize`-Handler daneben.
-  Zwei Ebenen: die dichte Linie aus den `track`-Arrays (~1 Stützpunkt je km) und die
-  Meldungen als Punkte darauf. Farben über CSS-Klassen (`.pl`, `.gl`, `.pdot` …)
+  Zwei Ebenen: die dichte Linie aus `profile.json`s `points` (alle 500 m ein
+  Stützpunkt) und die Meldungen als Punkte darauf. Farben über CSS-Klassen (`.pl`, `.gl`, `.pdot` …)
   statt `var()` in SVG-Präsentationsattributen. Zeiger per `pointermove`/`pointerdown`
   auf einem transparenten `<rect>`, also auch auf Touch bedienbar.
 - Höhenprofil-Diagramm: **aggregieren, nicht ausdünnen.** Am Ende stehen ~9.600
@@ -452,13 +496,14 @@ launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tr
   flacher aus als die Poebene. Nicht auf „einfaches“ Sampling zurückbauen.
 - Der Testmodus (sichtbare Kennzeichnung am Höhenprofil, 20.07.2026) ist mit dem
   Umbau auf die echte Spur entfallen — die Zahlen sind seitdem keine Schätzung
-  über geratene Routen mehr. Offen bleibt ein Abgleich für den 21.07.2026: Manuel
-  rechnet für seine **morgige Etappe** Sør-Fron (km 405) → Flåm (km 700, CP1, also
-  295 km) mit rund 5.400 hm. Der passende Vergleich ist `climbUp` aus
-  `profile.json` **speziell für dieses Zeitfenster** (`cumClimbAt()` am Anfang und
-  Ende der Etappe, nicht die Gesamtsumme seit Trondheim) gegen diese 5.400 hm —
-  nicht gegen eine Hochrechnung der bisherigen sanften Flusstal-Kilometer, die
-  Etappe quert vermutlich deutlich steileres Gelände vor den Fjorden.
+  über geratene Routen mehr. Der offene Flåm-Abgleich wurde am 21.07.2026 gemacht
+  (Manuels ~5.400 hm für die Etappe Sør-Fron km 405 → Flåm km 700 gegen
+  `cumClimbAt()` über genau dieses Zeitfenster): nach 195 von 295 km standen
+  **3.153 hm** im Profil, also 16,2 hm/km gegen Manuels angenommene 18,3 hm/km im
+  Etappenmittel. Das verträgt sich gut — seine Schätzung setzt voraus, dass die
+  restlichen 100 km über das Hochgebirge vor den Fjorden ~2.250 hm bringen
+  (22 hm/km), was zum Gelände passt. Die Höhenrechnung besteht damit ihren
+  ersten unabhängigen Realitätstest; kein Anlass, am Aufbau zu drehen.
 - Karte: Leaflet + OpenStreetMap-Tiles, per CDN erst beim Öffnen von
   `<details id="mapDetails">` nachgeladen (`ensureLeaflet()`), kein Impact auf die
   normale Ladezeit. `track.json` wird genauso lazy geholt (`ensureTrack()`) — es ist

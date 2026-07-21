@@ -51,6 +51,13 @@
   .nowbar{display:flex;flex-wrap:wrap;align-items:center;gap:3px 20px;margin-top:13px;
           border:1px solid var(--line);background:var(--panel);padding:9px 13px}
   .nowbar .wx{opacity:.68}
+  /* Kleines Augenzwinkern in der Live-Zeile: der Fahrer radelt, wenn er
+     fährt (🚴, sanft wippend), und das Rad ist abgestellt, wenn er steht
+     (🚲). Bewusst KEIN Schlaf-Symbol für die Pause — die Spur zeigt nur,
+     dass er steht, nie warum. */
+  .rideAnim{display:inline-block;animation:ride .9s ease-in-out infinite}
+  @keyframes ride{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+  @media (prefers-reduced-motion:reduce){.rideAnim{animation:none}}
 
   .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
   .ladder-panel{position:sticky;top:18px}
@@ -70,6 +77,11 @@
   .anchor .nm{position:absolute;left:96px;font-size:13px;letter-spacing:-.01em;white-space:nowrap}
   .anchor .km{position:absolute;left:96px;top:15px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}
   .anchor.done .nm,.anchor.done .km{color:var(--muted)}
+  /* Frisch erreichter Kontrollpunkt (< 24 h): leuchtet in der Leiter golden,
+     damit der Moment nicht kommentarlos im Log versinkt. */
+  .anchor.fresh .nm{color:var(--brass);animation:cpGlow 1.8s ease-in-out infinite}
+  @keyframes cpGlow{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.anchor.fresh .nm{animation:none}}
   .dot{position:absolute;left:70px;width:16px;height:16px;border-radius:50%;background:var(--brass);
        box-shadow:0 0 0 4px rgba(217,164,65,.18);transform:translateY(-50%);transition:top .6s ease}
   .dot-label{position:absolute;left:96px;transform:translateY(-50%);font-family:var(--mono);font-size:12px;
@@ -117,6 +129,15 @@
   .day{flex:1;min-width:12px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
   .bar{width:100%;background:var(--ice);opacity:.5;border-radius:2px 2px 0 0;min-height:2px}
   .bar.top{opacity:1;background:var(--brass)}
+  /* Tagesstreifen unter den Balken: 24 Stunden von links nach rechts, Messing
+     wo der Tracker Bewegung zeigt, abgedunkelt wo er stand. */
+  .daystrips{display:flex;gap:5px;margin-top:4px}
+  .daystripcell{flex:1;min-width:12px}
+  .daystrip{position:relative;height:4px;border-radius:2px;overflow:hidden}
+  .daystrip b{position:absolute;top:0;height:100%;background:var(--brass);opacity:.7}
+  .daystrip i{position:absolute;top:0;height:100%;background:var(--night)}
+  .striplegend{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:7px}
+  .striplegend .lg-ride{color:var(--brass)}
   .daylabels{display:flex;gap:5px;margin-top:6px}
   .daylabel{flex:1;min-width:12px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
   .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
@@ -316,9 +337,15 @@ function adopt(p){
 }
 
 /* ---------- Laden ---------- */
+/* 'no-cache' statt ?t=-Cache-Busting: der Browser fragt beim Server nach
+   (ETag) und bekommt ein 304 statt eines Volldownloads, wenn sich nichts
+   geändert hat. Mit ?t= war jede URL neu und jeder Poll ein kompletter
+   Transfer — bei track.json und profile.json am Rennende ein paar hundert
+   KB alle 15 Minuten je Betrachter. GitHub Pages' CDN darf so bis ~10 min
+   alten Stand liefern; bei stündlichem Scraper-Takt ist das egal. */
 async function loadRemote(){
   try{
-    const res = await fetch('data.json?t=' + Date.now(), {cache:'no-store'});
+    const res = await fetch('data.json', {cache:'no-cache'});
     if(!res.ok) return false;
     adopt(await res.json()); SOURCE = 'data.json'; return true;
   }catch(e){ return false; }
@@ -329,7 +356,7 @@ async function loadRemote(){
 let PROFILE = null;
 async function loadProfile(){
   try{
-    const res = await fetch('profile.json?t=' + Date.now(), {cache:'no-store'});
+    const res = await fetch('profile.json', {cache:'no-cache'});
     if(!res.ok) return false;
     const p = await res.json();
     if(Array.isArray(p.points) && p.points.length) { PROFILE = p; return true; }
@@ -350,11 +377,14 @@ const one = n => n.toLocaleString('de-DE',{minimumFractionDigits:1,maximumFracti
 const sorted = () => [...S.entries].sort((a,b)=> new Date(a.ts)-new Date(b.ts));
 function dur(ms){
   if(!isFinite(ms)) return '–';
-  const neg = ms<0; ms = Math.abs(ms);
-  const h = Math.floor(ms/3.6e6), d = Math.floor(h/24);
+  const neg = ms<0;
+  // Erst auf ganze Minuten runden, DANN zerlegen — andersherum wird aus
+  // 59,8 min „60 min“ statt „1 h“ (gleiches Muster in dhm() unten).
+  const min = Math.round(Math.abs(ms)/6e4);
+  const h = Math.floor(min/60), d = Math.floor(h/24);
   // Unter einer Stunde in Minuten — sonst steht bei frischen Werten „0 h“,
   // was aussieht als fehle die Angabe. Gilt auch für knappe Puffer.
-  if(h < 1) return (neg?'−':'') + Math.round(ms/6e4) + ' min';
+  if(h < 1) return (neg?'−':'') + min + ' min';
   return (neg?'−':'') + (d>0 ? d+' T '+(h-d*24)+' h' : h+' h');
 }
 function fmt(ts){
@@ -410,6 +440,17 @@ function compute(){
     if(dh > 0) roll = (b.km-a.km)/dh;
   }
   const nextCp = st.cps.find(c=> Number(c.km) > km) || null;
+  /* Zuletzt erreichter Kontrollpunkt samt Zeitpunkt (erste Meldung auf oder
+     hinter seinem Kilometer). Jünger als 24 h heißt: das Board feiert noch —
+     Einschätzungskasten und Leiter machen den Moment sichtbar, statt ihn im
+     Log versinken zu lassen. Start (km 0) und Ziel sind ausgenommen: das
+     Ziel hat mit `rest === 0` seine eigene Feier. */
+  let cpReached = null;
+  const passedCp = st.cps.filter(cp=> Number(cp.km) > 0 && Number(cp.km) < total && Number(cp.km) <= km).pop();
+  if(passedCp){
+    const hit = list.find(e=> Number(e.km) >= Number(passedCp.km));
+    if(hit && (now - new Date(hit.ts)) < 24*3.6e6) cpReached = {cp: passedCp, ts: hit.ts};
+  }
   /* Höhen: `ele` ist die Höhe an der Meldung, `climbUp`/`climbDown` sind die
      geschätzten Höhenmeter im Segment davor (siehe update-tracker.mjs). Beides
      optional — Meldungen ohne GPS haben nichts davon, und die Summen zählen
@@ -431,7 +472,7 @@ function compute(){
   else if(buffer !== null && buffer > 24*3.6e6) state = 'good';
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
-  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,state,
+  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpReached,state,
           raceH,measuredH,staleH,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
@@ -479,6 +520,7 @@ function renderMetrics(c){
       : 'Noch keine Position gemeldet. Sobald der erste Stand eingetragen ist, erscheint hier die Einschätzung.';
   } else {
     const p = [];
+    if(c.cpReached) p.push(`🎉 <strong>${esc(c.cpReached.cp.nm)} erreicht</strong> — ${fmt(c.cpReached.ts)}, nach ${dur(new Date(c.cpReached.ts)-c.start)} Rennzeit.`);
     p.push(`Bei <strong>${one(c.avg)} km/h</strong> im Mittel seit dem Start reicht es ${
       c.rest===0 ? 'nicht mehr zu diskutieren, das Ding ist durch.' :
       c.state==='alert' ? 'nicht bis zum Zeitlimit.' :
@@ -490,8 +532,22 @@ function renderMetrics(c){
     if(lastCl && lastCl.up > 0)
       p.push(`Dabei rund <strong>${num(lastCl.up)} Höhenmeter</strong> bergauf${
         lastCl.down > lastCl.up*1.5 ? ' — netto ging es aber deutlich abwärts.' : '.'}`);
-    if(c.nextCp) p.push(`Bis ${c.nextCp.nm}: <strong>${num(c.nextCp.km-c.km)} km</strong>${
+    if(c.nextCp) p.push(`Bis ${esc(c.nextCp.nm)}: <strong>${num(c.nextCp.km-c.km)} km</strong>${
       c.avg? `, bei gleichem Schnitt rund ${dur((c.nextCp.km-c.km)/c.avg*3.6e6)}.` : '.'}`);
+    /* Läuft gerade eine Pause, bekommt sie die Tagesleistung an die Seite —
+       als Zuspruch, nicht als Anklage. Der Grund der Pause steht nicht in
+       der Spur, deshalb bleibt der Satz neutral gegenüber Schlaf/Panne/
+       Einkauf. Nur bei hängendem Abruf (> 150 min) schweigen wir — dann
+       wissen wir ja gar nicht, ob die Pause noch läuft. */
+    if(S.live && S.live.stopSince && (c.now - new Date(S.live.ts))/6e4 <= 150){
+      const mitternacht = new Date(c.now.getFullYear(), c.now.getMonth(), c.now.getDate()).getTime()/1000;
+      const a = cumClimbAt(mitternacht), b = cumClimbAt(c.now.getTime()/1000);
+      if(a && b){
+        const kmHeute = Math.round((b.km - a.km) * c.kmScale);
+        const hmHeute = Math.max(Math.round(b.up - a.up), 0);
+        if(kmHeute >= 30) p.push(`Heute stehen schon <strong>${num(kmHeute)} km</strong> und ↑ ${num(hmHeute)} hm in den Beinen — die Pause ist verdient.`);
+      }
+    }
     /* Dieselbe Zeitspanne wie im Kennzahlenstreifen — nicht die letzte
        LOG-Zeile, die bei einer Pause stundenlang alt ist, ohne dass etwas
        fehlt. `staleH` misst, wie alt unser Wissen tatsächlich ist. */
@@ -529,11 +585,11 @@ function renderLive(c){
     teile.push(`<span class="wxwarn">⚠ Abruf zuletzt ${fmt(lv.ts)}</span>`);
   } else if(lv.stopSince){
     const dauer = (c.now - new Date(lv.stopSince)) / 6e4;
-    teile.push(`<span>⏸ <span class="wxval">Pause seit ${new Date(lv.stopSince)
+    teile.push(`<span>🚲 <span class="wxval">Pause seit ${new Date(lv.stopSince)
       .toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>` +
-      ` · ${dauer >= 60 ? Math.floor(dauer/60)+' h '+Math.round(dauer%60)+' min' : Math.round(dauer)+' min'}</span>`);
+      ` · ${dhm(dauer)}</span>`);
   } else {
-    teile.push(`<span>▸ <span class="wxval">unterwegs</span>${
+    teile.push(`<span><span class="rideAnim">🚴</span> <span class="wxval">unterwegs</span>${
       lv.speed ? ' · '+one(lv.speed)+' km/h' : ''}</span>`);
   }
 
@@ -556,9 +612,10 @@ function renderLadder(c){
              `<div class="rail-shade" style="top:${frac*100}%;bottom:0"></div>`;
   c.st.cps.forEach(cp=>{
     const done = c.km > 0 && Number(cp.km) <= c.km;
-    html += `<div class="anchor ${done?'done':''}" style="top:${pos(cp.km)}%">
-      <span class="lat">${cp.lat}</span><span class="tick"></span>
-      <span class="nm">${cp.nm}</span><span class="km">${num(Number(cp.km))} km</span></div>`;
+    const fresh = c.cpReached && cp === c.cpReached.cp;
+    html += `<div class="anchor ${done?'done':''}${fresh?' fresh':''}" style="top:${pos(cp.km)}%">
+      <span class="lat">${esc(cp.lat)}</span><span class="tick"></span>
+      <span class="nm">${esc(cp.nm)}</span><span class="km">${num(Number(cp.km))} km</span></div>`;
   });
   if(c.last){
     html += `<div class="dot" style="top:${frac*100}%"></div>
@@ -572,7 +629,11 @@ function renderLadder(c){
    Breite gerechnet (1 SVG-Einheit = 1 px), damit Schriftgrößen auf dem Handy
    echte Pixel sind statt hochskalierter Miniaturen. Deshalb auch der
    resize-Handler unten. */
-const esc = s => String(s).replace(/[<>&]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+/* Durch esc() geht ALLES, was aus data.json, von Nominatim oder aus einem
+   #d=-Teil-Link stammt und in innerHTML landet — Ortsnamen sind externe
+   Daten, und über den Teil-Link kann jeder beliebige entries/cps ins Board
+   geben. `"` ist mit dabei, damit esc() auch in Attributwerten trägt. */
+const esc = s => String(s).replace(/[<>&"]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[ch]));
 
 /* Das Höhenprofil wird zweimal gezeichnet: eigenständig im Board und noch
    einmal in der aufgeklappten Karte, dort an sie gekoppelt. Beide Male
@@ -873,6 +934,32 @@ addEventListener('resize', ()=>{
   }, 180);
 });
 
+/* Der Tagesstreifen unter den Balken: 24 Stunden von links nach rechts,
+   Messing wo die Spur Bewegung zeigt, abgedunkelt wo er stand — dieselben
+   Pausen wie Karte und Log (findStops), damit nicht drei Stellen drei
+   verschiedene Wahrheiten behaupten. Es heißt STANDZEIT, nicht Schlaf: die
+   Spur kennt den Grund nicht. Ohne geladene Spur (erster Rendergang) gibt es
+   schlicht keinen Streifen — kommt beim Nachladen von selbst. */
+function dayStrip(key){
+  if(!TRACK) return '';
+  const p = TRACK.points;
+  const t0 = new Date(key + 'T00:00').getTime()/1000, t1 = t0 + 86400;
+  const letzterPunkt = p[p.length-1][3];
+  // Die laufende Pause reicht bis jetzt, nicht nur bis zum letzten Spurpunkt.
+  const spurEnde = Math.max(letzterPunkt, Date.now()/1000);
+  const von = Math.max(t0, p[0][3]), bis = Math.min(t1, spurEnde);
+  if(bis <= von) return '<div class="daystrip"></div>';
+  const pct = sec => ((sec - t0)/864).toFixed(2);       // Sekunden → % von 24 h
+  let segs = '', standMin = 0;
+  for(const s of trackStops()){
+    const laeuft = s.to === letzterPunkt;
+    const a = Math.max(s.from, von), b = Math.min(laeuft ? spurEnde : s.to, bis);
+    if(b > a){ segs += `<i style="left:${pct(a)}%;width:${((b-a)/864).toFixed(2)}%"></i>`; standMin += (b-a)/60; }
+  }
+  return `<div class="daystrip" title="${standMin >= 5 ? dhm(standMin)+' Standzeit' : 'durchgefahren'}">` +
+         `<b style="left:${pct(von)}%;width:${((bis-von)/864).toFixed(2)}%"></b>${segs}</div>`;
+}
+
 function renderDays(c){
   const w = document.getElementById('daysWrap');
   if(c.list.length < 2){ w.innerHTML = '<div class="empty">Ab zwei Meldungen erscheint hier die Tagesleistung.</div>'; return; }
@@ -908,8 +995,10 @@ function renderDays(c){
   w.innerHTML =
     `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
       ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}</span>`:''}
-      <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>
-     <div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>`;
+      <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>` +
+    (TRACK ? `<div class="daystrips">${keys.map(k=>`<div class="daystripcell">${dayStrip(k)}</div>`).join('')}</div>` : '') +
+    `<div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>` +
+    (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit</div>` : '');
 }
 
 /* Das Log wächst über drei Wochen auf hunderte Zeilen und schob Karte und
@@ -976,7 +1065,7 @@ function renderLog(c){
       <td class="num">${fmt(e.ts)}</td>
       <td class="num">${num(Number(e.km))} km</td>
       <td class="num">${d}</td>
-      <td>${e.place||''}${e.note? (e.place?' · ':'')+'<span style="color:var(--muted)">'+e.note+'</span>':''}${hasGps?' <span class="gpsMark">▾ GPS</span>':''}</td>
+      <td>${esc(e.place||'')}${e.note? (e.place?' · ':'')+'<span style="color:var(--muted)">'+esc(e.note)+'</span>':''}${hasGps?' <span class="gpsMark">▾ GPS</span>':''}</td>
       ${EDIT?`<td style="text-align:right"><button class="del" data-id="${e.id}" aria-label="Meldung löschen">×</button></td>`:''}
     </tr>`;
     const detail = hasGps ? `<tr class="logDetail" id="${detailId}" style="display:none"><td colspan="${cols}">
@@ -1091,7 +1180,7 @@ let TRACK = null;
    Log kurz leer sind. */
 async function refreshTrack(){
   try{
-    const res = await fetch('track.json?t=' + Date.now(), {cache:'no-store'});
+    const res = await fetch('track.json', {cache:'no-cache'});
     if(!res.ok) return false;
     const j = await res.json();
     if(!Array.isArray(j.points) || !j.points.length) return false;
@@ -1189,7 +1278,9 @@ function hideMapPosition(){
 }
 
 const hhmm = unix => new Date(unix*1000).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-const dhm = mins => mins >= 60 ? `${Math.floor(mins/60)} h ${Math.round(mins%60)} min` : `${Math.round(mins)} min`;
+// Erst runden, dann zerlegen — sonst wird aus 119,6 min „1 h 60 min“.
+const dhm = mins => { const m = Math.round(mins);
+  return m >= 60 ? `${Math.floor(m/60)} h ${m%60} min` : `${m} min`; };
 
 function renderMap(c){
   const marks = c.list.filter(e=> e.lat!=null && e.lon!=null);
@@ -1367,7 +1458,7 @@ function renderDirty(){
 }
 function renderSettings(){
   const st = S.settings;
-  const f = (id,l,v,t='text') => `<div><label for="${id}">${l}</label><input id="${id}" type="${t}" value="${v}"></div>`;
+  const f = (id,l,v,t='text') => `<div><label for="${id}">${esc(l)}</label><input id="${id}" type="${t}" value="${esc(v)}"></div>`;
   const el = document.getElementById('settings'); if(!el) return;
   el.innerHTML = f('sTotal','Gesamtstrecke km',st.totalKm,'number') +
     f('sStart','Start',st.start,'datetime-local') + f('sDl','Zeitlimit',st.deadline,'datetime-local') +
