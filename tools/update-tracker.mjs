@@ -75,6 +75,21 @@ const CONFIG = {
   // Zeit fürs Laden der Tracker-Seite. Cloudflare-Prüfung plus ein träger
   // Server brauchen gelegentlich mehr als die ursprünglichen 45 s.
   gotoTimeoutMs: 60000,
+  /* Harte Obergrenze für einen ganzen Lauf — der Selbsterhaltungstrieb des
+     Jobs. Ein HÄNGENDER Lauf ist schlimmer als ein gescheiterter: launchd
+     startet keinen zweiten Durchlauf, solange der erste noch läuft. Bleibt
+     also irgendwo ein Chromium, ein `fetch` oder ein `git push` stehen,
+     tickt der Job nie wieder und braucht genau den Anstoß von Hand, den er
+     sich selbst nicht holen kann. Ein voller Lauf dauert real 30-60 s; die
+     drei Abrufversuche mit ihren Pausen können auf ~4 min kommen. 10 min
+     lassen dafür Luft und liegen trotzdem weit unter dem Tick-Abstand. */
+  laufDeadlineMs: 10 * 60 * 1000,
+  // Einzelne git-Aufrufe. `push` hängt sonst an einer stockenden Verbindung
+  // oder einem Passwort-Dialog, den nachts niemand wegklickt.
+  gitTimeoutMs: 90000,
+  // Nominatim/Open-Meteo & Co. — jeder fetch ohne Deadline ist ein
+  // potenziell ewiger Lauf.
+  netzTimeoutMs: 25000,
   /* Ab welchem Alter des Live-Stands ein geplanter Lauf (`--scheduled`)
      tatsächlich arbeitet. Der launchd-Job tickt seit 21.07.2026 alle 15
      Minuten, startet aber nur einen Browser, wenn wirklich etwas fällig ist
@@ -150,7 +165,10 @@ async function waitForAppReady(page, timeoutMs = 40000) {
 async function reverseGeocode(lat, lon) {
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=de`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'tcr84-tracker-updater (personal dotwatch board, github.com/digitalerdude/tcr84)' } });
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(CONFIG.netzTimeoutMs),
+      headers: { 'User-Agent': 'tcr84-tracker-updater (personal dotwatch board, github.com/digitalerdude/tcr84)' },
+    });
     if (!res.ok) return '';
     const data = await res.json();
     const a = data.address || {};
@@ -356,6 +374,10 @@ async function updateProfile(trackPoints, { rebuild = false } = {}) {
   return { prof, added, requests };
 }
 
+/* Der gerade offene Browser — nur damit der Wachhund am Dateiende ihn beim
+   harten Abbruch mitnehmen kann. Sonst überlebt Chromium den Prozess. */
+let AKTIVER_BROWSER = null;
+
 async function fetchRiderState() {
   // Cloudflare's WAF hard-blocks Playwright's headless mode here (fingerprint-
   // based, not IP-based — confirmed 2026-07-20: headless got "Attention
@@ -366,6 +388,7 @@ async function fetchRiderState() {
     headless: false,
     args: FLAGS.headed ? [] : ['--window-position=2400,2400', '--window-size=1024,768'],
   });
+  AKTIVER_BROWSER = browser;
   try {
     const page = await browser.newPage();
     log('opening tracker (passing Cloudflare check)…');
@@ -411,10 +434,14 @@ async function fetchRiderState() {
        `get_historical_waypoint_data.php`) sind hart geblockt. */
     let gpx = null;
     try {
-      gpx = await page.evaluate(async (deviceId) => {
-        const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`);
+      // Mit Deadline: der Export läuft im Seitenkontext, ein stehender
+      // Aufruf dort hinge sonst am Playwright-Aufruf hier und damit am
+      // ganzen Lauf.
+      gpx = await page.evaluate(async ([deviceId, timeoutMs]) => {
+        const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`,
+          { signal: AbortSignal.timeout(timeoutMs) });
         return res.ok ? res.text() : null;
-      }, rider.deviceId);
+      }, [rider.deviceId, CONFIG.netzTimeoutMs]);
     } catch (e) { log('GPX-Export fehlgeschlagen (ignoriert):', e.message); }
 
     if (FLAGS.dump) {
@@ -437,6 +464,7 @@ async function fetchRiderState() {
     };
   } finally {
     await browser.close();
+    AKTIVER_BROWSER = null;
   }
 }
 
@@ -543,8 +571,20 @@ function saveData(data) {
   writeFileSync(DATA_JSON_PATH, JSON.stringify(data, null, 2) + '\n');
 }
 
+/* git läuft synchron und blockiert damit den Event-Loop — der Wachhund am
+   Dateiende kann hier nicht eingreifen. Deshalb bringt jeder Aufruf sein
+   eigenes Timeout mit, und vor allem: NIEMALS nachfragen. Ein `git push`, das
+   auf einen Passwort-Dialog wartet, den um vier Uhr früh niemand wegklickt,
+   hängt für immer — und mit ihm jeder weitere Tick. `GIT_TERMINAL_PROMPT=0`
+   lässt git in dem Fall scheitern statt fragen, und Scheitern ist heilbar. */
 function git(...cmdArgs) {
-  return execFileSync('git', cmdArgs, { cwd: REPO_ROOT, encoding: 'utf8' });
+  return execFileSync('git', cmdArgs, {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    timeout: CONFIG.gitTimeoutMs,
+    killSignal: 'SIGKILL',
+    env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_OPTIONAL_LOCKS: '0' },
+  });
 }
 
 /* Nach jedem Lauf gegen die Invarianten prüfen: data.json, track.json und
@@ -562,16 +602,111 @@ function checkAndLog() {
   } catch (e) { log('check.mjs fehlgeschlagen (ignoriert):', e.message); }
 }
 
-// Committet data.json, track.json und profile.json zusammen, aber nur, wenn
-// sich wirklich etwas geändert hat — sonst bricht `git commit` den Lauf ab.
-// Die drei Dateien werden namentlich gestaged: der stündliche Job soll keine
-// nebenher offenen Quelltextänderungen mit einsammeln.
+/* Die abgeleiteten Dateien: bei jedem Lauf vollständig neu berechnet, aus dem
+   Tracker und dem GPX-Export. Diese Eigenschaft trägt zwei Entscheidungen —
+   sie werden namentlich gestaged (der Job soll keine nebenher offenen
+   Quelltextänderungen mit einsammeln), und nur bei ihnen darf ein Konflikt
+   automatisch zu unseren Gunsten aufgelöst werden (siehe unten). */
+const DATEN_DATEIEN = ['data.json', 'track.json', 'profile.json'];
+const kurz = e => String(e.message).split('\n').find(z => z.trim()) || String(e.message);
+
+// Committet die drei zusammen, aber nur, wenn sich wirklich etwas geändert
+// hat — sonst bricht `git commit` den Lauf ab.
 function commitAll(message) {
-  git('add', 'data.json', 'track.json', 'profile.json');
+  git('add', ...DATEN_DATEIEN);
   if (!git('diff', '--cached', '--name-only').trim()) { log('nothing changed, no commit.'); return; }
   git('commit', '-m', message);
   log('committed.');
-  if (FLAGS.push) { git('push'); log('pushed.'); }
+  if (!FLAGS.push) return;
+
+  pushMitErholung(message);
+}
+
+/* Ein abgelehnter Push darf den Lauf weder töten noch sich festfressen. Ohne
+   Behandlung wäre er der übelste Dauerschaden im ganzen Ablauf: ist der
+   Fernstand einmal vorausgelaufen (Commit von einem anderen Rechner, Änderung
+   über die GitHub-Oberfläche), scheitert JEDER weitere Push aus demselben
+   Grund. Der Job liefe munter weiter, sammelte brav Daten — und nichts davon
+   käme je auf dem Board an, bis jemand von Hand nachzieht. Genau das soll
+   dieser Job nie brauchen, also drei Stufen. */
+function pushMitErholung(message) {
+  try {
+    git('push');
+    log('pushed.');
+    return;
+  } catch (e) {
+    log('push abgelehnt:', kurz(e));
+  }
+
+  /* Erholung 1: sauber auf den Fernstand rebasen. Deckt den Normalfall ab —
+     jemand hat woanders am Quelltext gearbeitet, unsere Datencommits passen
+     konfliktfrei obendrauf. */
+  try {
+    git('pull', '--rebase');
+    git('push');
+    log('pushed (nach Rebase auf den vorausgelaufenen Fernstand).');
+    return;
+  } catch (e) {
+    log('Rebase gescheitert:', kurz(e));
+  }
+
+  // Noch im Rebase? Dann festhalten, WORAN er hängt, bevor wir ihn abbrechen.
+  let konflikte = [];
+  try {
+    konflikte = git('diff', '--name-only', '--diff-filter=U').split('\n').map(s => s.trim()).filter(Boolean);
+  } catch { /* kein laufender Rebase, dann bleibt die Liste leer */ }
+  try { git('rebase', '--abort'); } catch { /* lief gar keiner */ }
+
+  /* Erholung 2: Steckt der Konflikt AUSSCHLIESSLICH in den drei abgeleiteten
+     Dateien, gewinnt unser Stand — und zwar nicht aus Trotz, sondern weil er
+     nachweislich der bessere ist: alle drei werden bei jedem Lauf vollständig
+     neu berechnet, aus dem Tracker und aus dem GPX-Export, der die komplette
+     Spur seit dem Start liefert. Der Fernstand ist dieselbe Ableitung, nur
+     älter. Es gibt darin nichts, was uns fehlen könnte.
+
+     Ohne diesen Schritt wäre so ein Konflikt der einzige verbliebene
+     Dauerschaden: jeder folgende Lauf würde erneut committen, erneut scheitern
+     und die Commits stapeln, bis jemand von Hand eingreift — genau das, was
+     dieser Job nie brauchen soll.
+
+     Zwei harte Bedingungen, sonst bleibt es beim Menschen:
+       · Der Konflikt darf keine Quelldatei berühren. Die kann niemand
+         nachrechnen, und ein weggeworfener fremder Codestand wäre schlimmer
+         als ein stehendes Board.
+       · Der Arbeitsbaum muss ansonsten sauber sein. `reset --hard` löscht
+         auch unversionierte Änderungen — wer gerade nebenher am Board
+         arbeitet, soll das nicht durch einen nächtlichen Job verlieren. */
+  const fremdeDateien = konflikte.filter(p => !DATEN_DATEIEN.includes(p));
+  if (!konflikte.length || fremdeDateien.length) {
+    log(konflikte.length
+      ? `Konflikt betrifft auch ${fremdeDateien.join(', ')} — das rechnet keiner nach, hier muss ein Mensch ran.`
+      : 'Kein Dateikonflikt erkennbar — Ursache unklar, hier muss ein Mensch ran.');
+    log('Der Commit bleibt lokal liegen, der nächste Lauf nimmt ihn mit.');
+    return;
+  }
+  const dreckig = git('status', '--porcelain').split('\n')
+    .map(z => z.slice(3).trim()).filter(Boolean).filter(p => !DATEN_DATEIEN.includes(p));
+  if (dreckig.length) {
+    log(`Arbeitsbaum ist nicht sauber (${dreckig.join(', ')}) — kein reset --hard, das würde fremde Arbeit löschen.`);
+    log('Der Commit bleibt lokal liegen, der nächste Lauf nimmt ihn mit.');
+    return;
+  }
+
+  try {
+    log(`Konflikt nur in ${konflikte.join(', ')} — unser Stand ist der neu berechnete und gewinnt.`);
+    const gerettet = DATEN_DATEIEN.map(p => [p, readFileSync(path.join(REPO_ROOT, p))]);
+    git('fetch', 'origin');
+    git('reset', '--hard', '@{u}');
+    for (const [p, inhalt] of gerettet) writeFileSync(path.join(REPO_ROOT, p), inhalt);
+    git('add', ...DATEN_DATEIEN);
+    if (!git('diff', '--cached', '--name-only').trim()) { log('Fernstand war inhaltlich schon gleich, nichts zu tun.'); return; }
+    git('commit', '-m', `${message} (nach Konflikt auf den Fernstand neu aufgesetzt)`);
+    git('push');
+    log('pushed (Datenstand neu auf den Fernstand aufgesetzt).');
+  } catch (e) {
+    log('auch das Neuaufsetzen ist gescheitert:', kurz(e));
+    log('Der Commit bleibt lokal liegen, der nächste Lauf nimmt ihn mit. Von Hand nachsehen.');
+  }
 }
 
 /* Baut das Höhenprofil aus der archivierten Spur neu auf und räumt die
@@ -891,6 +1026,26 @@ async function main() {
     log('dry run — not committed. Pass --commit (and --push) to publish.');
   }
 }
+
+/* Der Wachhund. Läuft ein Durchlauf aus dem Ruder, wird er hier abgeschossen,
+   damit der nächste launchd-Tick wieder ziehen kann — ein toter Lauf holt
+   sich beim nächsten Mal alles zurück (der GPX-Export liefert die volle Spur
+   seit dem Start), ein hängender Lauf blockiert dagegen jeden weiteren.
+
+   `.unref()`, damit der Wecker einen normal laufenden Job nicht künstlich
+   offenhält. Gegen blockierende SYNCHRONE Aufrufe hilft er nicht — die halten
+   den Event-Loop an und der Timer feuert nie —, deshalb hat `git()` sein
+   eigenes Timeout; andere synchrone Blocker gibt es hier nicht.
+
+   Chromium wird vorher hart erschossen: `process.exit()` lässt einen
+   gestarteten Browser sonst als Waise zurück, und nach ein paar solchen
+   Läufen stehen Fenster im Nirgendwo herum und fressen Speicher. */
+const wachhund = setTimeout(() => {
+  console.error(`[tcr84] FAILED: Lauf überschreitet ${Math.round(CONFIG.laufDeadlineMs / 60000)} min — harter Abbruch, damit der nächste Tick wieder greift.`);
+  try { AKTIVER_BROWSER?.process()?.kill('SIGKILL'); } catch { /* egal, wir gehen ohnehin */ }
+  process.exit(1);
+}, CONFIG.laufDeadlineMs);
+wachhund.unref();
 
 main().catch(err => {
   console.error('[tcr84] FAILED:', err.message);

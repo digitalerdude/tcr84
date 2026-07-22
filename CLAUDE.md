@@ -457,24 +457,41 @@ Stelle abgeschnitten.
 ## Automatisierung (launchd)
 
 `~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — tickt alle
-15 Minuten (`StartInterval: 900`), ruft
+5 Minuten (`StartInterval: 300`), ruft
 `update-tracker.mjs --commit --push --scheduled` auf.
 
-**Häufiger ticken, seltener arbeiten.** Der Takt sagt nichts darüber, wie oft ein
+**Häufig ticken, selten arbeiten.** Der Takt sagt nichts darüber, wie oft ein
 Browser startet: `--scheduled` lässt den Lauf **vor** dem Browserstart abbrechen,
 wenn `live.ts` jünger ist als `CONFIG.laufFaelligNachMin` (25 min). Ein nicht
-fälliger Tick kostet dadurch 0,2 Sekunden und keinen Chromium-Start — nach einem
-Erfolg um :06 fällt :21 durch, :36 arbeitet wieder. Macht ~48 echte Läufe am Tag.
+fälliger Tick kostet dadurch 0,2 Sekunden und keinen Chromium-Start. Von zwölf
+Ticks je Stunde arbeiten also zwei — ~48 echte Läufe am Tag.
 
-**Warum 25 und nicht mehr 50 Minuten** (geändert 22.07.2026): 50 hieß in der
-Praxis ein Abruf pro Stunde, und damit konnte das Board der offiziellen Seite
-fast eine Stunde hinterherhinken. An dem Morgen kam Manuel um 06:31 aus dem
-Funkloch am Aurlandsfjellet zurück, der letzte Abruf lag bei 06:16, der
-nächste wäre erst 07:16 fällig gewesen — 45 Minuten, in denen die Tracker-Seite
-ihn fahren sah und das Board ihn stehen ließ. Der Preis sind doppelt so viele
-Chromium-Starts und Cloudflare-Passagen. Weiter runter lohnt nicht: der Tracker
-selbst meldet nur alle ~5 min, und die Spur kommt ohnehin komplett per
-GPX-Export nach (siehe „Warum nicht feiner als 15 Minuten“ unten).
+**Die zwei Zahlen machen zwei verschiedene Dinge, und nur zusammen ergeben sie
+Sinn.** `laufFaelligNachMin` bestimmt, wie alt die Kopfzahlen im Board werden
+dürfen. Der `StartInterval` bestimmt, wie schnell sich ein Fehlschlag auswächst:
+scheitert ein Lauf, bleibt `live.ts` alt, und der nächste Tick ist sofort wieder
+fällig. Feiner ticken kostet also fast nichts und verkürzt genau die Zeit, in der
+niemand hinsieht.
+
+| | vorher | seit 22.07.2026 |
+|---|---|---|
+| Tick | 15 min | **5 min** |
+| fällig ab | 50 min | **25 min** |
+| echter Abstand zweier Läufe | 60 min | **25 min** |
+| Erholung nach einem Fehlschlag | bis 15 min | **bis 5 min** |
+
+Vorher waren 15 und 50 zudem schlecht aufeinander abgestimmt: bei 15-Minuten-Ticks
+wird eine 25-Minuten-Fälligkeit erst nach 30 Minuten wahr (15 ist noch zu früh),
+der Takt wäre also gar nicht angekommen. Erst 5-Minuten-Ticks lösen die 25 auch
+wirklich ein.
+
+**Warum überhaupt runter von 50 Minuten:** 50 hieß in der Praxis ein Abruf pro
+Stunde, und damit konnte das Board der offiziellen Seite fast eine Stunde
+hinterherhinken. Am Morgen des 22.07.2026 kam Manuel um 06:31 aus dem Funkloch am
+Aurlandsfjellet zurück, der letzte Abruf lag bei 06:16, der nächste wäre erst
+07:16 fällig gewesen — 45 Minuten, in denen die Tracker-Seite ihn fahren sah und
+das Board ihn stehen ließ. Weiter runter als 25 lohnt nicht: der Tracker selbst
+meldet nur alle ~5 min, und die Spur kommt ohnehin komplett per GPX-Export nach.
 
 **Der Gewinn ist die Erholung.** Scheitert ein Lauf, bleibt `live.ts` alt — und
 schon der nächste Tick arbeitet wieder. Aus „eine Stunde ohne Daten“ wird
@@ -483,18 +500,74 @@ ist: niemand sitzt am Mac, und der Ausfall soll sich von selbst auswachsen.
 Zusammen mit den drei Anläufen *innerhalb* eines Laufs (siehe oben) muss schon
 sehr viel zusammenkommen, damit eine Lücke entsteht.
 
-**Was das NICHT abfängt:** einen dauerhaften Defekt (Chromium nach einem Update
-kaputt, Cloudflare sperrt systematisch, Seitenstruktur geändert, Netz zu Hause
-weg). Dagegen hilft kein Wiederholen, sondern nur eine Benachrichtigung — dafür
-gibt es den Wächter (siehe unten).
+### Ein hängender Lauf ist schlimmer als ein gescheiterter
+
+Die Wiederholung oben trägt nur, solange der Job überhaupt **endet**. launchd
+startet keinen zweiten Durchlauf, solange der erste noch läuft — bleibt also
+irgendwo etwas stehen, tickt der Job **nie wieder** und braucht genau den Anstoß
+von Hand, den er sich selbst nicht holen kann. Ein toter Lauf dagegen kostet
+nichts: der GPX-Export liefert beim nächsten Mal die volle Spur seit dem Start.
+Deshalb gilt durchweg **lieber hart abbrechen als warten** (alles 22.07.2026):
+
+- **`CONFIG.laufDeadlineMs` (10 min) — der Wachhund.** Ein `setTimeout` am
+  Dateiende schießt den Prozess ab, wenn ein Lauf aus dem Ruder läuft. `.unref()`,
+  damit er einen normalen Lauf (real 30–60 s) nicht künstlich offenhält.
+  Chromium wird vorher per `SIGKILL` mitgenommen — `process.exit()` ließe ihn
+  sonst als Waise zurück, und nach ein paar Läufen stehen Fenster im Nirgendwo
+  herum.
+- **Gegen synchrone Blocker hilft der Wachhund nicht.** `execFileSync` hält den
+  Event-Loop an, der Timer feuert dann nie. Deshalb bringt `git()` sein eigenes
+  `timeout` (90 s) mit — und `GIT_TERMINAL_PROMPT=0`: ein `git push`, das um vier
+  Uhr früh auf einen Passwort-Dialog wartet, hängt für immer. Scheitern ist
+  heilbar, Warten nicht.
+- **Jeder `fetch` hat eine Deadline** (`CONFIG.netzTimeoutMs`, 25 s), auch der
+  GPX-Export, der im Seitenkontext läuft.
+
+### Die Push-Leiter
+
+Ein abgelehnter Push war der letzte verbliebene Dauerschaden: ist der Fernstand
+einmal vorausgelaufen, scheitert **jeder** folgende Push aus demselben Grund. Der
+Job liefe munter weiter, sammelte brav Daten — und nichts davon käme je auf dem
+Board an. `pushMitErholung()` arbeitet deshalb drei Stufen ab:
+
+1. `git push`. Normalfall.
+2. `git pull --rebase` + `push`. Deckt den häufigen Fall ab: woanders wurde am
+   Quelltext gearbeitet, unsere Datencommits passen konfliktfrei obendrauf.
+3. Kollidiert der Rebase **ausschließlich** in `data.json`/`track.json`/
+   `profile.json`, gewinnt unser Stand: `reset --hard @{u}`, die drei Dateien
+   zurückschreiben, neu committen. Das ist kein Trotz, sondern folgt aus der
+   Architektur — alle drei werden bei jedem Lauf vollständig neu berechnet, der
+   Fernstand ist dieselbe Ableitung, nur älter. Es gibt darin nichts, was uns
+   fehlen könnte.
+
+Stufe 3 hat zwei harte Sperren, und beide sind wichtiger als die Selbstheilung:
+Berührt der Konflikt **eine Quelldatei**, bricht sie ab — die kann niemand
+nachrechnen, und fremder Code, den ein Nachtjob wegwirft, ist schlimmer als ein
+stehendes Board. Und ist der **Arbeitsbaum sonst nicht sauber**, ebenfalls: wer
+gerade nebenher am Board arbeitet, soll das nicht durch ein `reset --hard`
+verlieren. In beiden Fällen wird der Rebase sauber abgebrochen, der Commit bleibt
+lokal liegen, der nächste Lauf nimmt ihn mit — und wenn das Board dadurch wirklich
+alt wird, meldet sich der Wächter von selbst, der sieht ja den Fernstand.
+
+Geprüft gegen echte Wegwerf-Repos, mit dem echten Modul (nur der Selbstaufruf
+`main()` am Ende gegen ein `export` getauscht): Konflikt nur in den Datendateien
+→ heilt und pusht · nächster Lauf danach → wieder Normalbetrieb · Konflikt in
+einer Quelldatei → verweigert, Arbeitsbaum sauber, lokale Änderung erhalten.
+
+**Was auch das NICHT abfängt:** einen dauerhaften Defekt (Chromium nach einem
+Update kaputt, Cloudflare sperrt systematisch, Seitenstruktur geändert, Netz zu
+Hause weg). Dagegen hilft kein Wiederholen, sondern nur eine Benachrichtigung —
+dafür gibt es den Wächter (siehe unten). Die Arbeitsteilung ist bewusst so:
+**der Mac versucht sich selbst zu retten, GitHub schlägt Alarm, wenn es nicht
+gelingt.**
 
 **Schlafender Mac:** `StartInterval` feuert verpasste Läufe nach dem Aufwachen
 nach — zugeklappt passiert nichts, nach dem Öffnen holt der Job von selbst auf.
 
-**Warum nicht feiner als 15 Minuten:** die Profilauflösung hängt seit dem GPX-Fund
-nicht am Intervall (der Export liefert bei jedem Abruf die volle 5-Minuten-Spur
-seit dem Start). Am Takt hängt nur die Frische der Kopfzahlen und die
-Erholungszeit nach einem Fehlschlag.
+**Warum der Takt die Höhenauflösung nicht beeinflusst:** die hängt seit dem
+GPX-Fund nicht am Intervall (der Export liefert bei jedem Abruf die volle
+5-Minuten-Spur seit dem Start). Am Takt hängt nur die Frische der Kopfzahlen und
+die Erholungszeit nach einem Fehlschlag.
 
 `RunAtLoad` ist **`false`**: ein `launchctl bootstrap` startet den Job also *nicht*
 sofort, sondern **setzt den Takt neu auf**. Wer sofort ein Ergebnis
