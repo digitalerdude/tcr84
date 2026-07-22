@@ -295,14 +295,27 @@
       "speed": 0,
       "ele": 537,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784695209094",
+      "ts": "2026-07-22T06:35",
+      "tsSrc": "track",
+      "km": 661.59,
+      "place": "Aurland",
+      "note": "Platz 281",
+      "lat": 60.954882,
+      "lon": 7.361938,
+      "speed": 26.7,
+      "ele": 1288,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-22T04:16:57.947Z",
+  "updated": "2026-07-22T04:40:09.191Z",
   "live": {
-    "ts": "2026-07-22T06:16",
-    "km": 645.24,
-    "fixMinsAgo": 107,
-    "speed": 0,
-    "rank": 279
+    "ts": "2026-07-22T06:40",
+    "km": 661.59,
+    "fixMinsAgo": 5,
+    "speed": 26.7,
+    "rank": 281
   }
 }
