@@ -636,9 +636,26 @@ der "headed"-Chromium-Start funktioniert (siehe oben).
 ```bash
 launchctl list | grep tcr84                                          # Status
 tail -f ~/Projekte/tcr84/tools/update-tracker.log                     # Log
+grep '2026-07-22T09' ~/Projekte/tcr84/tools/update-tracker.log        # eine Stunde
+grep 'FAILED' ~/Projekte/tcr84/tools/update-tracker.log               # Fehlschläge
 launchctl kickstart -k gui/$(id -u)/com.digitalerdude.tcr84-tracker-updater  # sofort auslösen
 launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist  # stoppen
 ```
+
+**Jede Log-Zeile trägt ihre Uhrzeit** (seit 22.07.2026, `stempel()`/`log()`/
+`logFehler()`): `[tcr84 2026-07-22T17:45:20] Live-Stand ist 7 min alt …`.
+Vorher stand im Log nicht, *wann* etwas passiert war; die Läufe eines Tages
+mussten über die Commit-Zeiten rekonstruiert werden — und ein Lauf **ohne**
+Commit (nicht fälliger Tick, Fehlschlag) taucht dort gar nicht auf, obwohl
+genau der die interessante Zeile ist. Jetzt lässt sich auch die Dauer eines
+Laufs ablesen, was dem 10-Minuten-Wachhund erst eine Vergleichszahl gibt.
+
+Format ist dasselbe lokale ISO ohne Zeitzone wie `ts` in `data.json`, nur mit
+Sekunden — eine Zeitkonvention im ganzen Projekt, und ein `grep` auf ein Datum
+oder eine Stunde funktioniert. Zwei Dinge tragen bewusst keinen Stempel: die
+Folgezeilen mehrzeiliger Objekt-Dumps (die Einheit ist der Lauf, nicht die
+Zeile) und die Ausgabe von `git` selbst, die als geerbtes stderr dazwischen
+läuft — die steht ohnehin immer zwischen zwei gestempelten Zeilen.
 
 ## .github/workflows/waechter.yml — der Wächter
 

@@ -127,7 +127,25 @@ const FLAGS = {
   dump: (args.find(a => a.startsWith('--dump=')) || '').split('=')[1] || null,
 };
 
-function log(...a) { console.log('[tcr84]', ...a); }
+/* Jede Zeile trägt ihre Uhrzeit. Ohne sie stand im Log nirgends, WANN ein Lauf
+   war — die Läufe eines Tages mussten am 22.07.2026 über die Commit-Zeiten
+   rekonstruiert werden, und ein Lauf ohne Commit (nicht fälliger Tick,
+   Fehlschlag) taucht dort gar nicht auf. Genau die sind aber die
+   interessanten. Nebenbei liest man jetzt die Dauer eines Laufs ab, und der
+   Wachhund bei 10 min bekommt eine Zahl zum Vergleichen.
+
+   Format ist dasselbe lokale ISO ohne Zeitzone wie `ts` in data.json, nur mit
+   Sekunden — eine Zeitkonvention im ganzen Projekt, und `grep 2026-07-22T09`
+   findet eine Stunde. Mehrzeilige Ausgaben (die Objekt-Dumps von console.log)
+   bekommen den Stempel nur auf ihrer ersten Zeile; die Einheit ist der Lauf,
+   nicht die Zeile. */
+function stempel(d = new Date()) {
+  return localIsoNoTZ(d) + ':' + String(d.getSeconds()).padStart(2, '0');
+}
+function log(...a) { console.log(`[tcr84 ${stempel()}]`, ...a); }
+/* Fehler gehen auf stderr — dieselbe Datei, aber ohne diesen Weg trüge
+   ausgerechnet der Abbruch eines Laufs keine Uhrzeit. */
+function logFehler(...a) { console.error(`[tcr84 ${stempel()}]`, ...a); }
 
 // data.json stores timestamps as local wall-clock time with no timezone
 // suffix (matching index.html's own setNow(), which does the same offset
@@ -1041,13 +1059,13 @@ async function main() {
    gestarteten Browser sonst als Waise zurück, und nach ein paar solchen
    Läufen stehen Fenster im Nirgendwo herum und fressen Speicher. */
 const wachhund = setTimeout(() => {
-  console.error(`[tcr84] FAILED: Lauf überschreitet ${Math.round(CONFIG.laufDeadlineMs / 60000)} min — harter Abbruch, damit der nächste Tick wieder greift.`);
+  logFehler(`FAILED: Lauf überschreitet ${Math.round(CONFIG.laufDeadlineMs / 60000)} min — harter Abbruch, damit der nächste Tick wieder greift.`);
   try { AKTIVER_BROWSER?.process()?.kill('SIGKILL'); } catch { /* egal, wir gehen ohnehin */ }
   process.exit(1);
 }, CONFIG.laufDeadlineMs);
 wachhund.unref();
 
 main().catch(err => {
-  console.error('[tcr84] FAILED:', err.message);
+  logFehler('FAILED:', err.message);
   process.exit(1);
 });
