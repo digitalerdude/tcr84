@@ -143,6 +143,50 @@
   .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
   .dayhm{font-family:var(--mono);font-size:8.5px;color:var(--brass);opacity:.8}
 
+  /* Fährplanung: je Hafen ein Kasten, der als Angelpunkt empfohlene mit
+     Messing-Kante wie beim Einschätzungskasten. Die Abfahrtszeiten stehen
+     in der Monoschrift, damit die Spalten untereinander stehen. */
+  .ferscen{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);margin:14px 0 15px}
+  .ferscen button{flex:1;background:var(--panel);border:none;color:var(--muted);cursor:pointer;
+        font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;padding:9px 4px}
+  .ferscen button.on{background:var(--panel2);color:var(--brass)}
+  .ferscen button b{display:block;font-size:12px;letter-spacing:0;margin-top:3px;color:var(--muted);font-weight:500}
+  .ferscen button.on b{color:var(--bone)}
+  .ferport{border:1px solid var(--line);border-left:3px solid var(--line);
+           background:var(--panel);padding:11px 13px;margin-bottom:9px}
+  .ferport.pick{border-left-color:var(--brass)}
+  .ferhead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 14px;align-items:baseline}
+  .ferhead .pn{font-size:15px;letter-spacing:-.01em}
+  .ferhead .pk{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .ferhead .pa{font-family:var(--mono);font-size:11.5px;color:var(--ice)}
+  .ferdep{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;margin-top:5px;
+          font-family:var(--mono);font-size:11px;color:var(--muted)}
+  .ferdep .dt{color:var(--ice)}
+  .ferdep.first .dt{color:var(--brass)}
+  .ferdep .wt{margin-left:auto}
+  /* Schmal wird die Zeile ohnehin umbrochen — dann wirkt die rechtsbündige
+     Wartezeit wie eine dritte Spalte, die es nicht gibt. Also in den Fluss. */
+  @media (max-width:560px){.ferdep .wt{margin-left:0}}
+  .ferdep .mk{color:var(--line)}
+  .ferdep.first .mk{color:var(--brass)}
+  /* Abfahrten ohne Radmitnahme bleiben stehen und treten zurück: sie sind
+     die Antwort auf "warum fehlt die 17:30?", nicht Rauschen. */
+  .ferdep.aus{opacity:.45}
+  .ferdep.aus .dt{color:var(--muted);text-decoration:line-through}
+  .ferdep .plan{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+                border:1px solid var(--line);border-radius:2px;padding:1px 4px;margin-left:7px}
+  .ferdep .norad{margin-left:auto;color:var(--alert)}
+  @media (max-width:560px){.ferdep .norad{margin-left:0}}
+  .fernone{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:5px}
+  .ferknapp{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.6;
+            margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
+  .ferknapp b{color:var(--brass);font-weight:500}
+  .ferpause{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.65;
+            border-left:2px solid var(--line);padding-left:10px;margin:0 0 13px}
+  /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
+     zu sehen ist — dafür fällt sie aus dem Versalsatz der übrigen Summaries. */
+  #ferrySum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
+
   /* Höhenprofil: Kennzahlenstreifen + SVG-Diagramm als ein zusammenhängender Block.
      Der Streifen ist mobil zweispaltig und wird ab 641px vierspaltig. */
   .hmstrip{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);
@@ -290,6 +334,11 @@
 
       <h2>Kilometer pro Tag</h2>
       <div id="daysWrap"></div>
+
+      <details id="ferryDetails" hidden>
+        <summary id="ferrySum">Fährplanung Südschweden</summary>
+        <div class="setbody" id="ferryWrap"></div>
+      </details>
 
       <h2>Positionslog</h2>
       <div id="log"></div>
@@ -1129,6 +1178,365 @@ function renderDays(c){
     (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit</div>` : '');
 }
 
+/* ---------- Fährplanung Südschweden ----------
+   Ein Planungspanel für eine einzige Entscheidung: mit welcher Ostsee-Fähre
+   geht es nach Świnoujście. Es lebt nur, solange die Frage offen ist, und
+   schaltet sich selbst ab, sobald er südlich der Ostsee ist (`ausAbLat`).
+
+   Der Grund für dieses Panel ist eine Beobachtung, die man auf der Karte
+   nicht sieht: Malmö, Trelleborg und Ystad sind KEINE Alternativen, sie
+   liegen in dieser Reihenfolge hintereinander auf derselben Route, 32 bzw.
+   48 Kilometer auseinander. Der Hafen muss also nicht vorab gewählt werden —
+   gewählt wird die Abfahrt, an der er ankommt. Deshalb rechnet das Panel
+   nicht „welcher Hafen", sondern „wann ist er wo, und was fährt dann".
+
+   Was hier NICHT hineingehört: eine Empfehlung, die so tut, als kenne sie
+   die Auslastung. Ob ein Schiff Platz hat, weiß dieses Board nicht und kann
+   es nicht wissen — es zeigt nur, welche Abfahrten zeitlich erreichbar sind.
+   Die Kennzeichnung als Nachtfähre ist die eigentliche Aussage: eine
+   Überfahrt von sechs bis acht Stunden ist genau eine Nachtruhe. Nachts
+   kostet sie keine Rennzeit, tagsüber kostet sie einen halben Fahrtag.
+
+   ZWEI LINEALE, dasselbe Problem wie bei den Kontrollpunkten (siehe `cpHit`):
+   die Hafendistanzen sind mit BRouter geroutet (`trekking`, dasselbe Profil
+   wie in update-tracker.mjs) und stehen damit auf BRouters Skala, `live.km`
+   steht auf der des Trackers. Umgerechnet wird mit `c.kmScale`, derselben
+   Kalibrierung, mit der auch das Höhenprofil gestreckt wird — sie wird mit
+   jedem Lauf genauer, statt auf einem Faktor von heute festzustehen.
+
+   DIE FAHRPLÄNE SIND DAS SCHWÄCHSTE GLIED, und sie sind es zweimal
+   geworden. Der erste Aufbau nahm Wochentagsmuster aus aggregierten
+   Portalen — 41 Abfahrten die Woche, vier Reedereien. Ein Gegencheck in den
+   Buchungsmaschinen am 22.07.2026, mit gesetztem Fahrrad, ließ davon einen
+   Bruchteil übrig. Zwei Gründe, beide grundsätzlich:
+
+   1. POLSCA S.A. hat am 30.03.2026 Polferries UND Unity Line übernommen und
+      die Flotte umverteilt (Jantar Unity weg von Trelleborg, Mazovia hin).
+      Die Portale zeigen streckenweise noch den Stand davor. Ein Fahrplan,
+      den niemand gegen den Betrieb geprüft hat, ist eine Behauptung.
+   2. Ein Platz für einen Menschen ist kein Platz für ein Rad. Auf
+      Trelleborg–Świnoujście befördert POLSCA derzeit gar keine Fahrräder —
+      die Abfahrt steht im Fahrplan, im Portal, und ist für ihn trotzdem
+      keine. Genau diese Abfahrten sind die gefährlichsten: sie sehen aus
+      wie eine Option.
+
+   Deshalb steht hier KEIN Wochentagsmuster mehr, sondern datumsgenaue
+   Abfahrten, jede einzeln in einer Buchungsmaschine mit Rad nachgesehen
+   (`geprueftAm`). Was nicht geprüft ist, existiert für dieses Panel nicht —
+   und über `geprueftBis` hinaus sagt es das ausdrücklich, statt eine leere
+   Liste als "keine Fähre" auszugeben. Abfahrten, die nachweislich KEINE
+   Räder nehmen, bleiben mit `rad:false` stehen: Negativwissen ist teuer
+   erkauft, und ohne die Zeile trägt sie beim nächsten Mal jemand wieder ein.
+
+   Die Liste ist nach unten sicher und nach oben offen — es kann mehr geben,
+   als hier steht, aber nichts Zusätzliches ist bestätigt. Sie steht als
+   Konstante und nicht in data.json: sie ist redaktionell, nicht gemessen,
+   und nichts anderes im Board darf sich auf sie stützen. Der Hinweis darauf
+   steht sichtbar unter der Tabelle, nicht nur in diesem Kommentar. */
+const FERRY = {
+  ankerKm: 794.57,        // Tracker-Kilometerstand, ab dem die Distanzen gemessen sind (Geilo, 22.07.2026)
+  ausAbLat: 55.0,         // südlich davon ist die Ostsee überquert und die Frage erledigt
+  /* Ab wie vielen Kilometern hinter einem Hafen der als endgültig passiert
+     gilt und aus der Auswahl fällt. Nicht bei 0: die Kilometerstände stehen
+     auf zwei verschiedenen Linealen (siehe unten), ein paar Kilometer
+     Unschärfe sind normal — und wer am Terminal steht, hat den Hafen
+     rechnerisch schon knapp überschritten. */
+  passiertKm: 15,
+  checkinMin: 60,         // Vorlauf am Terminal. Für ein Rad als Fußgepäck reicht das; Autos brauchen 2 h.
+  nachtVon: 19.5, nachtBis: 3,   // Abfahrtsfenster, in dem die Überfahrt die Nachtruhe ersetzt
+  /* Wie weit zurück nach knapp verpassten Abfahrten gesucht wird. Eine Fähre,
+     die kurz vor seiner Ankunft ablegt, ist die teuerste Information im
+     ganzen Panel und zugleich die einzige, die sonst gar nicht auftaucht:
+     bei Plantempo kommt er 01:26 in Ystad an, die Nachtfähre um 01:00 ist
+     26 Minuten weg, und der Unterschied zur nächsten Möglichkeit ist ein
+     halber Fahrtag. Genau das ist die Brücke zwischen Tempo und Fähre — also
+     der Zweck dieses Panels. */
+  knappStd: 6,
+  ziel: 'Świnoujście',
+  geprueftAm: '22.07.2026',
+  /* Letzter Tag, für den mit Rad nachgesehen wurde. Je Hafen überschreibbar,
+     und das ist nicht Feinschliff: die Prüftiefe hängt daran, wie weit die
+     Suchmaske getrieben wurde, und die war je Hafen verschieden. Ein globaler
+     Horizont ließ das Panel für Ystad am Sonntag "keine Abfahrt" behaupten,
+     wo "nicht nachgesehen" richtig war — derselbe Fehler wie zuvor, nur eine
+     Ebene tiefer. */
+  geprueftBis: '2026-07-26',
+  /* `d` Abfahrtsdatum, `t` Abfahrt, `an` Ankunft (vor `t` = Folgetag).
+     Ankunftszeit statt Dauer, damit die Zeilen direkt aus dem Fahrplan
+     abgeschrieben werden können — eine Dezimalstunde ist eine Rechnung, und
+     Rechnungen beim Abschreiben sind eine Fehlerquelle ohne Gegenwert.
+
+     `q` ist die BELEGSTÄRKE, und sie steht hier, weil sie unterschiedlich
+     teuer erkauft ist:
+       'rad'  in einer Buchungsmaschine MIT gesetztem Fahrrad übrig geblieben
+       'plan' offizieller Fahrplan der Reederei, Radmitnahme nicht einzeln
+              geprüft — die Abfahrt fährt, ob sie sein Rad nimmt, ist offen
+     Beide werden gewertet, aber 'plan' wird sichtbar als solches ausgewiesen.
+     Alles über einen Kamm zu scheren hieße, den Unterschied wegzuwerfen, der
+     diese Liste überhaupt erst belastbar gemacht hat. */
+  haefen: [
+    { nm:'Malmö', brouterKm:902, url:'https://www.finnlines.com/routes/swinoujscie-malmo/',
+      geprueftBis:'2026-07-26', ab:[
+      {d:'2026-07-25', t:'11:00', an:'19:15', linie:'Finnlines · Finnfellow', preis:34, q:'rad'},
+      {d:'2026-07-26', t:'10:15', an:'19:15', linie:'Finnlines · Finnfellow', preis:34, q:'rad'},
+    ]},
+    { nm:'Trelleborg', brouterKm:936, url:'https://www.ttline.com/de/schweden-faehren/trelleborg-swinoujscie/',
+      geprueftBis:'2026-07-26', ab:[
+      {d:'2026-07-25', t:'09:00', an:'15:00', linie:'TT-Line · Nils Holgersson', preis:31, q:'rad'},
+      {d:'2026-07-25', t:'17:30', an:'00:00', linie:'POLSCA', rad:false},
+      {d:'2026-07-26', t:'07:45', an:'14:00', linie:'TT-Line · Tom Sawyer', preis:31, q:'rad'},
+      {d:'2026-07-26', t:'15:45', an:'23:15', linie:'TT-Line · Tinker Bell', preis:38, q:'rad'},
+      {d:'2026-07-26', t:'17:00', an:'23:30', linie:'POLSCA', rad:false},
+    ]},
+    /* Ystad aus dem Monatsfahrplan von Polferries selbst (Juli 2026), nicht
+       aus einem Portal. Gegenprobe: das Buchungs-Dropdown für den 26.07.
+       listet 01:00 · 08:50 · 13:00 · 17:30 · 23:50 — genau die fünf Zeilen,
+       die hier für den Tag stehen. Die 23:50 am 25.07. ist zusätzlich mit Rad
+       bestätigt (50 €); die Route nimmt also grundsätzlich Räder. */
+    { nm:'Ystad', brouterKm:986, url:'https://polferries.com/prices-i-timetable/ferries-to-sweden-timetable.html',
+      geprueftBis:'2026-07-27', ab:[
+      {d:'2026-07-25', t:'09:30', an:'15:30', linie:'POLSCA · Mazovia',  q:'plan'},
+      {d:'2026-07-25', t:'13:00', an:'20:00', linie:'POLSCA · Varsovia', q:'plan'},
+      {d:'2026-07-25', t:'23:50', an:'07:30', linie:'POLSCA · M/F Polonia', q:'rad'},
+      {d:'2026-07-26', t:'01:00', an:'09:00', linie:'POLSCA · Jantar',   q:'rad'},
+      {d:'2026-07-26', t:'08:50', an:'15:00', linie:'POLSCA · Mazovia',  q:'plan'},
+      {d:'2026-07-26', t:'13:00', an:'19:30', linie:'POLSCA · Varsovia', q:'plan'},
+      {d:'2026-07-26', t:'17:30', an:'23:59', linie:'POLSCA · Epsilon',  q:'plan'},
+      {d:'2026-07-26', t:'23:50', an:'06:15', linie:'POLSCA · Polonia',  q:'plan'},
+      {d:'2026-07-27', t:'12:45', an:'19:00', linie:'POLSCA · Mazovia',  q:'plan'},
+      {d:'2026-07-27', t:'13:00', an:'19:30', linie:'POLSCA · Varsovia', q:'plan'},
+      {d:'2026-07-27', t:'22:45', an:'06:15', linie:'POLSCA · Polonia',  q:'plan'},
+    ]},
+  ],
+  /* Tagesleistungen INKLUSIVE Pausen — die Währung der Tagesbalken, nicht
+     reines Fahrtempo. Gelände-kalibriert: bis Geilo lagen 12,4 Höhenmeter je
+     Kilometer an, von hier bis Trelleborg sind es 5,0. Sein Muster von rund
+     14 Stunden Fahrzeit am Tag ergibt bei 21 km/h knapp 300 km — der mittlere
+     Wert ist also nicht geraten, sondern Manuels eigener Plan, gegengerechnet. */
+  szenarien: [
+    {nm:'vorsichtig', kmT:260}, {nm:'Plan', kmT:300}, {nm:'stark', kmT:340},
+  ],
+};
+
+let FER_SCEN = 1;   // gewähltes Szenario; Modulvariable, damit sie das 60s-Re-Render überlebt
+
+/* Abfahrten eines Hafens ab `ab`, nach Zeit sortiert. Seit die Einträge
+   datumsgenau sind (siehe oben), ist das ein Filter und keine Fahrplanlogik
+   mehr — das Wochentagsmuster, das hier stand, war genau die Erfindung, die
+   der Gegencheck kassiert hat. Abfahrten ohne Radmitnahme kommen mit, sie
+   werden nur nicht gewertet. */
+function ferryDeps(hafen, ab){
+  return hafen.ab.map(dep=>{
+    const t = new Date(`${dep.d}T${dep.t}`);
+    const an = new Date(`${dep.d}T${dep.an}`);
+    if(an <= t) an.setDate(an.getDate()+1);   // Ankunft vor Abfahrt heißt Folgetag
+    return {ab:t, an, dauer:(an-t)/3.6e6, linie:dep.linie, preis:dep.preis,
+            q:dep.q, rad:dep.rad !== false};
+  }).filter(d=> d.ab >= ab).sort((a,b)=> a.ab - b.ab);
+}
+
+const ferWochentag = d => d.toLocaleDateString('de-DE',{weekday:'short'}).replace('.','');
+const ferZeit = d => d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+const ferTagZeit = d => `${ferWochentag(d)} ${d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}, ${ferZeit(d)}`;
+
+function renderFerry(c){
+  const det = document.getElementById('ferryDetails');
+  /* Abschalten, sobald die Ostsee hinter ihm liegt — ein Panel, das eine
+     erledigte Frage weiterstellt, ist schlechter als keines. */
+  const pos = c.list.filter(e=> e.lat != null).pop();
+  if(!pos || pos.lat < FERRY.ausAbLat){ det.hidden = true; return; }
+  det.hidden = false;
+
+  // Der frischeste Kilometerstand, den wir haben — `live` schreibt der Scraper
+  // bei jedem Lauf, das Log nur ab 1 km Bewegung. Kilometer wachsen nur.
+  const km = Math.max(c.km, Number(S.live && S.live.km) || 0);
+  const szen = FERRY.szenarien[FER_SCEN];
+  const jetzt = c.now;
+
+  /* Bewertet wird nicht die früheste Ankunft drüben, sondern die verlorene
+     Zeit — und zwar aus einem Grund, der im ersten Entwurf noch fehlte und
+     das Panel gegen seinen eigenen Erklärtext hätte antreten lassen: eine
+     Überfahrt von sechs bis acht Stunden ersetzt eine Nachtruhe. Nachts
+     kostet sie nichts, tagsüber kostet sie sich selbst, weil er drüben
+     trotzdem noch schlafen muss. Nach der reinen Ankunftszeit gewann im
+     Szenario "stark" eine Tagesfähre — die früher anlegt und ihn trotzdem
+     einen halben Fahrtag kostet.
+        Verlust = Wartezeit am Terminal + (Tagesfähre ? Überfahrt : 0)
+     Die Fahrt zum weiter entfernten Hafen zählt bewusst NICHT als Verlust:
+     sie bringt ihn dem Ziel näher, sie hält ihn nicht auf. */
+  const istNacht = d=>{
+    const std = d.ab.getHours() + d.ab.getMinutes()/60;
+    return std >= FERRY.nachtVon || std < FERRY.nachtBis;
+  };
+  /* Dieselbe Kalibrierung wie beim Höhenprofil — aber geklemmt, und das ist
+     nicht Vorsicht, sondern eine Lehre aus dem Aufbau: `kmScale` ist der
+     Quotient aus `live.km` und `profile.routedKm`, zwei Größen mit
+     verschiedenem Ladetakt (5 gegen 15 Minuten) und verschiedener Herkunft.
+     Läuft eine davon der anderen davon — Profil hinkt nach einem
+     Scraper-Ausfall hinterher, oder umgekehrt —, wandert der Faktor, und mit
+     ihm wanderten die Hafendistanzen um Dutzende Kilometer. Beobachtet wurde
+     stabil 0,957; alles außerhalb dieses Bandes ist ein Zeichen für einen
+     Rückstand, nicht dafür, dass BRouter plötzlich anders routet. */
+  const skala = Math.min(1.02, Math.max(0.92, c.kmScale || 1));
+  const bloecke = FERRY.haefen.map(h=>{
+    const zielKm = FERRY.ankerKm + h.brouterKm * skala;
+    const rest = zielKm - km;
+    const an = rest > 0 ? new Date(jetzt.getTime() + rest/szen.kmT*24*3.6e6) : jetzt;
+    const fruehestens = new Date(an.getTime() + FERRY.checkinMin*6e4);
+    const alle = ferryDeps(h, new Date(fruehestens.getTime() - FERRY.knappStd*3.6e6));
+    const deps = alle.filter(d=> d.ab >= fruehestens).slice(0, 4);
+    /* Knapp verpasst: fährt vor seiner Abfahrbereitschaft, aber nicht lange.
+       Gerechnet ohne Wartezeit — er wäre ja gerade erst angekommen —, also
+       bleibt bei einer Nachtfähre glatt null Verlust stehen. */
+    const knapp = alle.filter(d=> d.rad && d.ab < fruehestens).map(d=>{
+      d.nacht = istNacht(d);
+      d.frueher = fruehestens - d.ab;
+      d.hypVerlust = d.nacht ? 0 : d.dauer*3.6e6;
+      return d;
+    /* Bei gleichwertigem Verlust — zwei Nachtfähren kosten beide nichts —
+       gewinnt die, für die er am wenigsten Vorsprung gebraucht hätte. Ohne
+       diesen Stichentscheid nannte das Panel die 23:50 vom Vortag statt der
+       01:00, die nur 26 Minuten entfernt war: derselbe Nutzen, doppelter
+       geforderter Aufwand. */
+    }).reduce((p,d)=> !p || d.hypVerlust < p.hypVerlust
+                   || (d.hypVerlust === p.hypVerlust && d.frueher < p.frueher) ? d : p, null);
+    deps.forEach(d=>{
+      d.nacht = istNacht(d);
+      d.warten = d.ab - an;
+      d.verlust = d.warten + (d.nacht ? 0 : d.dauer*3.6e6);
+    });
+    /* Innerhalb eines Hafens gilt dieselbe Rechnung: die günstigste Abfahrt
+       muss nicht die nächste sein — drei Stunden länger warten kann billiger
+       sein als eine Überfahrt bei Tageslicht. Abfahrten ohne Radmitnahme
+       stehen in der Liste, kommen aber nie in die Wertung. */
+    const beste = deps.filter(d=> d.rad)
+      .reduce((p,d)=> !p || d.verlust < p.verlust ? d : p, null);
+    /* Reicht seine Ankunft über den geprüften Horizont hinaus, ist eine leere
+       Liste KEINE Aussage über den Fahrplan, sondern über unser Wissen. Die
+       beiden auseinanderzuhalten ist der ganze Punkt der Umstellung auf
+       datumsgenaue Einträge — "keine Fähre" und "nicht nachgesehen" sehen im
+       Datenmodell sonst identisch aus. */
+    const horizont = new Date(`${h.geprueftBis || FERRY.geprueftBis}T23:59`);
+    return {h, rest, an, deps, beste, knapp, ungeprueft: an > horizont};
+  });
+  /* Hinter ihm liegende Häfen sind keine Wahl mehr und fallen raus — aber
+     niemals der letzte. Die beiden Kilometerskalen liegen rund vier Prozent
+     auseinander, auf 986 km sind das fast vierzig; die Toleranz oben kann das
+     gar nicht auffangen. Wer in Ystad am Terminal steht, gilt danach leicht
+     als "vorbei", und ausgerechnet dann verschwände das Panel im Moment
+     seiner größten Nützlichkeit. Ob die Ostsee wirklich hinter ihm liegt,
+     entscheidet die Breite weiter oben — die hängt an keinem Lineal. */
+  const offen = bloecke.filter(b=> b.rest > -FERRY.passiertKm);
+  if(offen.length) bloecke.splice(0, bloecke.length, ...offen);
+  else bloecke.splice(0, bloecke.length - 1);
+  const empfohlen = bloecke.filter(b=> b.beste)
+    .reduce((p,b)=> !p || b.beste.verlust < p.beste.verlust ? b : p, null);
+
+  document.getElementById('ferrySum').innerHTML = 'Fähre nach ' + esc(FERRY.ziel) + ' · ' + (empfohlen
+    ? `<b>ab ${esc(empfohlen.h.nm)} ${ferTagZeit(empfohlen.beste.ab)} → an ${ferTagZeit(empfohlen.beste.an)}</b>`
+    : '<b>keine erreichbare Abfahrt im Fenster</b>');
+
+  const knoepfe = FERRY.szenarien.map((s,i)=>
+    `<button data-scen="${i}" class="${i===FER_SCEN?'on':''}">${esc(s.nm)}<b>${s.kmT} km/Tag</b></button>`).join('');
+
+  /* Gerechnet wird ab JETZT vom frischesten Kilometerstand. Steht er gerade,
+     wächst der Zähler nicht, die Uhr aber schon — die Ankunftszeiten wandern
+     also während einer Pause von selbst nach hinten, statt eine Verspätung
+     zu verschlucken. Das ist gewollt und darf nicht "geglättet" werden, es ist
+     dieselbe Haltung wie beim Ø-Schnitt in compute(): lieber eine Prognose,
+     die mit dem Stillstand altert, als eine, die ihn wegrechnet. Gesagt wird
+     es trotzdem, sonst sieht es nach einer wackeligen Zahl aus. */
+  const stop = S.live && S.live.stopSince && !(Number(S.live.speed) > 0) ? S.live.stopSince : null;
+  const pause = stop
+    ? `<div class="ferpause">Er steht gerade (seit ${fmt(stop)}, ${dur(jetzt - new Date(stop))}).
+         Die Ankunftszeiten rechnen ab jetzt mit der vollen Tagesleistung und rücken
+         deshalb weiter nach hinten, solange die Pause läuft.</div>`
+    : '';
+
+  /* Steht die Empfehlung selbst nur auf dem Fahrplan, muss das oben stehen und
+     nicht als Kürzel in einer Zeile: es ist die eine Sache, die vor dem Buchen
+     noch zu klären ist. */
+  const belegHinweis = empfohlen && empfohlen.beste.q === 'plan'
+    ? `<div class="ferpause">Die empfohlene Abfahrt steht im Fahrplan der Reederei, ihre
+         Radmitnahme ist aber nicht einzeln geprüft (Kürzel <b>Plan</b>). Auf dieser Route
+         nimmt POLSCA Räder mit — für dieses Schiff bestätigt ist es nicht.</div>`
+    : '';
+
+  const karten = bloecke.map(b=>{
+    const kopf = `<div class="ferhead">
+        <span class="pn">${esc(b.h.nm)}</span>
+        <span class="pa">${b.rest > 0
+          ? `noch ${num(b.rest)} km · ${ferTagZeit(b.an)}`
+          : 'erreicht'}</span>
+      </div>`;
+    // "Nicht nachgesehen" ist eine andere Aussage als "fährt nicht", und nur
+    // eine davon darf hier stehen.
+    if(b.ungeprueft) return `<div class="ferport">${kopf}
+        <div class="fernone">Ankunft nach dem ${fmt((b.h.geprueftBis || FERRY.geprueftBis)+'T00:00').slice(0,6)} —
+          für diesen Tag ist der Fahrplan hier nicht mit Rad geprüft.</div></div>`;
+    if(!b.deps.length) return `<div class="ferport">${kopf}
+        <div class="fernone">Keine geprüfte Abfahrt nach seiner Ankunft.</div></div>`;
+    const zeilen = b.deps.map(d=>{
+      const top = d === b.beste;
+      const nachsatz = !d.rad ? '<span class="norad">kein Fahrrad an Bord</span>'
+        : `<span class="wt">${dur(d.warten)} Warten${d.nacht?'':` + ${dur(d.dauer*3.6e6)} Tagfahrt`}</span>`;
+      // Fahrplan der Reederei, Rad nicht einzeln geprüft — sichtbar, aber leise.
+      const beleg = d.rad && d.q === 'plan' ? '<span class="plan" title="Fahrplan der Reederei — Radmitnahme nicht einzeln geprüft">Plan</span>' : '';
+      return `<div class="ferdep${top?' first':''}${d.rad?'':' aus'}">
+          <span class="dt"><span class="mk">${d.rad ? (top?'↳':'·') : '×'}</span> ${ferTagZeit(d.ab)}</span>
+          <span>→ ${ferZeit(d.an)}${d.an.getDate()!==d.ab.getDate()?' (+1)':''}${d.nacht?' 🌙':''}</span>
+          <span class="pk">${esc(d.linie)}${d.preis?` · ab ${d.preis} €`:''}</span>${beleg}
+          ${nachsatz}
+        </div>`;
+    }).join('');
+    /* Nur zeigen, wenn sie WIRKLICH besser gewesen wäre — sonst ist das kein
+       Hinweis, sondern Bedauern ohne Gegenwert. Eine Stunde Schwelle, damit
+       Rundungsunterschiede nicht als Chance auftreten. */
+    const knappZeile = b.knapp && b.beste && b.knapp.hypVerlust < b.beste.verlust - 3.6e6
+      // dhm() statt dur(): hier IST die Minute die Aussage — "1 h" statt
+      // "1 h 26 min" verschenkt genau den Unterschied, um den es geht.
+      ? `<div class="ferknapp"><b>${dhm(b.knapp.frueher/6e4)} früher hier</b>, und die
+           ${b.knapp.nacht?'Nachtfähre ':''}${ferZeit(b.knapp.ab)}${b.knapp.nacht?' 🌙':''} wäre drin —
+           spart ${dur(b.beste.verlust - b.knapp.hypVerlust)} gegenüber der hier nächstbesten.</div>`
+      : '';
+    return `<div class="ferport${empfohlen && b === empfohlen ? ' pick':''}">${kopf}${zeilen}${knappZeile}</div>`;
+  }).join('');
+
+  const w = document.getElementById('ferryWrap');
+  w.innerHTML = `<div class="ferscen">${knoepfe}</div>${pause}${belegHinweis}${karten}
+    <p class="profnote">Die drei Häfen liegen hintereinander auf der Route — Malmö, dann
+      32 km weiter Trelleborg, dann 48 km weiter Ystad. Der Hafen muss deshalb nicht vorab
+      gewählt werden; wer bis Trelleborg fährt, hat alle drei noch in der Hand.
+      Die Messing-Kante markiert nicht die früheste Abfahrt, sondern die geringste
+      verlorene Zeit — Warten am Terminal, bei einer Tagesfähre zusätzlich die Überfahrt.</p>
+    <p class="profnote">Denn eine Überfahrt dauert 6 bis 9 Stunden und ist damit genau eine
+      Nachtruhe: eine <b>🌙 Nachtfähre kostet praktisch keine Rennzeit</b>, eine
+      Tagesfähre einen halben Fahrtag, weil er drüben trotzdem noch schlafen muss.
+      Es lohnt sich also eher, die Ankunft an der Küste auf den Abend zu legen, als so
+      früh wie möglich dort zu sein — und mitunter, eine frühere Fähre ziehen zu lassen.</p>
+    <p class="profnote"><b>Stand ${esc(FERRY.geprueftAm)}, aus zwei Quellen mit
+      unterschiedlichem Gewicht:</b> ohne Kürzel = in einer Buchungsmaschine mit gesetztem
+      Fahrrad übrig geblieben · <span class="plan">Plan</span> = Monatsfahrplan der Reederei,
+      Radmitnahme nicht für dieses Schiff geprüft. Aggregierte Vergleichsportale sind hier
+      bewusst keine Quelle mehr: sie zeigen teils noch den Stand vor der Übernahme von
+      Polferries und Unity Line durch POLSCA (30.03.2026) und unterscheiden nicht, ob ein
+      Schiff Räder mitnimmt. Auf Trelleborg → ${esc(FERRY.ziel)} tut POLSCA das derzeit nicht;
+      diese Abfahrten stehen mit × dabei, damit sie niemand für eine Möglichkeit hält.</p>
+    <p class="profnote">Distanzen mit BRouter geroutet (Profil <code>trekking</code>) und auf die
+      Skala des Trackers gestreckt, Tagesleistungen einschließlich Pausen.
+      Über die Auslastung sagt dieses Panel nichts — vor dem Buchen bei der Reederei prüfen:
+      ${FERRY.haefen.map(h=> `<a href="${esc(h.url)}" target="_blank" rel="noopener">${esc(h.nm)}</a>`).join(' · ')}.
+      Fällt ${esc(FERRY.ziel)} ganz aus, bleibt Trelleborg → Rostock (deutlich dichter
+      getaktet), kostet aber etwa 125 km mehr Landweg bis CP2.</p>
+    <p class="profnote"><b>Direkt bei der Reederei buchen, nicht über ein Portal</b> — hier
+      nicht wegen der Buchungsgebühr, sondern weil eine Ankunftszeit, die auf einer
+      Tagesleistung beruht, sich verschieben wird. Umbuchen geht bei der Reederei
+      unkompliziert, über einen Vermittler selten.</p>`;
+  w.querySelectorAll('.ferscen button').forEach(b=> b.onclick = ()=>{
+    FER_SCEN = Number(b.dataset.scen); renderFerry(c);
+  });
+}
+
 /* Das Log wächst über drei Wochen auf hunderte Zeilen und schob Karte und
    Fußzeile immer weiter nach unten. Offen stehen deshalb nur die neuesten
    `LOG_HEAD` Meldungen, der Rest liegt hinter einem Klapper — dieselbe Haltung
@@ -1657,7 +2065,8 @@ window.tcr84FeierReset = ()=>{
 
 function render(){
   const c = compute();
-  renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c); renderLog(c); renderSource(c);
+  renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c);
+  renderFerry(c); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   maybeCelebrate(c);
   if(EDIT) renderDirty();

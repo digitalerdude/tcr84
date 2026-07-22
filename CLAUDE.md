@@ -897,6 +897,155 @@ ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
   — ein manuell aufgeklappter GPS-Detail-Toggle fällt beim nächsten Tick wieder
   automatisch zu (bekannter, unkritischer Rough Edge).
 
+### Fährplanung Südschweden (`renderFerry()`, 22.07.2026)
+
+Ein Panel auf Zeit, für eine einzige Entscheidung: mit welcher Ostsee-Fähre
+geht es nach Świnoujście. Anlass war die Meldung eines Mitfahrers, seine
+geplante Fähre sei ausgebucht.
+
+**Die Umkehr, aus der das Panel besteht:** Malmö, Trelleborg und Ystad sind
+keine Alternativen, sie liegen in dieser Reihenfolge **hintereinander auf
+derselben Route**, 32 bzw. 48 km auseinander. Der Hafen muss also gar nicht
+vorab gewählt werden — gewählt wird die Abfahrt, an der er ankommt. Deshalb
+rechnet das Panel nicht „welcher Hafen", sondern „wann ist er wo, und was
+fährt dann". Wer bis Trelleborg fährt, hat alle drei noch in der Hand.
+
+**Bewertet wird verlorene Zeit, nicht die früheste Ankunft.** Eine Überfahrt
+dauert 6–9 h und ist damit genau eine Nachtruhe: nachts kostet sie nichts,
+tagsüber kostet sie sich selbst, weil er drüben trotzdem schlafen muss.
+Nach der Korrektur der Fahrpläne (unten) ist das keine Feinheit mehr, sondern
+die Hauptaussage: eine Nachtfähre kostet ihn 0–7 h, jede Tagesalternative
+13–16 h.
+
+```
+Verlust = Wartezeit am Terminal + (Tagesfähre ? Überfahrtsdauer : 0)
+```
+
+Die Fahrt zum weiter entfernten Hafen zählt bewusst **nicht** als Verlust —
+sie bringt ihn dem Ziel näher, sie hält ihn nicht auf. Der erste Entwurf
+sortierte nach der frühesten Ankunft drüben und empfahl im Szenario „stark"
+prompt eine Tagesfähre, während der Erklärtext daneben Nachtfähren empfahl.
+Zwei Stellen, zwei Aussagen, dieselbe Falle wie bei `nextCp` und der Leiter.
+Aus demselben Grund gilt das Maß auch **innerhalb** eines Hafens: die
+markierte Abfahrt ist nicht zwingend die nächste, drei Stunden länger warten
+kann billiger sein als eine Überfahrt bei Tageslicht.
+
+**Zwei Lineale, dritter Auftritt** (nach `cpHit()` und dem Höhenprofil): die
+Hafendistanzen sind mit BRouter geroutet (`trekking`, gleiches Profil wie im
+Scraper) und stehen auf BRouters Skala, `live.km` auf der des Trackers.
+Umgerechnet wird mit `c.kmScale` — **geklemmt auf 0,92…1,02**. Der Faktor ist
+der Quotient zweier Größen mit verschiedenem Ladetakt (5 gegen 15 Minuten);
+läuft eine der anderen davon, wandert er, und mit ihm wanderten die
+Hafendistanzen um Dutzende Kilometer. Beobachtet wurde stabil 0,957.
+
+**Lebenszyklus.** Das Panel schaltet sich selbst ab, sobald die letzte
+Meldung südlich von `ausAbLat` (55,0 °N) liegt — dann ist die Ostsee
+überquert und die Frage erledigt. Passierte Häfen fallen einzeln aus der
+Auswahl (`passiertKm`, 15 km), **aber nie der letzte**: die Skalen liegen 4 %
+auseinander, auf 986 km sind das fast vierzig, und wer in Ystad am Terminal
+steht, gilt danach leicht als „vorbei". Ausgerechnet dann verschwände das
+Panel im Moment seiner größten Nützlichkeit. Ob die Ostsee wirklich hinter
+ihm liegt, entscheidet die Breite — die hängt an keinem Lineal.
+Durchgespielt gegen den ganzen Ablauf: unterwegs → Malmö passiert →
+Trelleborg passiert → am Terminal in Ystad → nach der Überfahrt aus.
+
+**Der Fahrplan ist das schwächste Glied, und er ist es zweimal geworden.**
+Der erste Aufbau nahm Wochentagsmuster aus aggregierten Portalen — 41
+Abfahrten die Woche, vier Reedereien. Ein Gegencheck in den Buchungsmaschinen
+**mit gesetztem Fahrrad** (22.07.2026, Screenshots vom Nutzer) ließ davon
+einen Bruchteil übrig. Zwei Gründe, beide grundsätzlich:
+
+1. **POLSCA S.A. hat am 30.03.2026 Polferries *und* Unity Line übernommen**
+   und die Flotte umverteilt (Jantar Unity weg von Trelleborg, Mazovia hin).
+   Die Portale zeigen streckenweise noch den Stand davor. Ein Fahrplan, den
+   niemand gegen den Betrieb geprüft hat, ist eine Behauptung.
+2. **Ein Platz für einen Menschen ist kein Platz für ein Rad.** Auf
+   Trelleborg–Świnoujście befördert POLSCA derzeit gar keine Fahrräder — die
+   Abfahrt steht im Fahrplan, im Portal, und ist für ihn trotzdem keine.
+   Genau diese sind die gefährlichsten: sie sehen aus wie eine Option.
+
+Konkret gekippt: die ursprünglich empfohlene „Trelleborg Sa 22:30" gibt es
+nicht.
+
+**Und dann kippte auch die Korrektur noch einmal** — durch den
+Monatsfahrplan von Polferries selbst. Nach dem ersten Gegencheck stand da
+eine einzige Nachtfähre mit Rad (Ystad 23:50 am 25.07.); der Reederei-Plan
+zeigt für Ystad **an jedem der drei Tage mindestens eine** (Sa 23:50, So
+01:00 und 23:50, Mo 22:45). Die Ostsee ist also gar kein Engpass, die
+Portale hatten ihn nur so aussehen lassen. Gegenprobe, die diese Ablesung
+trägt: das Buchungs-Dropdown für den 26.07. listet 01:00 · 08:50 · 13:00 ·
+17:30 · 23:50 — genau die fünf Zeilen der Tabelle für den Tag.
+
+Daraus die Regel: **Reedereiseite vor Portal, Buchungsmaschine vor
+Reedereiseite.** Und zwar in beide Richtungen — das Portal ließ Abfahrten
+verschwinden, die es gibt, und zeigte welche, die für ein Rad keine sind.
+
+Deshalb steht in `FERRY` **kein Wochentagsmuster mehr, sondern datumsgenaue
+Abfahrten**, jede einzeln mit Rad nachgesehen. Was nicht geprüft ist,
+existiert für das Panel nicht — und über `geprueftBis` hinaus sagt es das
+ausdrücklich, statt eine leere Liste als „keine Fähre" auszugeben. Der
+Horizont ist **je Hafen überschreibbar**: die Prüftiefe hing daran, wie weit
+die Suchmaske getrieben wurde, und ein globaler Horizont ließ das Panel für
+Ystad am Sonntag „keine Abfahrt" behaupten, wo „nicht nachgesehen" richtig
+war — derselbe Fehler wie zuvor, nur eine Ebene tiefer.
+
+Abfahrten, die nachweislich **keine** Räder nehmen, bleiben mit `rad:false`
+stehen (durchgestrichen, mit ×): Negativwissen ist teuer erkauft, und ohne
+die Zeile trägt sie beim nächsten Mal jemand wieder ein. Die Liste ist nach
+unten sicher und nach oben offen.
+
+**`q` hält die Belegstärke auseinander**, weil sie unterschiedlich teuer
+erkauft ist: `'rad'` = in einer Buchungsmaschine mit gesetztem Fahrrad übrig
+geblieben · `'plan'` = Monatsfahrplan der Reederei, Radmitnahme für dieses
+Schiff nicht geprüft. Beide werden gewertet, `'plan'` wird aber sichtbar als
+solches ausgewiesen — und wenn ausgerechnet die Empfehlung darauf steht,
+sagt das Panel es oben im Klartext statt als Kürzel in einer Zeile. Alles
+über einen Kamm zu scheren hieße, genau den Unterschied wegzuwerfen, der
+diese Liste überhaupt belastbar gemacht hat.
+
+Die Einträge tragen **Ankunftszeit statt Dauer** (`an`, vor `t` = Folgetag).
+Eine Dezimalstunde ist eine Rechnung, und Rechnungen beim Abschreiben aus
+einem Fahrplan sind eine Fehlerquelle ohne Gegenwert.
+
+**Knapp verpasste Abfahrten** (`knappStd`, 6 h) sind die teuerste Information
+im Panel und die einzige, die sonst gar nicht auftaucht: bei Plantempo kommt
+er 01:26 in Ystad an, die Nachtfähre 01:00 ist weg, und der Unterschied zur
+nächsten Möglichkeit ist ein halber Fahrtag. Gezeigt wird sie nur, wenn sie
+wirklich besser gewesen wäre (mehr als 1 h), sonst ist es Bedauern ohne
+Gegenwert. Bei gleichwertigem Verlust — zwei Nachtfähren kosten beide nichts
+— gewinnt die, für die er am **wenigsten Vorsprung** gebraucht hätte; ohne
+diesen Stichentscheid nannte das Panel die 23:50 vom Vortag statt der 01:00,
+die 26 Minuten entfernt war. Und dort steht `dhm()` statt `dur()`: hier ist
+die Minute die Aussage, „1 h" statt „1 h 30 min" verschenkt genau den
+Unterschied, um den es geht.
+
+Sie steht als Konstante im Frontend, nicht in `data.json`: sie ist
+redaktionell, nicht gemessen, und nichts anderes im Board darf sich auf sie
+stützen. Über die **Auslastung** sagt das Panel nichts und kann es nicht: es
+zeigt nur, was zeitlich erreichbar wäre. Diese Grenze nicht verwischen.
+
+**Direktbuchung steht als eigener Rat im Panel**, und nicht wegen der
+Buchungsgebühr: eine Ankunftszeit, die auf einer Tagesleistung beruht, wird
+sich verschieben. Umbuchen geht bei der Reederei unkompliziert, über einen
+Vermittler selten. Für einen Fahrer, dessen Ankunft auf ±8 h geschätzt ist,
+ist Umbuchbarkeit mehr wert als jeder Preisvorteil.
+
+**Wer den Fahrplan fortschreibt:** Buchungsmaschine mit gesetztem Fahrrad
+(`q:'rad'`) oder Monatsfahrplan der Reederei (`q:'plan'`) — **nie ein
+Vergleichsportal**. `geprueftAm`/`geprueftBis` mitziehen, sonst behauptet das
+Panel eine Prüfung, die es nicht gab.
+
+Die Tagesleistungen (260/300/340 km) sind Leistungen **inklusive Pausen**,
+die Währung der Tagesbalken, nicht reines Fahrtempo. Der mittlere Wert ist
+Manuels eigener Plan, gegengerechnet: bis Geilo lagen 12,4 hm/km an, von dort
+bis Trelleborg sind es 5,0 — sein Muster von ~14 h Fahrzeit ergibt bei
+21 km/h knapp 300 km. Gerechnet wird ab **jetzt** vom frischesten
+Kilometerstand; steht er, wächst der Zähler nicht, die Uhr aber schon, und
+die Ankunftszeiten rücken von selbst nach hinten. Das ist gewollt — dieselbe
+Haltung wie beim Ø-Schnitt in `compute()`: lieber eine Prognose, die mit dem
+Stillstand altert, als eine, die ihn wegrechnet. Läuft eine Pause, sagt das
+Panel es dazu, sonst sieht es nach einer wackeligen Zahl aus.
+
 ## Sonstiges
 
 - `tools/node_modules/`, `tools/update-tracker.log`, `tools/*.png`/`*.dump.json`
