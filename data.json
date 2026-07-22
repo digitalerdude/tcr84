@@ -334,14 +334,27 @@
       "speed": 0,
       "ele": 5,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784699984087",
+      "ts": "2026-07-22T07:57",
+      "tsSrc": "track",
+      "km": 680.53,
+      "place": "Aurlandsvangen",
+      "note": "Platz 290",
+      "lat": 60.903396,
+      "lon": 7.175116,
+      "speed": 12.4,
+      "ele": 0,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-22T05:34:35.148Z",
+  "updated": "2026-07-22T05:59:44.220Z",
   "live": {
-    "ts": "2026-07-22T07:34",
-    "km": 679.43,
-    "fixMinsAgo": 10,
-    "speed": 0,
-    "rank": 287
+    "ts": "2026-07-22T07:59",
+    "km": 680.53,
+    "fixMinsAgo": 2,
+    "speed": 12.4,
+    "rank": 290
   }
 }
