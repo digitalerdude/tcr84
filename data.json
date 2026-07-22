@@ -490,14 +490,27 @@
       "speed": 5,
       "ele": 1248,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784722607315",
+      "ts": "2026-07-22T14:14",
+      "tsSrc": "track",
+      "km": 731,
+      "place": "Fagernut",
+      "note": "Platz 276",
+      "lat": 60.627656,
+      "lon": 7.36899,
+      "speed": 3.2,
+      "ele": 1324,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-22T11:51:36.606Z",
+  "updated": "2026-07-22T12:16:47.441Z",
   "live": {
-    "ts": "2026-07-22T13:51",
-    "km": 728.46,
-    "fixMinsAgo": 4,
-    "speed": 5,
+    "ts": "2026-07-22T14:16",
+    "km": 731,
+    "fixMinsAgo": 3,
+    "speed": 3.2,
     "rank": 276
   }
 }
