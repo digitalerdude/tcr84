@@ -785,6 +785,18 @@ ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
   bewusst **standardmäßig eingeklappt** (`<details>`/Klick-Toggle) — die mobile
   Startansicht soll schlank bleiben, tiefere Daten sind einen Klick entfernt, nicht
   auf der ersten Bildschirmseite.
+  **Ausnahme: die Fährplanung steht offen** (seit 23.07.2026). Die Regel zielt auf
+  *Detail*-Ebenen; das Panel ist keine, sondern die gerade offene operative Frage,
+  und die gehört nicht hinter einen Klick. Es schaltet sich ohnehin selbst ab,
+  sobald sie beantwortet ist. Eingeklappt ist dafür sein **Erklärteil** — die
+  Tabelle ist die Antwort, der Text darunter die Begründung, und wer die einmal
+  gelesen hat, braucht sie nicht bei jedem Blick aufs Board wieder.
+- **Fließtext bekommt `--prose`, nicht `--muted`.** `--muted` ist für Etiketten und
+  kurze Wortgruppen, wo das Zurücktreten die Aufgabe ist (Kennzahlen-Untertitel,
+  Achsen, Spaltenköpfe). Über einen ganzen Absatz getragen wird daraus schlechte
+  Lesbarkeit — Kontrast auf `--panel` 5,4 gegen 8,3 bei `--prose` (`--ice` liegt
+  bei 10,8, das wäre schon Betonung). Betrifft `.profnote`, die Hinweiszeilen des
+  Fährpanels und den Kartentext; die Tabellenzeilen bleiben auf `--muted`.
 - **Gespeicherte Dauern altern nicht mit — Zeitstempel schon.** `live.fixMinsAgo`
   ist das Alter der Trackermeldung *zum Zeitpunkt unseres Abrufs*, kein
   laufender Wert. Roh angezeigt stand in der Kopfzeile eine Stunde nach dem

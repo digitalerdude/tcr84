@@ -15,6 +15,13 @@
   :root{
     --night:#0C1620; --panel:#14212C; --panel2:#1A2A36; --line:#25394A;
     --ice:#BCD7DE; --muted:#7F98A6; --bone:#E9E4D8; --brass:#D9A441;
+    /* Fließtext, der nicht Haupttext ist. `--muted` ist für Etiketten und
+       kurze Wortgruppen gedacht, wo das Zurücktreten die Aufgabe ist
+       (Kennzahlen-Untertitel, Achsen, Spaltenköpfe) — über einen ganzen
+       Absatz getragen wird daraus schlechte Lesbarkeit. Kontrast auf
+       --panel: 5,4 bei --muted, 8,3 hier, 10,8 bei --ice. Also heller, aber
+       weiterhin erkennbar zweite Ebene. */
+    --prose:#A6BCC7;
     --good:#86B08C; --warn:#D9A441; --alert:#C2503C;
     --display:"Space Grotesk","Helvetica Neue",Arial,sans-serif;
     --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -177,11 +184,17 @@
                 border:1px solid var(--line);border-radius:2px;padding:1px 4px;margin-left:7px}
   .ferdep .norad{margin-left:auto;color:var(--alert)}
   @media (max-width:560px){.ferdep .norad{margin-left:0}}
-  .fernone{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:5px}
-  .ferknapp{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.6;
+  .fernone{font-family:var(--mono);font-size:11px;color:var(--prose);margin-top:5px}
+  .ferknapp{font-family:var(--mono);font-size:11px;color:var(--prose);line-height:1.6;
             margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
   .ferknapp b{color:var(--brass);font-weight:500}
-  .ferpause{font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.65;
+  /* Der innere Klapper sitzt schon in einem Kasten — also ohne eigenen
+     Rahmen und ohne den Abstand, den ein Kasten oben braucht. */
+  .ferinfo{border:none;background:none;margin-top:6px}
+  .ferinfo > summary{padding:9px 0}
+  .ferinfo > summary:hover{color:var(--ice)}
+  .ferinfobody{padding-top:2px}
+  .ferpause{font-family:var(--mono);font-size:11px;color:var(--prose);line-height:1.65;
             border-left:2px solid var(--line);padding-left:10px;margin:0 0 13px}
   /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
      zu sehen ist — dafür fällt sie aus dem Versalsatz der übrigen Summaries. */
@@ -211,7 +224,7 @@
      eigene Kennzahlen — die stehen schon oben im Board. */
   .mapprof{margin-top:10px}
   .mapprof .profbox{padding:8px 10px 4px}
-  .profnote{font-size:13px;color:var(--muted);margin:0;line-height:1.6}
+  .profnote{font-size:13px;color:var(--prose);margin:0;line-height:1.6}
   .profnote + .profnote{margin-top:10px}
   /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
   #profileWrap details{margin-top:-1px}
@@ -335,7 +348,7 @@
       <h2>Kilometer pro Tag</h2>
       <div id="daysWrap"></div>
 
-      <details id="ferryDetails" hidden>
+      <details id="ferryDetails" open hidden>
         <summary id="ferrySum">Fährplanung Südschweden</summary>
         <div class="setbody" id="ferryWrap"></div>
       </details>
@@ -348,7 +361,7 @@
         <div class="setbody">
           <div id="mapWrap"></div>
           <div id="mapProfileWrap" class="mapprof"></div>
-          <p style="font-size:12px;color:var(--muted);margin:10px 0 0">
+          <p style="font-size:12px;color:var(--prose);margin:10px 0 0">
             Die Linie ist die tatsächlich aufgezeichnete Spur des Trackers, nicht die Verbindung
             zwischen den Meldungen. Helle Punkte sind Pausen ab 40 Minuten, der Messingpunkt ist
             die letzte bekannte Position — antippen zeigt Dauer, Uhrzeit und Kilometerstand.
@@ -1319,6 +1332,9 @@ const FERRY = {
 };
 
 let FER_SCEN = 1;   // gewähltes Szenario; Modulvariable, damit sie das 60s-Re-Render überlebt
+/* Gleiches Motiv wie LOG_ALL: der Erklärteil wird bei jedem render() neu
+   gebaut, ein aufgeklappter Kasten fiele sonst im Minutentakt wieder zu. */
+let FER_INFO = false;
 
 /* Abfahrten eines Hafens ab `ab`, nach Zeit sortiert. Seit die Einträge
    datumsgenau sind (siehe oben), ist das ein Filter und keine Fahrplanlogik
@@ -1503,7 +1519,13 @@ function renderFerry(c){
   }).join('');
 
   const w = document.getElementById('ferryWrap');
+  /* Der Erklärteil steht eingeklappt: die Tabelle darüber ist die Antwort,
+     das hier ist die Begründung. Wer sie einmal gelesen hat, braucht sie
+     nicht bei jedem Blick aufs Board wieder. */
   w.innerHTML = `<div class="ferscen">${knoepfe}</div>${pause}${belegHinweis}${karten}
+    <details class="ferinfo"${FER_INFO?' open':''}>
+    <summary>Wie das gerechnet ist — und woher die Fahrpläne stammen</summary>
+    <div class="ferinfobody">
     <p class="profnote">Die drei Häfen liegen hintereinander auf der Route — Malmö, dann
       32 km weiter Trelleborg, dann 48 km weiter Ystad. Der Hafen muss deshalb nicht vorab
       gewählt werden; wer bis Trelleborg fährt, hat alle drei noch in der Hand.
@@ -1531,10 +1553,13 @@ function renderFerry(c){
     <p class="profnote"><b>Direkt bei der Reederei buchen, nicht über ein Portal</b> — hier
       nicht wegen der Buchungsgebühr, sondern weil eine Ankunftszeit, die auf einer
       Tagesleistung beruht, sich verschieben wird. Umbuchen geht bei der Reederei
-      unkompliziert, über einen Vermittler selten.</p>`;
+      unkompliziert, über einen Vermittler selten.</p>
+    </div></details>`;
   w.querySelectorAll('.ferscen button').forEach(b=> b.onclick = ()=>{
     FER_SCEN = Number(b.dataset.scen); renderFerry(c);
   });
+  const info = w.querySelector('.ferinfo');
+  if(info) info.ontoggle = ()=>{ FER_INFO = info.open; };
 }
 
 /* Das Log wächst über drei Wochen auf hunderte Zeilen und schob Karte und
