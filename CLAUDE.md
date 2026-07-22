@@ -14,6 +14,7 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 | `profile.json` | Das daraus gerechnete Höhenprofil (Stützpunkte + kumulierte Höhenmeter je Block). **Einzige Quelle für alle Höhenangaben im Board.** Eigener Ladetakt im Frontend (15 Min), weil es die größte Datei ist. |
 | `tools/update-tracker.mjs` | Automatisierter Scraper, siehe unten. |
 | `tools/check.mjs` | Invarianten-Prüfung der drei JSON-Dateien gegeneinander, siehe unten. |
+| `tools/com.digitalerdude.tcr84-tracker-updater.plist` | Abschrift der launchd-Konfiguration. Getickt wird nach der Kopie in `~/Library/LaunchAgents/`; `check.mjs` schlägt an, wenn beide auseinanderlaufen. |
 | `tools/package.json` | Playwright-Dependency für den Scraper. `cd tools && npm install`. |
 
 ## data.json-Schema
@@ -402,6 +403,11 @@ Drei Stufen: `FEHLER` (Datenstand ist in sich widersprüchlich), `WARNUNG`
 Prüfung, wird mitprotokolliert, damit sichtbar ist *was* geprüft wurde).
 Toleranzen stehen gesammelt in `TOL` oben im Skript, nicht im Code verstreut.
 
+Seit dem 22.07.2026 prüft es zusätzlich eine Sache außerhalb der drei Dateien:
+ob die **launchd-Abschrift** in `tools/` noch mit der installierten übereinstimmt
+(siehe „Automatisierung"). Dasselbe Motiv, nur eine Ebene höher — auch eine
+veraltete Abschrift ist eine zweite Wahrheit.
+
 Zwei Eigenheiten, die nicht "vereinfacht" gehören:
 
 - **`cumAt()` dupliziert `cumClimbAt()` aus `index.html` absichtlich.** Prüfte
@@ -459,6 +465,25 @@ Stelle abgeschnitten.
 `~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — tickt alle
 5 Minuten (`StartInterval: 300`), ruft
 `update-tracker.mjs --commit --push --scheduled` auf.
+
+**Die Datei liegt zweimal vor, und das ist Absicht** (seit 22.07.2026): launchd
+liest ausschließlich die unter `~/Library/LaunchAgents/`, dort muss sie liegen.
+Im Repo steht eine Abschrift unter `tools/`, damit der Takt nachvollziehbar ist
+— vorher stand nirgends geschrieben, wie oft der Job eigentlich läuft, und eine
+Änderung daran hinterließ keine Spur in der Historie. Die Pfade darin sind
+absolut (`/Users/Max/…`), die Abschrift ist also Dokumentation, keine fertige
+Installation für einen anderen Rechner.
+
+Damit daraus keine zweite Wahrheit wird, vergleicht `check.mjs` die beiden bei
+jedem Lauf und warnt bei Abweichung. Fehlt die installierte Seite (anderer
+Rechner, GitHub-Runner), schweigt die Prüfung — dann gibt es nichts zu
+vergleichen.
+
+```bash
+cp tools/com.digitalerdude.tcr84-tracker-updater.plist ~/Library/LaunchAgents/
+launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist
+```
 
 **Häufig ticken, selten arbeiten.** Der Takt sagt nichts darüber, wie oft ein
 Browser startet: `--scheduled` lässt den Lauf **vor** dem Browserstart abbrechen,

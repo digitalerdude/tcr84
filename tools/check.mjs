@@ -20,6 +20,7 @@
  */
 
 import { readFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -372,6 +373,28 @@ export function runChecks({ now = new Date() } = {}) {
     if (schlimmsteMin > 3)
       warnung(`Meldungen tragen bis zu ${Math.round(schlimmsteMin)} min Versatz zur Messung.`);
     else if (geprueft) ok(`${geprueft} Zeitstempel sitzen auf ihrem Messpunkt (Versatz ≤ ${Math.round(schlimmsteMin)} min).`);
+  }
+
+  /* ---------- launchd-plist: Abschrift gegen Original ----------
+     Getickt wird nach der Datei in ~/Library/LaunchAgents — die im Repo ist
+     nur Abschrift. Genau deshalb gehört sie bewacht: eine Abschrift, die
+     unbemerkt altert, dokumentiert eine Lüge, und der Takt des Jobs ist
+     nichts, was man beim Lesen des Repos raten möchte. Dasselbe Motiv wie
+     überall hier — es darf keine zweite Wahrheit entstehen.
+
+     Fehlt eine der beiden Seiten, ist das kein Fehler: auf einem anderen
+     Rechner (oder auf dem GitHub-Runner) gibt es die installierte schlicht
+     nicht, und dann ist auch nichts zu vergleichen. */
+  {
+    const name = 'com.digitalerdude.tcr84-tracker-updater.plist';
+    const imRepo = path.join(REPO_ROOT, 'tools', name);
+    const installiert = path.join(os.homedir(), 'Library', 'LaunchAgents', name);
+    const lies = p => { try { return readFileSync(p, 'utf8'); } catch { return null; } };
+    const a = lies(imRepo), b = lies(installiert);
+    if (a && b && a === b) ok('launchd-plist: Abschrift im Repo deckt sich mit der installierten.');
+    else if (a && b) warnung(`launchd-plist weicht ab — getickt wird nach ${installiert}, das Repo behauptet etwas anderes. Abgleichen: cp "${installiert}" tools/`);
+    else if (b && !a) warnung(`launchd-plist: ${installiert} ist installiert, aber tools/${name} fehlt im Repo — der Takt steht nirgends geschrieben.`);
+    else if (a) ok('launchd-plist: nur die Abschrift im Repo (dieser Rechner betreibt den Job nicht).');
   }
 
   return f;
