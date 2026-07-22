@@ -321,19 +321,46 @@
    Bearbeiten-Modus: an die Adresse #edit anhängen.
    ========================================================= */
 const KEY = 'tcr84:state';
+/* `pos` ist der Ort des Kontrollpunkts, [Breite, Länge]. Das sind die
+   Ortsmittelpunkte der namensgebenden Orte, NICHT die eingemessene Lage des
+   jeweiligen Kontrollpunkt-Postens — mehr braucht die Erkennung auch nicht,
+   sie fragt nur „war er da?". `lat` daneben bleibt was es war: der Text für
+   die Leiter. Kontrollpunkte ohne `pos` funktionieren weiter, sie werden dann
+   allein über den Kilometerstand erkannt (siehe cpHit() in compute()). */
 const DEFAULTS = {
   totalKm: 4800,
   start: '2026-07-19T20:00',
   deadline: '2026-08-08T23:59',
   cps: [
-    { nm:'Trondheim', lat:'63.4°N', km:0 },
-    { nm:'CP1 Flåm', lat:'60.9°N', km:700 },
-    { nm:'CP2 Tatra / Chopok', lat:'48.9°N', km:2350 },
-    { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450 },
-    { nm:'CP4 Leskovik', lat:'40.2°N', km:4200 },
-    { nm:'Kalamata', lat:'37.0°N', km:4800 }
+    { nm:'Trondheim', lat:'63.4°N', km:0, pos:[63.430, 10.395] },
+    { nm:'CP1 Flåm', lat:'60.9°N', km:700, pos:[60.863, 7.113] },
+    { nm:'CP2 Tatra / Chopok', lat:'48.9°N', km:2350, pos:[48.944, 19.591] },
+    { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450, pos:[43.856, 18.413] },
+    { nm:'CP4 Leskovik', lat:'40.2°N', km:4200, pos:[40.152, 20.594] },
+    { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.038, 22.113] }
   ]
 };
+/* Wie nah er dem Kontrollpunkt gekommen sein muss, damit er als erreicht gilt
+   — und ab welchem Anteil seines nominellen Kilometerstands die Nähe
+   überhaupt zählen darf. Die zweite Zahl ist die Bremse gegen ein Auslösen
+   außer der Reihe, falls die Strecke einen späteren Kontrollpunkt zufällig
+   streift; 10 % vor dem Soll ist immer noch früh genug.
+
+   Die 4 km sind an dem einen echten Fall geeicht, den es gibt. Am 22.07.2026
+   lag die Meldung aus Flåm 0,8 km vom Ortsmittelpunkt; die nächstgelegene
+   davor stand mit 5,6 km in Aurlandsvangen, dem Nachbarort über dem Fjord —
+   und der ist NICHT CP1. Die Grenze muss also zwischen 0,8 und 5,6 liegen und
+   hält so zu beiden Seiten Abstand. Ein erster Versuch mit 10 km hätte CP1
+   in Aurlandsvangen ausgelöst, eine gute Stunde zu früh. Enger als nötig darf
+   sie nicht sein: sitzt der Posten am Ortsrand statt in der Mitte, fällt die
+   Erkennung auf den Kilometerstand zurück — dann ist es wieder so spät wie
+   vorher, aber nie falsch. */
+const CP_RADIUS_KM = 4;
+const CP_KM_MIN_FRAC = 0.9;
+/* Lokale Zeit ohne Zeitzonen-Suffix — dieselbe Konvention wie `ts` in
+   data.json (siehe CLAUDE.md). Ein nacktes toISOString() verschöbe die
+   Anzeige um die Zeitzonendifferenz. */
+const localIso = d => new Date(d.getTime() - d.getTimezoneOffset()*60000).toISOString().slice(0,16);
 let S = { settings: structuredClone(DEFAULTS), entries: [] };
 let SOURCE = 'leer';
 let DIRTY = false;
@@ -481,21 +508,75 @@ function compute(){
     const dh = (new Date(b.ts)-new Date(a.ts))/3.6e6;
     if(dh > 0) roll = (b.km-a.km)/dh;
   }
-  const nextCp = st.cps.find(c=> Number(c.km) > km) || null;
-  /* Zuletzt erreichter Kontrollpunkt samt Zeitpunkt (erste Meldung auf oder
-     hinter seinem Kilometer). Jünger als 24 h heißt: das Board feiert noch —
-     Einschätzungskasten, Leiter und der Feier-Kasten (`maybeCelebrate()`)
-     machen den Moment sichtbar, statt ihn im Log versinken zu lassen.
-     Kalamata zählt mit: der Zieleinlauf ist der größte dieser Momente. Nur
-     Trondheim (km 0) ist ausgenommen — der Start ist kein Erfolg.
-     Das 24-h-Fenster ist auch der Schutz gegen Verspätetes: wer das Board
-     drei Tage nach CP1 zum ersten Mal öffnet, bekommt keine schale Feier
-     mehr vorgesetzt. */
+  /* Erreicht ist NICHT dasselbe wie „Kilometerstand überschritten". `cp.km`
+     steht auf der Skala der geplanten Route, `entry.km` auf der des Trackers
+     — zwei verschiedene Lineale, und sie laufen auseinander. Am 22.07.2026
+     meldete der Tracker aus Flåm 688,5 km gegen die 700 der Liste; nach dem
+     reinen Kilometervergleich galt CP1 erst zwei Stunden und zwölf Kilometer
+     später als erreicht, da war Manuel längst wieder unterwegs.
+     Vom Lineal unabhängig ist allein die NÄHE: liegt eine Meldung im Umkreis
+     von CP_RADIUS_KM um den Ort, war er dort — egal, was der Zähler sagt. Der
+     Kilometerstand bleibt der zweite Weg (Kontrollpunkte ohne `pos` haben nur
+     ihn) und die Bremse gegen zu frühes Auslösen. Es gilt der frühere der
+     beiden: gefeiert wird die Ankunft, nicht ihre Bestätigung. */
+  const cpHit = cp=>{
+    const soll = Number(cp.km);
+    const drueber = list.find(e=> Number(e.km) >= soll) || null;
+    let nah = null;
+    if(cp.pos){
+      /* Die Nähe zählt erst, wenn er auch nach Kilometern in der Gegend ist.
+         Die Meldung, ab der das gilt, ist zugleich die früheste Zeit, die ein
+         Spurpunkt unterbieten darf — sonst zählte ein Streifen der Gegend
+         Tage vorher. */
+      const ab = list.find(e=> Number(e.km) >= soll*CP_KM_MIN_FRAC);
+      if(ab){
+        /* Gesucht wird in der SPUR, nicht in den Meldungen: die Spur hat alle
+           ~5 Minuten einen Punkt, die Meldungen nur alle ~25. Bei 4 km Radius
+           ist ein Treffer in der Spur so gut wie sicher — unter den Meldungen
+           wäre er Glückssache, in Flåm lag am 22.07.2026 genau eine einzige im
+           Umkreis. Nebenbei sitzt der gefeierte Zeitpunkt dadurch auf fünf
+           Minuten genau statt auf fünfundzwanzig. Ohne Spur (erster
+           Rendergang, sie wird nachgeladen) bleiben die Meldungen der Weg.
+
+           Genommen wird nicht der erste Punkt im Radius, sondern der
+           NÄCHSTGELEGENE: der erste ist der Moment der Annäherung, in Flåm
+           rund 19 Minuten vor der Ankunft. Solange er noch im Umkreis
+           unterwegs ist, rückt der Zeitpunkt mit jedem Rendergang näher an
+           die Ankunft heran und steht still, sobald er den Ort verlässt. */
+        const abSec = new Date(ab.ts).getTime()/1000;
+        let best = null, bestM = Infinity;
+        if(TRACK) for(const q of TRACK.points){
+          if(q[3] < abSec) continue;
+          const m = metersBetween([q[0],q[1]], cp.pos);
+          if(m <= CP_RADIUS_KM*1000 && m < bestM){ bestM = m; best = q; }
+        }
+        if(best) nah = {ts: localIso(new Date(best[3]*1000))};
+        else nah = list.find(e=> e.lat!=null && e.lon!=null
+              && new Date(e.ts) >= new Date(ab.ts)
+              && metersBetween([e.lat,e.lon], cp.pos) <= CP_RADIUS_KM*1000) || null;
+      }
+    }
+    // Der frühere der beiden gilt — gefeiert wird die Ankunft, nicht ihre
+    // Bestätigung durch den Zähler.
+    if(nah && drueber) return new Date(nah.ts) <= new Date(drueber.ts) ? nah : drueber;
+    return nah || drueber || null;
+  };
+  const cpHits = new Map();   // Kontrollpunkt → Meldung, mit der er erreicht wurde
+  st.cps.forEach(cp=>{ const h = cpHit(cp); if(h) cpHits.set(cp, h); });
+  const nextCp = st.cps.find(cp=> Number(cp.km) > 0 && !cpHits.has(cp)) || null;
+  /* Zuletzt erreichter Kontrollpunkt samt Zeitpunkt. Jünger als 24 h heißt:
+     das Board feiert noch — Einschätzungskasten, Leiter und der Feier-Kasten
+     (`maybeCelebrate()`) machen den Moment sichtbar, statt ihn im Log
+     versinken zu lassen. Kalamata zählt mit: der Zieleinlauf ist der größte
+     dieser Momente. Nur Trondheim (km 0) ist ausgenommen — der Start ist kein
+     Erfolg. Das 24-h-Fenster ist auch der Schutz gegen Verspätetes: wer das
+     Board drei Tage nach CP1 zum ersten Mal öffnet, bekommt keine schale
+     Feier mehr vorgesetzt. */
   let cpReached = null;
-  const passedCp = st.cps.filter(cp=> Number(cp.km) > 0 && Number(cp.km) <= km).pop();
+  const passedCp = st.cps.filter(cp=> Number(cp.km) > 0 && cpHits.has(cp)).pop();
   if(passedCp){
-    const hit = list.find(e=> Number(e.km) >= Number(passedCp.km));
-    if(hit && (now - new Date(hit.ts)) < 24*3.6e6) cpReached = {cp: passedCp, ts: hit.ts};
+    const hit = cpHits.get(passedCp);
+    if((now - new Date(hit.ts)) < 24*3.6e6) cpReached = {cp: passedCp, ts: hit.ts};
   }
   /* Höhen: `ele` ist die Höhe an der Meldung, `climbUp`/`climbDown` sind die
      geschätzten Höhenmeter im Segment davor (siehe update-tracker.mjs). Beides
@@ -518,7 +599,7 @@ function compute(){
   else if(buffer !== null && buffer > 24*3.6e6) state = 'good';
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
-  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpReached,state,
+  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpHits,cpReached,state,
           raceH,measuredH,staleH,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
@@ -657,7 +738,8 @@ function renderLadder(c){
   let html = '<div class="rail"></div>' +
              `<div class="rail-shade" style="top:${frac*100}%;bottom:0"></div>`;
   c.st.cps.forEach(cp=>{
-    const done = c.km > 0 && Number(cp.km) <= c.km;
+    // Dieselbe Wahrheit wie im Feier-Kasten — nicht noch einmal km vergleichen.
+    const done = c.cpHits.has(cp);
     const fresh = c.cpReached && cp === c.cpReached.cp;
     html += `<div class="anchor ${done?'done':''}${fresh?' fresh':''}" style="top:${pos(cp.km)}%">
       <span class="lat">${esc(cp.lat)}</span><span class="tick"></span>
@@ -1206,6 +1288,23 @@ setInterval(()=>{ if(wxLat!=null) loadWeather(wxLat, wxLon); }, 900000);
 
 /* ---------- Karte (Leaflet, wird erst beim Öffnen nachgeladen) ---------- */
 let mapObj = null, mapLayer = null, mapFitted = false;
+
+/* Punktgrößen hängen am Zoom, und zwar aus einem inhaltlichen Grund: über ganz
+   Skandinavien liegen 40 Meldungen ein paar Bildschirmpixel auseinander. Feste
+   Radien verschmelzen dort zu einer grauen Kette, die ausgerechnet die Spur
+   verdeckt, auf die sie zeigen soll — und einzeln anklickbar sind sie in dieser
+   Stufe ohnehin nicht. Weit draußen also klein bis unauffällig, beim
+   Hereinzoomen wachsen sie in ihre Rolle hinein. Die aktuelle Position bleibt
+   in jeder Stufe der größte Punkt, sie ist der Zweck der Karte. */
+const DOT_SIZE = { pos:[6,9], stop:[3.5,7], entry:[1.5,4] };   // [Zoom ≤5, Zoom ≥11]
+const dotRadius = ([klein, gross], z) =>
+  klein + (gross - klein) * Math.max(0, Math.min(1, (z - 5) / 6));
+let mapDots = [];   // [marker, art] — bei jedem renderMap neu gefüllt
+function applyDotSizes(){
+  if(!mapObj || !mapObj._loaded) return;
+  const z = mapObj.getZoom();
+  mapDots.forEach(([m, art])=> m.setRadius(dotRadius(DOT_SIZE[art], z)));
+}
 function ensureLeaflet(cb){
   if(window.L){ cb(); return; }
   const css = document.createElement('link');
@@ -1339,9 +1438,11 @@ function renderMap(c){
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 18, attribution: '&copy; OpenStreetMap contributors'
     }).addTo(mapObj);
+    mapObj.on('zoomend load', applyDotSizes);
   }
   if(mapLayer) mapObj.removeLayer(mapLayer);
   const group = L.layerGroup();
+  mapDots = [];
 
   // Die echte Spur, wenn vorhanden — sonst die alte Notlösung, eine Gerade
   // zwischen den stündlichen Meldungen.
@@ -1358,25 +1459,29 @@ function renderMap(c){
     const stops = findStops(trk);
     stops.forEach(s=>{
       if(s.to === trk[trk.length-1][3]){ laufendePause = s; return; }
-      L.circleMarker([s.lat, s.lon], {
+      const m = L.circleMarker([s.lat, s.lon], {
         radius: 6, color:'#0C1620', fillColor:'#BCD7DE', fillOpacity:1, weight:2
       }).bindPopup(`<strong>Pause · ${dhm(s.mins)}</strong><br>${hhmm(s.from)}–${hhmm(s.to)} Uhr`)
         .addTo(group);
+      mapDots.push([m, 'stop']);
     });
   }
 
-  // Die eigenen Meldungen als kleine Punkte, die aktuelle Position in Messing.
+  /* Die eigenen Meldungen als kleine Punkte, die aktuelle Position in Messing.
+     Die Meldungspunkte tragen bewusst KEINEN Rand: der Rand zählt zur
+     sichtbaren Größe, und genau die soll hier zurücktreten. */
   marks.forEach((p,i)=>{
     const last = i===marks.length-1;
-    L.circleMarker([p.lat,p.lon], {
+    const m = L.circleMarker([p.lat,p.lon], {
       radius: last?7:3.5, color: last?'#0C1620':'#7F98A6', fillColor: last?'#D9A441':'#7F98A6',
-      fillOpacity:1, weight: last?2:1
+      fillOpacity: last?1:.85, weight: last?2:0, stroke: last
     }).bindPopup(
       `<strong>${num(Number(p.km))} km</strong>${p.place?'<br>'+esc(p.place):''}<br>${fmt(p.ts)}` +
       (last && laufendePause
         ? `<br><span style="color:var(--brass)">Pause seit ${hhmm(laufendePause.from)} Uhr · ${dhm(laufendePause.mins)}</span>`
         : '')
     ).addTo(group);
+    mapDots.push([m, last ? 'pos' : 'entry']);
   });
 
   group.addTo(mapObj);
@@ -1384,7 +1489,12 @@ function renderMap(c){
   // Nur beim ersten Zeichnen einpassen: renderMap läuft im 60s-Takt mit, ein
   // fitBounds bei jedem Durchlauf würde herangezoomte Ansichten wegreißen.
   if(!mapFitted){ mapObj.fitBounds(latlngs, {padding:[24,24]}); mapFitted = true; }
-  setTimeout(()=> mapObj.invalidateSize(), 50);
+  /* Zweimal, und das ist nötig: beim Öffnen des <details> hat der Container im
+     ersten Moment noch keine Größe, die Karte hat dann noch keine Ansicht und
+     damit keinen Zoom, den man lesen könnte. Der Nachschlag nach
+     invalidateSize() holt genau diesen ersten Durchgang nach. */
+  applyDotSizes();
+  setTimeout(()=>{ mapObj.invalidateSize(); applyDotSizes(); }, 50);
   // Das gekoppelte Höhenprofil darunter, gleiche Kilometer-Achse wie die Karte.
   renderMapProfile(c);
 }

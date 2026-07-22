@@ -312,16 +312,37 @@ in allen Fällen dasselbe Nichts:
 |---|---|---|
 | **Pause** | alle ~5 min einer, Deltas 3–37 m (21.07., 17:58–19:34) | altert mit |
 | **Funkloch** | alle ~5 min einer, Deltas 229–479 m (22.07., bis 04:29) | altert mit |
-| **Export tot** | beliebig | bleibt **frisch** |
+| **Export hinkt** | beliebig | bleibt **frisch** |
 
 Der Tracker meldet im Stand also **unbeirrt weiter** — eine echte Pause
 hinterlässt eine dichte Traube auf einem Fleck, erst danach schläft er ein
 (21.07.: 19:34 → 03:00 am selben Ort). Ein Funkloch hinterlässt gar nichts,
 und davor volle Fahrt. Ein Radfahrer verschwindet nicht mitten im Antritt.
 
-Bei „Export tot“ zählt der **Abstand** der beiden Alter, nicht die Frische des
+Beim Export zählt der **Abstand** der beiden Alter, nicht die Frische des
 Live-Fixes: schweigt der Tracker, altern Spur und Live-Stand im Gleichschritt,
 und daran ist der Export unschuldig.
+
+**Der Export arbeitet in Stapeln, und das ist sein Normalzustand** (gelernt am
+22.07.2026, die Zeile hieß vorher „Export tot“). Er hinkt dem Live-Fix
+hinterher, hält den Stand fest und liefert die Lücke dann in einem Zug nach.
+An diesem einen Tag dreimal, jedes Mal geheilt:
+
+| Rückstand wuchs auf | dann kam auf einen Schlag |
+|---|---|
+| 149 min (09:15–11:20) | +34 Spurpunkte |
+| 125 min (12:11–13:51) | +29 Spurpunkte |
+| 30 min (15:57) | wieder gleichauf |
+
+Ein Rückstand ist also **kein Defekt**, solange er sich wieder schließt — und
+er schließt sich, weil der GPX-Export ohnehin immer die volle Spur seit dem
+Start liefert. Deshalb warnt `check.mjs` erst ab `TOL.exportRueckstandMin`
+(180 min, über dem höchsten je beobachteten Wert) und protokolliert darunter
+nur, wie weit er zurückliegt. Die frühere Fassung nannte jeden Rückstand über
+45 Minuten „der GPX-Export liefert nicht mehr … holen nichts mehr auf“ und
+warnte an einem Tag zehnmal über etwas, das sich von selbst erledigte. Ein
+Alarm, der regelmäßig von allein wieder verschwindet, bringt nur bei,
+Warnungen zu überlesen.
 
 `check.mjs` entscheidet das seit dem 22.07.2026 automatisch (siehe unten).
 Nirgends aber darf das Board daraus „er steht“ machen — die Spur kennt den
@@ -417,6 +438,15 @@ Zwei Eigenheiten, die nicht "vereinfacht" gehören:
   ist der Spurpunkt, an dem die Meldung entstand; der Zeitversatz zu ihm ist
   dann die Aussage (= wie alt der Fix beim Abruf war). Umgekehrt herum schlägt
   die Prüfung falsch an: bei 30 km/h sind 4 Minuten Versatz 2 km Abstand.
+- **Geprüft wird nur, was die Spur schon abdeckt** (seit 22.07.2026). Eine
+  Meldung, die *jünger* ist als der letzte Spurpunkt, stammt aus dem Live-Fix,
+  den der Export erst später nachliefert — sie kann gar nicht auf der Spur
+  liegen. Sie trotzdem zu prüfen hieß, den Rückstand des Exports als Ortsfehler
+  auszugeben: dieselbe Stapel-Verzögerung erzeugte am 22.07. zusätzlich zur
+  Export-Warnung ein wanderndes `FEHLER: 5 von 29 Meldungen liegen bis zu
+  12,6 km neben der Spur — falscher Fahrer?`, dessen Abstand mit jedem Lauf
+  wuchs und mit dem nächsten Stapel verschwand. **Eine Ursache, zwei Masken** —
+  wer nur die eine abstellt, sieht die andere weiter.
 
 **Beim ersten Lauf (21.07.2026) hat es zwei echte Sachen gefunden:**
 
@@ -436,8 +466,9 @@ Zwei Eigenheiten, die nicht "vereinfacht" gehören:
 **„Pause oder Funkloch?“ (seit 22.07.2026).** Setzt die Regel aus
 „Trackerstille ist kein Stillstand“ (oben) in eine Prüfung um. Ab
 `TOL.funkstilleMin` (45 min) ohne neuen Spurpunkt wird der Schwanz der Spur
-befragt und einer von vier Sätzen ausgegeben: laufender Kontakt · Funkloch
-(WARNUNG) · er steht, Tracker schläft (ok) · GPX-Export tot (WARNUNG).
+befragt und einer von fünf Sätzen ausgegeben: laufender Kontakt · Funkloch
+(WARNUNG) · er steht, Tracker schläft (ok) · Export hinkt im Stapelbetrieb
+hinterher (ok) · Export hinkt über `TOL.exportRueckstandMin` zurück (WARNUNG).
 
 Beurteilt wird eine **Rate**, nicht eine nackte Strecke: rückwärts wird
 gesammelt, bis `TOL.fahrtFensterMin` (30 min) voll ist, aber immer mindestens
@@ -679,6 +710,36 @@ ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
   wer Tage später zum ersten Mal vorbeischaut, bekommt keine schale Feier.
   Zum Vorführen/Testen in der Konsole: `tcr84Feier()` · `tcr84Feier('Kalamata')`
   · `tcr84FeierReset()`.
+- **Erreicht ist nicht „Kilometerstand überschritten“** (`cpHit()` in
+  `compute()`, 22.07.2026). `cp.km` steht auf der Skala der *geplanten* Route,
+  `entry.km` auf der des *Trackers* — zwei verschiedene Lineale, und sie laufen
+  auseinander. Aus Flåm meldete der Tracker 688,5 km gegen die 700 der Liste;
+  der reine Kilometervergleich ließ CP1 erst bei 701 km auslösen, **2 h 15
+  später und 12 km hinter dem Kontrollpunkt**, als Manuel längst wieder
+  unterwegs war. Vom Lineal unabhängig ist allein die **Nähe**: `cp.pos`
+  ([Breite, Länge] des namensgebenden Ortes, in `settings.cps` und `DEFAULTS`),
+  Radius `CP_RADIUS_KM`. Der Kilometerstand bleibt als zweiter Weg — CPs ohne
+  `pos` funktionieren unverändert — und als Bremse: die Nähe zählt erst ab
+  `CP_KM_MIN_FRAC` (90 %) des Solls. Es gilt der **frühere** der beiden Wege,
+  gefeiert wird die Ankunft, nicht ihre Bestätigung durch den Zähler.
+  Drei Dinge daran sind erfahren, nicht ausgedacht:
+  · **4 km, nicht 10.** Die Meldung aus Flåm lag 0,8 km vom Ortsmittelpunkt,
+  die davor mit 5,6 km in **Aurlandsvangen** — dem Nachbarort über dem Fjord,
+  und der ist nicht CP1. Ein erster Versuch mit 10 km hätte dort ausgelöst,
+  eine gute Stunde zu früh. Die Grenze muss zwischen 0,8 und 5,6 liegen.
+  · **Gesucht wird in `track.json`, nicht in den Meldungen.** Die Spur hat alle
+  ~5 min einen Punkt, die Meldungen nur alle ~25 — im Umkreis von Flåm lag
+  genau *eine* Meldung, ein Treffer wäre also Glückssache gewesen. Ohne Spur
+  (erster Rendergang, sie wird nachgeladen) sind die Meldungen der Rückfallweg.
+  · **Genommen wird der nächstgelegene Spurpunkt, nicht der erste im Radius.**
+  Der erste ist der Moment der *Annäherung* — in Flåm 08:02 statt 08:12, zehn
+  Minuten zu früh. So rückt der Zeitpunkt heran, solange er im Umkreis
+  unterwegs ist, und steht still, sobald er den Ort verlässt.
+  `nextCp` und die Leiter (`renderLadder`) lesen dieselbe Wahrheit aus `cpHits`
+  — nicht noch einmal Kilometer vergleichen, sonst behaupten Kasten und Leiter
+  Verschiedenes. Sitzt ein Posten weiter als 4 km vom Ortsmittelpunkt, fällt
+  die Erkennung auf den Kilometerstand zurück: dann ist es wieder so spät wie
+  vorher, aber nie falsch.
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
@@ -779,6 +840,22 @@ ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
   `fitBounds` läuft nur beim ersten Zeichnen (`mapFitted`): `renderMap()` hängt am
   60s-`render()`, ein Einpassen bei jedem Durchlauf würde herangezoomte Ansichten
   wegreißen.
+- **Die Punktgrößen hängen am Zoom** (`DOT_SIZE`/`dotRadius()`/`applyDotSizes()`,
+  22.07.2026). In der Übersicht über ganz Skandinavien liegen die Meldungen nur
+  ein paar Bildschirmpixel auseinander; feste Radien verschmolzen dort zu einer
+  grauen Kette, die ausgerechnet die Messinglinie verdeckte, auf die sie zeigen
+  soll — und einzeln anklickbar waren sie in dieser Stufe ohnehin nie. Also
+  klein draußen, groß beim Hereinzoomen: Meldung 1,5 → 4 px, Pause 3,5 → 7,
+  Position 6 → 9, linear zwischen Zoom 5 und 11 und an beiden Enden geklemmt.
+  Die Meldungspunkte tragen dabei **keinen Rand** — der zählt zur sichtbaren
+  Größe, und genau die soll zurücktreten. Die aktuelle Position bleibt in jeder
+  Stufe der größte Punkt, sie ist der Zweck der Karte.
+  Aufgerufen wird `applyDotSizes()` an den Kartenereignissen (`zoomend load`),
+  **nicht** allein am Ende von `renderMap()`: beim Öffnen des `<details>` hat
+  der Container im ersten Moment noch keine Größe, die Karte damit noch keine
+  Ansicht und keinen lesbaren Zoom. Deshalb zusätzlich der Nachschlag im
+  `setTimeout` neben `invalidateSize()`. Ohne den blieben die Startradien aus
+  dem Konstruktor stehen — genau der Fehler, der beim Bauen zuerst drin war.
 - **Das Höhenprofil wird zweimal gezeichnet**, beide Male von `renderProfileInto()`,
   unterschieden über `prefix` für die Element-IDs (zwei Diagramme mit denselben IDs
   wären nicht ansprechbar; Zustand je Instanz in `PROFS[prefix]`):

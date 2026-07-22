@@ -41,6 +41,12 @@ const TOL = {
   funkstilleMin: 45,
   fahrtFensterMin: 30,
   fahrtMeter: 500,
+  /* Rückstand des GPX-Exports auf den Live-Fix. Der Export arbeitet in
+     Stapeln: er hinkt hinterher, hält den Stand minutenlang bis stundenlang
+     fest und liefert die Lücke dann am Stück nach. Am 22.07.2026 dreimal
+     beobachtet (Rückstände bis 149 min, danach +34 bzw. +29 Punkte auf
+     einmal) — normaler Betrieb, kein Defekt. Ab 180 min ist es keiner mehr. */
+  exportRueckstandMin: 180,
   profilRueckstandMin: 120,// Profil hinkt der Spur hinterher (updateProfile hat nicht durchgerechnet)
   kmScaleBand: [0.90, 1.08], // BRouter rechnet ~3 % länger als der Tracker
   maxKmh: 60,              // Radrennen, nicht Autobahn — darüber ist ein Sprung ein Datenfehler
@@ -283,12 +289,25 @@ export function runChecks({ now = new Date() } = {}) {
       const seit = `${Math.round(stilleMin)} min`;
       const davor = `${Math.round(weg)} m in den ${Math.round(spanneMin)} min davor`;
 
-      /* Kaputter Export heißt: die Spur hinkt dem Live-Fix hinterher. Nicht
+      /* Hängender Export heißt: die Spur hinkt dem Live-Fix hinterher. Nicht
          etwa „der Live-Fix ist frisch“ — schweigt der Tracker, altern beide
          im Gleichschritt, und daran ist der Export unschuldig. Verglichen
-         wird deshalb der ABSTAND der beiden, nicht das Alter des einen. */
-      if (fixAltMin != null && stilleMin - fixAltMin > TOL.funkstilleMin)
-        warnung(`Spur endet vor ${seit}, der Live-Fix ist aber nur ${Math.round(fixAltMin)} min alt — der GPX-Export liefert nicht mehr, der Tracker schon. Spur, Karte und Höhenprofil holen nichts mehr auf, die Kopfzeile schon.`);
+         wird deshalb der ABSTAND der beiden, nicht das Alter des einen.
+
+         Der Abstand allein sagt aber noch nicht, dass etwas kaputt ist: der
+         Export liefert in Stapeln. Am 22.07.2026 wuchs der Rückstand dreimal
+         über Stunden an (bis 149 min) und wurde jedes Mal in einem Zug
+         aufgeholt. Die frühere Fassung nannte genau das „der GPX-Export
+         liefert nicht mehr … holen nichts mehr auf“ und warnte an einem Tag
+         zehnmal über etwas, das sich von selbst erledigte. Ein Alarm, der
+         regelmäßig von allein wieder verschwindet, ist keiner — er bringt nur
+         bei, Warnungen zu überlesen. Unterhalb der Schwelle wird der
+         Rückstand deshalb protokolliert, nicht beklagt. */
+      const rueckstandMin = fixAltMin != null ? stilleMin - fixAltMin : null;
+      if (rueckstandMin != null && rueckstandMin > TOL.exportRueckstandMin)
+        warnung(`Spur endet vor ${seit}, der Live-Fix ist aber nur ${Math.round(fixAltMin)} min alt — der GPX-Export hinkt ${Math.round(rueckstandMin)} min hinterher und damit weiter, als er es je von allein aufgeholt hat (Schwelle ${TOL.exportRueckstandMin} min). Von Hand nachsehen.`);
+      else if (rueckstandMin != null && rueckstandMin > TOL.funkstilleMin)
+        ok(`Spur endet vor ${seit}, der Live-Fix ist ${Math.round(fixAltMin)} min alt — der GPX-Export hinkt ${Math.round(rueckstandMin)} min hinterher. Sein Stapelbetrieb, er holt die Lücke am Stück nach.`);
       else if (n && rate > rateGrenze)
         warnung(`Spur bricht seit ${seit} ab, aber er war in Fahrt (${davor}) — Funkloch, keine Pause. Nicht als Stillstand lesen: der Tracker puffert und liefert die Lücke am Stück nach.`);
       else if (n)
@@ -346,9 +365,21 @@ export function runChecks({ now = new Date() } = {}) {
      verwechselt beides: bei 30 km/h sind 4 Minuten Versatz 2 km Abstand, und
      die Prüfung schlüge Alarm, obwohl die Position stimmt. */
   if (data && pts && pts.length) {
-    let weit = 0, geprueft = 0, schlimmsteKm = 0, schlimmsteMin = 0;
+    /* Geprüft werden kann nur, was die Spur überhaupt schon abdeckt. Eine
+       Meldung, die jünger ist als der letzte Spurpunkt, stammt aus dem
+       Live-Fix — den der GPX-Export in seinem Stapelbetrieb regelmäßig erst
+       Stunden später nachliefert (siehe `exportRueckstandMin`). Sie hier
+       mitzuprüfen hieß, den Rückstand als Ortsfehler auszugeben: am
+       22.07.2026 meldete die Prüfung deshalb „5 von 29 Meldungen liegen bis
+       zu 12,6 km neben der Spur — falscher Fahrer?“, wo nichts falsch war als
+       die Reihenfolge des Eintreffens. Der genannte Abstand wuchs mit jedem
+       Lauf und verschwand mit dem nächsten Stapel. Eine Minute Luft, weil
+       `tsSrc:'fix'` auf ganze Minuten gerundet wird. */
+    const spurEndeSec = pts[pts.length - 1][3];
+    let weit = 0, geprueft = 0, schlimmsteKm = 0, schlimmsteMin = 0, vorausEilend = 0;
     for (const e of (data.entries || [])) {
       if (e.lat == null || e.lon == null) continue;
+      if (new Date(e.ts).getTime() / 1000 > spurEndeSec + 60) { vorausEilend++; continue; }
       geprueft++;
       let best = null, bd = Infinity;
       for (const p of pts) {
@@ -361,6 +392,8 @@ export function runChecks({ now = new Date() } = {}) {
     }
     if (weit) fehler(`${weit} von ${geprueft} Meldungen liegen bis zu ${schlimmsteKm.toFixed(1)} km neben der Spur — falscher Fahrer?`);
     else if (geprueft) ok(`${geprueft} GPS-Meldungen liegen auf der aufgezeichneten Spur.`);
+    if (vorausEilend)
+      ok(`${vorausEilend} Meldung(en) sind jünger als das Ende der Spur — der Export hat sie noch nicht, nicht prüfbar.`);
     /* Seit 21.07.2026 ist `ts` der Zeitpunkt der Messung, nicht des Abrufs —
        die Zeit kommt aus dem Spurpunkt unter der Meldung (`tsSrc:'track'`).
        Bleibt hier Versatz stehen, ist entweder ein Eintrag nach der alten
