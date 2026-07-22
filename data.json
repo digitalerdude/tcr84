@@ -282,14 +282,27 @@
       "speed": 0,
       "ele": 469,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784690210843",
+      "ts": "2026-07-22T04:29",
+      "tsSrc": "track",
+      "km": 645.24,
+      "place": "Kvigno",
+      "note": "Platz 271",
+      "lat": 61.069852,
+      "lon": 7.364941,
+      "speed": 0,
+      "ele": 537,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-22T02:16:42.477Z",
+  "updated": "2026-07-22T03:16:50.965Z",
   "live": {
-    "ts": "2026-07-22T04:16",
-    "km": 644.19,
-    "fixMinsAgo": 2,
+    "ts": "2026-07-22T05:16",
+    "km": 645.24,
+    "fixMinsAgo": 47,
     "speed": 0,
-    "rank": 266
+    "rank": 271
   }
 }
