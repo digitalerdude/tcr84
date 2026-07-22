@@ -293,6 +293,40 @@ Landet in `track.json` als kompakte Arrays `[lat, lon, eleGps, unixSec]`.
 werden — sie streuen mit ~20 m gegen das Geländemodell und ergäben über die ersten
 405 km 3.379 statt ~2.750 hm.
 
+### Trackerstille ist kein Stillstand
+
+Wenn nichts mehr hereinkommt, sieht das immer gleich aus — und heißt drei
+verschiedene Dinge: er **steht**, er ist im **Funkloch**, oder der
+**GPX-Export** ist tot. Am 22.07.2026 hat die Verwechslung zwei Stunden
+Auffahrt auf den Aurlandsfjellet als Pause ausgegeben: Meldungen bis 04:29,
+danach Stille, und `live.fixMinsAgo` wuchs auf 107. Tatsächlich fuhr er
+durchgehend — der Queclink-Tracker hängt am Mobilfunk, auf der Hochebene ist
+keiner, also hat er intern gepuffert und um 06:31 alles am Stück
+nachgeliefert: +25 Spurpunkte, +16,4 km, +914 hm.
+
+**Unterschieden wird am Schwanz der Spur, nicht an ihrem Ende** — das Ende ist
+in allen Fällen dasselbe Nichts:
+
+| | letzte Punkte davor | Live-Fix |
+|---|---|---|
+| **Pause** | alle ~5 min einer, Deltas 3–37 m (21.07., 17:58–19:34) | altert mit |
+| **Funkloch** | alle ~5 min einer, Deltas 229–479 m (22.07., bis 04:29) | altert mit |
+| **Export tot** | beliebig | bleibt **frisch** |
+
+Der Tracker meldet im Stand also **unbeirrt weiter** — eine echte Pause
+hinterlässt eine dichte Traube auf einem Fleck, erst danach schläft er ein
+(21.07.: 19:34 → 03:00 am selben Ort). Ein Funkloch hinterlässt gar nichts,
+und davor volle Fahrt. Ein Radfahrer verschwindet nicht mitten im Antritt.
+
+Bei „Export tot“ zählt der **Abstand** der beiden Alter, nicht die Frische des
+Live-Fixes: schweigt der Tracker, altern Spur und Live-Stand im Gleichschritt,
+und daran ist der Export unschuldig.
+
+`check.mjs` entscheidet das seit dem 22.07.2026 automatisch (siehe unten).
+Nirgends aber darf das Board daraus „er steht“ machen — die Spur kennt den
+Grund nicht, das ist dieselbe Regel wie bei Schlaf vs. Panne bei der Karte.
+Im Zweifel ist „seit X keine Meldung“ die ehrliche Aussage.
+
 ### profile.json — die Höhenrechnung
 
 `updateProfile()` schreibt das Profil **inkrementell** fort: pro Lauf wird nur das
@@ -393,18 +427,54 @@ Zwei Eigenheiten, die nicht "vereinfacht" gehören:
    GPS-Meldungen ohne `tsSrc` und wenn irgendwo mehr als 3 Minuten Versatz
    zwischen Zeitstempel und zugehörigem Spurpunkt stehen bleiben.
 
+**„Pause oder Funkloch?“ (seit 22.07.2026).** Setzt die Regel aus
+„Trackerstille ist kein Stillstand“ (oben) in eine Prüfung um. Ab
+`TOL.funkstilleMin` (45 min) ohne neuen Spurpunkt wird der Schwanz der Spur
+befragt und einer von vier Sätzen ausgegeben: laufender Kontakt · Funkloch
+(WARNUNG) · er steht, Tracker schläft (ok) · GPX-Export tot (WARNUNG).
+
+Beurteilt wird eine **Rate**, nicht eine nackte Strecke: rückwärts wird
+gesammelt, bis `TOL.fahrtFensterMin` (30 min) voll ist, aber immer mindestens
+ein Schritt — ein starres Zeitfenster ginge dort leer aus, wo die Punkte dünn
+stehen (am Ende einer Pause, wenn der Tracker schon einschläft), und die
+Prüfung müsste passen, obwohl der eine Schritt davor die Antwort enthält.
+Grenze ist `TOL.fahrtMeter / TOL.fahrtFensterMin` = 500 m / 30 min ≈ 17 m/min,
+gut 1 km/h. Geeicht an den beiden echten Fällen: Nachtpause 27 m/30 min,
+Auffahrt 1.200 m/30 min — dazwischen ist viel Platz.
+
+Die alte Prüfung `spurAltMin` (WARNUNG ab 3 h alter Spur, „Tracker aus, oder
+GPX-Export liefert nicht mehr“) ist dadurch ersetzt. Sie hat in der Nacht vom
+21.07. viermal hintereinander eine völlig normale Schlafpause angemeckert und
+dabei die falsche Ursache geraten — genau der Fehlschluss, den die neue
+Prüfung auseinandernimmt.
+
+Verifiziert vor dem Einbau gegen sieben Fälle mit eingefrorener Uhr (frischer
+Kontakt · das Funkloch vom 22.07. · echte Nachtpause · toter Export · Pause
+mit schon dünnen Punkten · Tiefschlaf nach 446-min-Lücke · Grenzfall knapp
+über der Schwelle) — jeweils gegen die **echte** Spur, an der gewünschten
+Stelle abgeschnitten.
+
 ## Automatisierung (launchd)
 
 `~/Library/LaunchAgents/com.digitalerdude.tcr84-tracker-updater.plist` — tickt alle
 15 Minuten (`StartInterval: 900`), ruft
 `update-tracker.mjs --commit --push --scheduled` auf.
 
-**Häufiger ticken, gleich oft arbeiten.** Der Takt sagt nichts darüber, wie oft ein
+**Häufiger ticken, seltener arbeiten.** Der Takt sagt nichts darüber, wie oft ein
 Browser startet: `--scheduled` lässt den Lauf **vor** dem Browserstart abbrechen,
-wenn `live.ts` jünger ist als `CONFIG.laufFaelligNachMin` (50 min). Ein nicht
+wenn `live.ts` jünger ist als `CONFIG.laufFaelligNachMin` (25 min). Ein nicht
 fälliger Tick kostet dadurch 0,2 Sekunden und keinen Chromium-Start — nach einem
-Erfolg um :06 fallen :21, :36 und :51 stillschweigend durch, es bleibt bei ~24
-echten Läufen am Tag.
+Erfolg um :06 fällt :21 durch, :36 arbeitet wieder. Macht ~48 echte Läufe am Tag.
+
+**Warum 25 und nicht mehr 50 Minuten** (geändert 22.07.2026): 50 hieß in der
+Praxis ein Abruf pro Stunde, und damit konnte das Board der offiziellen Seite
+fast eine Stunde hinterherhinken. An dem Morgen kam Manuel um 06:31 aus dem
+Funkloch am Aurlandsfjellet zurück, der letzte Abruf lag bei 06:16, der
+nächste wäre erst 07:16 fällig gewesen — 45 Minuten, in denen die Tracker-Seite
+ihn fahren sah und das Board ihn stehen ließ. Der Preis sind doppelt so viele
+Chromium-Starts und Cloudflare-Passagen. Weiter runter lohnt nicht: der Tracker
+selbst meldet nur alle ~5 min, und die Spur kommt ohnehin komplett per
+GPX-Export nach (siehe „Warum nicht feiner als 15 Minuten“ unten).
 
 **Der Gewinn ist die Erholung.** Scheitert ein Lauf, bleibt `live.ts` alt — und
 schon der nächste Tick arbeitet wieder. Aus „eine Stunde ohne Daten“ wird

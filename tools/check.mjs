@@ -30,7 +30,16 @@ const REPO_ROOT = path.resolve(__dirname, '..');
    verstreut zu stehen. Alle empirisch am Stand vom 21.07.2026 geeicht. */
 const TOL = {
   abrufAltMin: 150,        // ab hier zeigt das Board „Abruf hängt“ (renderLive)
-  spurAltMin: 180,         // Tracker meldet im Median alle 5 min; 3 h ohne Punkt ist auffällig
+  /* Trackerstille — gehört zur Prüfung „Pause oder Funkloch?“ weiter unten.
+     Der Tracker meldet im Median alle 5 min; 45 min Stille sind neun
+     ausgefallene Meldungen und damit kein Zufall mehr. Das Fenster davor
+     beantwortet, ob er beim Abriss fuhr. Geeicht an den beiden Fällen, die
+     es bisher gab: Nachtpause 21.07.2026 = 27 m in den 30 min vor dem
+     letzten Punkt, Auffahrt Aurlandsfjellet 22.07.2026 = 1.200 m. Jede
+     Grenze dazwischen trennt richtig; 500 m hält zu beiden Abstand. */
+  funkstilleMin: 45,
+  fahrtFensterMin: 30,
+  fahrtMeter: 500,
   profilRueckstandMin: 120,// Profil hinkt der Spur hinterher (updateProfile hat nicht durchgerechnet)
   kmScaleBand: [0.90, 1.08], // BRouter rechnet ~3 % länger als der Tracker
   maxKmh: 60,              // Radrennen, nicht Autobahn — darüber ist ein Sprung ein Datenfehler
@@ -166,9 +175,8 @@ export function runChecks({ now = new Date() } = {}) {
       if (ortfehler) fehler(`track.json: ${ortfehler} Punkte liegen außerhalb Europas.`);
       if (ausfaelle) warnung(`track.json: ${ausfaelle} Lücken > 60 min MIT Ortswechsel — dort fehlt echte Spur.`);
       if (luecken) ok(`track.json: ${luecken} Lücken > 60 min am selben Ort (Tracker schläft im Stand, erwartet).`);
-      const altMin = (nowSec - pts[pts.length - 1][3]) / 60;
-      if (altMin > TOL.spurAltMin)
-        warnung(`Letzter Spurpunkt ist ${Math.round(altMin / 60)} h alt — Tracker aus, oder GPX-Export liefert nicht mehr.`);
+      // Wie alt der letzte Punkt ist, beurteilt weiter unten „Pause oder
+      // Funkloch?“ — allein aus dem Alter folgt nichts.
       if (!zeitfehler && !ortfehler) ok(`track.json: ${pts.length} Punkte, zeitlich sauber.`);
     }
   }
@@ -217,6 +225,78 @@ export function runChecks({ now = new Date() } = {}) {
   }
 
   /* ---------- Querbezüge: hier hängt es zusammen oder gar nicht ---------- */
+
+  /* Trackerstille lesen: Pause, Funkloch oder toter GPX-Export?
+     Alle drei sehen von außen gleich aus — es kommt nichts mehr —, verlangen
+     aber verschiedene Reaktionen. Am 22.07.2026 hat die Verwechslung zwei
+     Stunden Auffahrt auf den Aurlandsfjellet als Stillstand ausgegeben: der
+     Tracker hing im Funkloch der Hochebene, hat seine Fixes gepuffert und
+     sie um 06:31 am Stück nachgeliefert (+25 Punkte, +914 hm).
+
+     Unterschieden wird am SCHWANZ der Spur, nicht an ihrem Ende — das Ende
+     ist in beiden Fällen dasselbe Nichts:
+       · Steht er, meldet der Tracker unbeirrt weiter, und die letzten Punkte
+         drängen sich auf einem Fleck (21.07.2026, 17:58–19:34: alle fünf
+         Minuten ein Punkt, Deltas 3–37 m). Erst danach schläft er ein. Die
+         Stille ist erklärt — das ist der Normalfall der Nachtpause.
+       · Fuhr er noch im letzten Fenster und bricht dann alles ab, riss der
+         Kontakt mitten in der Bewegung ab (22.07.2026, bis 04:29: Deltas
+         229–479 m je fünf Minuten). Ein Radfahrer verschwindet nicht mitten
+         im Antritt — das ist kein Halt, das ist fehlendes Netz.
+     Welcher Fall vorliegt, verrät zusätzlich der Live-Stand: ist DER frisch,
+     während die Spur alt bleibt, liegt es weder am Fahrer noch am Netz,
+     sondern am GPX-Export — dann laufen Spur und Höhenprofil leer, während
+     die Kopfzeile munter weiterzählt. */
+  if (pts && pts.length > 1) {
+    const letzterPkt = pts[pts.length - 1];
+    const stilleMin = (nowSec - letzterPkt[3]) / 60;
+    const lv = (data && data.live) || null;
+    /* `fixMinsAgo` ist eine eingefrorene Dauer, gültig nur zusammen mit
+       live.ts — siehe die Regel oben. Also neu aufaddieren statt roh nehmen. */
+    const fixAltMin = lv && lv.ts && lv.fixMinsAgo != null
+      ? lv.fixMinsAgo + (now - new Date(lv.ts)) / 60000
+      : null;
+
+    if (stilleMin <= TOL.funkstilleMin) {
+      ok(`Spur reicht bis vor ${Math.round(stilleMin)} min — laufender Kontakt.`);
+    } else {
+      /* Rückwärts sammeln, bis das Fenster voll ist — aber IMMER mindestens
+         einen Schritt. Ein festes Zeitfenster ginge sonst leer aus, wo die
+         Punkte dünn stehen (genau am Ende einer Pause der Fall, wenn der
+         Tracker schon einschläft), und die Prüfung müsste passen, obwohl
+         der eine Schritt davor die Antwort längst enthält. Beurteilt wird
+         deshalb die RATE über die tatsächlich abgedeckte Spanne, nicht eine
+         nackte Strecke: 500 m in 30 min sind ~17 m/min, gut 1 km/h — darunter
+         steht ein Radfahrer, darüber fährt er. */
+      let weg = 0, n = 0, spanneSec = 0;
+      for (let i = pts.length - 1; i > 0; i--) {
+        weg += haversine([pts[i][0], pts[i][1]], [pts[i - 1][0], pts[i - 1][1]]);
+        spanneSec = letzterPkt[3] - pts[i - 1][3];
+        n++;
+        if (spanneSec >= TOL.fahrtFensterMin * 60) break;
+      }
+      const spanneMin = spanneSec / 60;
+      const rate = spanneMin > 0 ? weg / spanneMin : 0;   // m/min
+      const rateGrenze = TOL.fahrtMeter / TOL.fahrtFensterMin;
+
+      const seit = `${Math.round(stilleMin)} min`;
+      const davor = `${Math.round(weg)} m in den ${Math.round(spanneMin)} min davor`;
+
+      /* Kaputter Export heißt: die Spur hinkt dem Live-Fix hinterher. Nicht
+         etwa „der Live-Fix ist frisch“ — schweigt der Tracker, altern beide
+         im Gleichschritt, und daran ist der Export unschuldig. Verglichen
+         wird deshalb der ABSTAND der beiden, nicht das Alter des einen. */
+      if (fixAltMin != null && stilleMin - fixAltMin > TOL.funkstilleMin)
+        warnung(`Spur endet vor ${seit}, der Live-Fix ist aber nur ${Math.round(fixAltMin)} min alt — der GPX-Export liefert nicht mehr, der Tracker schon. Spur, Karte und Höhenprofil holen nichts mehr auf, die Kopfzeile schon.`);
+      else if (n && rate > rateGrenze)
+        warnung(`Spur bricht seit ${seit} ab, aber er war in Fahrt (${davor}) — Funkloch, keine Pause. Nicht als Stillstand lesen: der Tracker puffert und liefert die Lücke am Stück nach.`);
+      else if (n)
+        ok(`Spur seit ${seit} still, ${davor} über ${n + 1} Punkte — er steht, der Tracker schläft (erwartet).`);
+      else
+        warnung(`Spur endet vor ${seit} und hat keinen zweiten Punkt zum Vergleich — ob Pause oder Funkloch, ist daraus nicht ablesbar.`);
+    }
+  }
+
   if (prof && pts && pts.length && (prof.chunks || []).length) {
     const rueckstandMin = (pts[pts.length - 1][3] - prof.throughUnix) / 60;
     if (rueckstandMin > TOL.profilRueckstandMin)

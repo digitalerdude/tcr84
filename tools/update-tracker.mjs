@@ -77,13 +77,24 @@ const CONFIG = {
   gotoTimeoutMs: 60000,
   /* Ab welchem Alter des Live-Stands ein geplanter Lauf (`--scheduled`)
      tatsächlich arbeitet. Der launchd-Job tickt seit 21.07.2026 alle 15
-     Minuten statt stündlich, startet aber nur einen Browser, wenn wirklich
-     etwas fällig ist — sonst endet der Lauf nach Millisekunden.
+     Minuten, startet aber nur einen Browser, wenn wirklich etwas fällig ist
+     — sonst endet der Lauf nach Millisekunden.
      Der Sinn: scheitert ein Lauf, bleibt der Live-Stand alt, und schon der
      nächste Tick versucht es erneut. Aus „eine Stunde tot“ wird „höchstens
-     eine Viertelstunde“, ohne dass im Normalbetrieb mehr Chromium-Starts
-     anfallen (nach einem Erfolg um :06 überspringen :21, :36 und :51). */
-  laufFaelligNachMin: 50,
+     eine Viertelstunde“, ohne dass jeder Tick einen Chromium startet.
+
+     Seit 22.07.2026 25 statt 50 Minuten. 50 hieß in der Praxis ein Abruf pro
+     Stunde, und damit konnte das Board der offiziellen Seite fast eine
+     Stunde hinterherhinken: an dem Morgen kam Manuel um 06:31 aus dem
+     Funkloch am Aurlandsfjellet zurück, der letzte Abruf lag bei 06:16, der
+     nächste wäre erst 07:16 fällig gewesen — 45 Minuten, in denen die Seite
+     ihn fahren sah und das Board ihn stehen ließ. 25 min heißt zwei echte
+     Läufe je Stunde (Tick :00 überspringt, :15 überspringt, :30 arbeitet),
+     also ~48 statt ~24 am Tag: doppelt so viele Chromium-Starts und
+     Cloudflare-Passagen, aber höchstens eine halbe Stunde Rückstand.
+     Weiter runter lohnt nicht — der Tracker selbst meldet nur alle ~5 min,
+     und die Spur kommt ohnehin komplett per GPX-Export nach. */
+  laufFaelligNachMin: 25,
 };
 
 const args = process.argv.slice(2);
