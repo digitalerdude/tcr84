@@ -70,6 +70,11 @@
   @media (prefers-reduced-motion:reduce){.rideAnim,.ferryAnim{animation:none}}
 
   .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
+  /* Ohne min-width:0 wächst diese Spalte (Grid-Track 1fr bzw. mobil Flex-Item)
+     per default-min-width:auto auf Inhaltsbreite — ein breiter, horizontal
+     scrollbarer Block wie die Tagesbalken schöbe sonst die ganze Seite auf,
+     statt in sich zu scrollen. */
+  .main{min-width:0}
   .ladder-panel{position:sticky;top:18px}
   @media (max-width:820px){
     .cols{display:flex;flex-direction:column;gap:24px}
@@ -135,21 +140,34 @@
   textarea{width:100%;height:150px;background:#0A131B;color:var(--ice);border:1px solid var(--line);
            font-family:var(--mono);font-size:11.5px;padding:10px;margin-top:12px;border-radius:2px}
 
+  /* Feste Spaltenbreite statt flex:1 — sonst quetschten sich die km-/Höhen-
+     meter-Zahlen mit jedem neuen Tag enger, bis sie unleserlich wurden. Bei
+     ~62 px passen mobil rund 5 Tage ins Sichtfenster; darüber hinaus scrollt
+     die Reihe horizontal (jüngster Tag rechts, siehe renderDays). Die drei
+     Zeilen teilen sich `--daycol`, damit Balken, Streifen und Datum spalten-
+     genau übereinanderstehen. */
+  .dayscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;max-width:100%}
+  /* min-width:100% + width:max-content: solange die Spalten in die Breite
+     passen, füllt der Track das Sichtfenster (Balken strecken sich, kein leerer
+     Rand auf dem Desktop); wachsen sie darüber hinaus, wird der Track breiter
+     als 100 % und scrollt. Die Spalten selbst wachsen mit (flex-grow), fallen
+     aber nie unter --daycol (flex-shrink:0) — genau dort setzt der Scroll ein. */
+  .daystrack{--daycol:62px;display:flex;flex-direction:column;min-width:100%;width:max-content}
   .days{display:flex;gap:5px;align-items:flex-end;height:92px;border-bottom:1px solid var(--line)}
-  .day{flex:1;min-width:12px;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+  .day{flex:1 0 var(--daycol);display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
   .bar{width:100%;background:var(--ice);opacity:.5;border-radius:2px 2px 0 0;min-height:2px}
   .bar.top{opacity:1;background:var(--brass)}
   /* Tagesstreifen unter den Balken: 24 Stunden von links nach rechts, Messing
      wo der Tracker Bewegung zeigt, abgedunkelt wo er stand. */
   .daystrips{display:flex;gap:5px;margin-top:4px}
-  .daystripcell{flex:1;min-width:12px}
+  .daystripcell{flex:1 0 var(--daycol)}
   .daystrip{position:relative;height:4px;border-radius:2px;overflow:hidden}
   .daystrip b{position:absolute;top:0;height:100%;background:var(--brass);opacity:.7}
   .daystrip i{position:absolute;top:0;height:100%;background:var(--night)}
   .striplegend{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:7px}
   .striplegend .lg-ride{color:var(--brass)}
   .daylabels{display:flex;gap:5px;margin-top:6px}
-  .daylabel{flex:1;min-width:12px;text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .daylabel{flex:1 0 var(--daycol);text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
   .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
   .dayhm{font-family:var(--mono);font-size:8.5px;color:var(--brass);opacity:.8}
 
@@ -1283,13 +1301,31 @@ function renderDays(c){
   const max = Math.max(...keys.map(k=>byDay[k]), 1);
   const best = keys.reduce((p,k)=> byDay[k]>byDay[p]?k:p, keys[0]);
   w.innerHTML =
-    `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
-      ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}</span>`:''}
-      <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>` +
-    (TRACK ? `<div class="daystrips">${keys.map(k=>`<div class="daystripcell">${dayStrip(k)}</div>`).join('')}</div>` : '') +
-    `<div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>` +
+    `<div class="dayscroll"><div class="daystrack">` +
+      `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
+        ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}</span>`:''}
+        <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>` +
+      (TRACK ? `<div class="daystrips">${keys.map(k=>`<div class="daystripcell">${dayStrip(k)}</div>`).join('')}</div>` : '') +
+      `<div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>` +
+    `</div></div>` +
     (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit</div>` : '');
+
+  /* Beim ersten Aufbau — und immer, wenn der Nutzer ohnehin ganz rechts steht —
+     ans rechte Ende scrollen, damit der jüngste (und laufende) Tag zu sehen
+     ist. Hat er nach links gewischt, um Vergangenes anzusehen, bleibt seine
+     Position über das 60s-Neuzeichnen erhalten (wie fitBounds bei der Karte
+     die herangezoomte Ansicht nicht wegreißt). */
+  const sc = w.querySelector('.dayscroll');
+  if(sc){
+    if(!DAYS_INIT || DAYS_ATRIGHT) sc.scrollLeft = sc.scrollWidth;
+    else sc.scrollLeft = DAYS_LEFT;
+    DAYS_INIT = true;
+    DAYS_ATRIGHT = (sc.scrollWidth - sc.clientWidth - sc.scrollLeft) < 8;
+    sc.onscroll = ()=>{ DAYS_LEFT = sc.scrollLeft;
+      DAYS_ATRIGHT = (sc.scrollWidth - sc.clientWidth - sc.scrollLeft) < 8; };
+  }
 }
+let DAYS_INIT = false, DAYS_LEFT = 0, DAYS_ATRIGHT = true;
 
 /* ---------- Fährplanung Südschweden ----------
    Ein Planungspanel für eine einzige Entscheidung: mit welcher Ostsee-Fähre
