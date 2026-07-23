@@ -813,14 +813,27 @@
       "speed": 26,
       "ele": 224,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784796557814",
+      "ts": "2026-07-23T10:43",
+      "tsSrc": "track",
+      "km": 918,
+      "place": "Brattås",
+      "note": "Platz 276",
+      "lat": 59.916455,
+      "lon": 9.357179,
+      "speed": 29.6,
+      "ele": 196,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-23T08:24:04.794Z",
+  "updated": "2026-07-23T08:49:17.909Z",
   "live": {
-    "ts": "2026-07-23T10:24",
-    "km": 897.29,
-    "fixMinsAgo": 35,
-    "speed": 26,
+    "ts": "2026-07-23T10:49",
+    "km": 918,
+    "fixMinsAgo": 6,
+    "speed": 29.6,
     "rank": 276
   }
 }
