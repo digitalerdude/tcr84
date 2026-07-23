@@ -77,7 +77,11 @@
   .main{min-width:0}
   .ladder-panel{position:sticky;top:18px}
   @media (max-width:820px){
-    .cols{display:flex;flex-direction:column;gap:24px}
+    /* align-items:stretch MUSS hier stehen: die Basis-.cols-Regel setzt für das
+       Grid `align-items:start`, und das wirkt in die Flex-Spalte hinein — ohne
+       Streckung nimmt .main die Inhaltsbreite statt der Spaltenbreite, und ein
+       breiter Scroll-Block (Tagesbalken) schöbe die ganze Seite auf. */
+    .cols{display:flex;flex-direction:column;gap:24px;align-items:stretch}
     .ladder-panel{position:static;order:2}
     .main{order:1}
   }
@@ -146,7 +150,23 @@
      die Reihe horizontal (jüngster Tag rechts, siehe renderDays). Die drei
      Zeilen teilen sich `--daycol`, damit Balken, Streifen und Datum spalten-
      genau übereinanderstehen. */
-  .dayscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin;max-width:100%}
+  /* Weiche Farbkante als Hinweis „hier geht es weiter“: der native Scrollbalken
+     ist auf dem Handy meist unsichtbar, bis man wischt. Die Fades erscheinen nur
+     auf der Seite, wo tatsächlich noch Tage außerhalb liegen (Klassen more-left/
+     more-right, in renderDays gesetzt). */
+  .dayscrollwrap{position:relative}
+  .dayscrollwrap::before,.dayscrollwrap::after{content:'';position:absolute;top:0;bottom:0;
+        width:26px;pointer-events:none;opacity:0;transition:opacity .18s;z-index:2}
+  .dayscrollwrap::before{left:0;background:linear-gradient(to right,var(--night),transparent)}
+  .dayscrollwrap::after{right:0;background:linear-gradient(to left,var(--night),transparent)}
+  .dayscrollwrap.more-left::before{opacity:1}
+  .dayscrollwrap.more-right::after{opacity:1}
+  /* Nativen Scrollbalken ausblenden: er saß am unteren Rand des Containers und
+     überdeckte die Datumszeile. Die Fade-Kante trägt den „weiter“-Hinweis
+     ohnehin verlässlicher (Touch-Geräte blenden den Balken selbst aus), das
+     Wischen/Trackpad-Scrollen bleibt unverändert. */
+  .dayscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;max-width:100%}
+  .dayscroll::-webkit-scrollbar{display:none}
   /* min-width:100% + width:max-content: solange die Spalten in die Breite
      passen, füllt der Track das Sichtfenster (Balken strecken sich, kein leerer
      Rand auf dem Desktop); wachsen sie darüber hinaus, wird der Track breiter
@@ -1301,13 +1321,13 @@ function renderDays(c){
   const max = Math.max(...keys.map(k=>byDay[k]), 1);
   const best = keys.reduce((p,k)=> byDay[k]>byDay[p]?k:p, keys[0]);
   w.innerHTML =
-    `<div class="dayscroll"><div class="daystrack">` +
+    `<div class="dayscrollwrap"><div class="dayscroll"><div class="daystrack">` +
       `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
         ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}</span>`:''}
         <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>` +
       (TRACK ? `<div class="daystrips">${keys.map(k=>`<div class="daystripcell">${dayStrip(k)}</div>`).join('')}</div>` : '') +
       `<div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>` +
-    `</div></div>` +
+    `</div></div></div>` +
     (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit</div>` : '');
 
   /* Beim ersten Aufbau — und immer, wenn der Nutzer ohnehin ganz rechts steht —
@@ -1321,8 +1341,14 @@ function renderDays(c){
     else sc.scrollLeft = DAYS_LEFT;
     DAYS_INIT = true;
     DAYS_ATRIGHT = (sc.scrollWidth - sc.clientWidth - sc.scrollLeft) < 8;
+    const wrap = w.querySelector('.dayscrollwrap');
+    const fades = ()=>{
+      wrap.classList.toggle('more-left', sc.scrollLeft > 2);
+      wrap.classList.toggle('more-right', sc.scrollWidth - sc.clientWidth - sc.scrollLeft > 2);
+    };
+    fades();
     sc.onscroll = ()=>{ DAYS_LEFT = sc.scrollLeft;
-      DAYS_ATRIGHT = (sc.scrollWidth - sc.clientWidth - sc.scrollLeft) < 8; };
+      DAYS_ATRIGHT = (sc.scrollWidth - sc.clientWidth - sc.scrollLeft) < 8; fades(); };
   }
 }
 let DAYS_INIT = false, DAYS_LEFT = 0, DAYS_ATRIGHT = true;
