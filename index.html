@@ -64,7 +64,10 @@
      dass er steht, nie warum. */
   .rideAnim{display:inline-block;animation:ride .9s ease-in-out infinite}
   @keyframes ride{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
-  @media (prefers-reduced-motion:reduce){.rideAnim{animation:none}}
+  /* Die Fähre schaukelt langsamer und breiter als das Rad wippt. */
+  .ferryAnim{display:inline-block;animation:sail 2.6s ease-in-out infinite}
+  @keyframes sail{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-1px) rotate(2deg)}}
+  @media (prefers-reduced-motion:reduce){.rideAnim,.ferryAnim{animation:none}}
 
   .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
   .ladder-panel{position:sticky;top:18px}
@@ -213,6 +216,16 @@
   .ferinfobody{padding-top:2px}
   .ferpause{font-family:var(--mono);font-size:11px;color:var(--prose);line-height:1.65;
             border-left:2px solid var(--line);padding-left:10px;margin:0 0 13px}
+  /* Status während/nach der Überfahrt — Messing-Kante wie der empfohlene
+     Hafen, damit sofort klar ist: das ist gerade DIE Sache. */
+  .ferstatus{border:1px solid var(--line);border-left:3px solid var(--brass);
+             background:var(--panel);padding:13px 15px;margin:14px 0 4px}
+  .ferstatus .fsline{font-size:15px;letter-spacing:-.01em;color:var(--bone)}
+  .ferstatus .ferbig{font-weight:600}
+  .ferstatus.on .ferbig{color:var(--brass)}
+  .ferstatus .fsmeta{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:6px}
+  /* Emoji-Marker der Karte: nur das Zeichen, kein Leaflet-Kästchen. */
+  .ferIcon{font-size:19px;line-height:24px;text-align:center;text-shadow:0 0 3px #0C1620}
   /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
      zu sehen ist — dafür fällt sie aus dem Versalsatz der übrigen Summaries. */
   #ferrySum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
@@ -678,8 +691,9 @@ function compute(){
   else if(buffer !== null && buffer > 24*3.6e6) state = 'good';
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
+  const ferry = ferryCrossing();
   return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpHits,cpReached,state,
-          raceH,measuredH,staleH,
+          raceH,measuredH,staleH,ferry,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
 
@@ -786,7 +800,21 @@ function renderLive(c){
   const alterAbruf = (c.now - new Date(lv.ts)) / 6e4;      // Minuten seit unserem letzten Blick
   const teile = [];
 
-  if(alterAbruf > 150){
+  /* Die Überfahrt hat Vorrang vor allem anderen: während er auf der Fähre
+     sitzt, meldet der Tracker Tempo 0, und ohne diesen Zweig stünde hier
+     „🚲 Pause“ — genau das Falsche. `done` bleibt 24 h stehen, danach ist die
+     Überfahrt Geschichte und die normale Zeile übernimmt wieder. */
+  const fer = c.ferry;
+  const ferFrisch = fer && fer.state === 'done' && fer.landTs
+    && (c.now - new Date(fer.landTs)) < 24*3.6e6;
+  if(fer && fer.state === 'onboard'){
+    teile.push(`<span><span class="ferryAnim">⛴️</span> <span class="wxval">Auf der Fähre</span>` +
+      ` · seit ${new Date(fer.boardTs).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr` +
+      ` nach ${esc(FERRY.ziel)}</span>`);
+  } else if(ferFrisch){
+    teile.push(`<span>⛴️ <span class="wxval">Fähre genommen</span>` +
+      ` · an ${new Date(fer.landTs).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>`);
+  } else if(alterAbruf > 150){
     // Nicht der Fahrer hängt, sondern unsere Abfrage — das muss man auseinanderhalten.
     teile.push(`<span class="wxwarn">⚠ Abruf zuletzt ${fmt(lv.ts)}</span>`);
   } else if(lv.stopSince){
@@ -1266,6 +1294,16 @@ function renderDays(c){
 const FERRY = {
   ankerKm: 794.57,        // Tracker-Kilometerstand, ab dem die Distanzen gemessen sind (Geilo, 22.07.2026)
   ausAbLat: 55.0,         // südlich davon ist die Ostsee überquert und die Frage erledigt
+  zielPos: [53.910, 14.278],   // Świnoujście, für den Karten-Zielpunkt der Überfahrt
+  /* Das Ostsee-Band, an dem die tatsächliche Überfahrt erkannt wird. Der ganze
+     Trick: zwischen der schwedischen Südküste und Świnoujście liegt NUR offene
+     See — ein Spurpunkt hier drin sitzt zwangsläufig auf einem Boot, Manuel
+     schwimmt nicht und radelt dort nicht. Erkannt wird der Nord→Süd-Übergang
+     durchs Band (siehe ferryCrossing()), das trägt auch bei einer reinen
+     Funkloch-Lücke mitten auf der Ostsee. Die Längengrad-Grenzen halten
+     Bornholm (14,9°O) und die dänischen Inseln (<12,5°O) draußen, sonst wäre
+     das Band nicht mehr reines Wasser. mindKm verwirft zu kurze Sprünge. */
+  seeband: { latNord: 55.30, latSued: 54.05, lonWest: 12.6, lonOst: 14.5, mindKm: 40 },
   /* Ab wie vielen Kilometern hinter einem Hafen der als endgültig passiert
      gilt und aus der Auswahl fällt. Nicht bei 0: die Kilometerstände stehen
      auf zwei verschiedenen Linealen (siehe unten), ein paar Kilometer
@@ -1305,12 +1343,12 @@ const FERRY = {
      Alles über einen Kamm zu scheren hieße, den Unterschied wegzuwerfen, der
      diese Liste überhaupt erst belastbar gemacht hat. */
   haefen: [
-    { nm:'Malmö', brouterKm:902, url:'https://www.finnlines.com/routes/swinoujscie-malmo/',
+    { nm:'Malmö', brouterKm:902, pos:[55.606,12.985], url:'https://www.finnlines.com/routes/swinoujscie-malmo/',
       geprueftBis:'2026-07-26', ab:[
       {d:'2026-07-25', t:'11:00', an:'19:15', linie:'Finnlines · Finnfellow', preis:34, q:'rad'},
       {d:'2026-07-26', t:'10:15', an:'19:15', linie:'Finnlines · Finnfellow', preis:34, q:'rad'},
     ]},
-    { nm:'Trelleborg', brouterKm:936, url:'https://www.ttline.com/de/schweden-faehren/trelleborg-swinoujscie/',
+    { nm:'Trelleborg', brouterKm:936, pos:[55.372,13.157], url:'https://www.ttline.com/de/schweden-faehren/trelleborg-swinoujscie/',
       geprueftBis:'2026-07-26', ab:[
       {d:'2026-07-25', t:'09:00', an:'15:00', linie:'TT-Line · Nils Holgersson', preis:31, q:'rad'},
       {d:'2026-07-25', t:'17:30', an:'00:00', linie:'POLSCA', rad:false},
@@ -1323,7 +1361,7 @@ const FERRY = {
        listet 01:00 · 08:50 · 13:00 · 17:30 · 23:50 — genau die fünf Zeilen,
        die hier für den Tag stehen. Die 23:50 am 25.07. ist zusätzlich mit Rad
        bestätigt (50 €); die Route nimmt also grundsätzlich Räder. */
-    { nm:'Ystad', brouterKm:986, url:'https://polferries.com/prices-i-timetable/ferries-to-sweden-timetable.html',
+    { nm:'Ystad', brouterKm:986, pos:[55.419,13.820], url:'https://polferries.com/prices-i-timetable/ferries-to-sweden-timetable.html',
       geprueftBis:'2026-07-27', ab:[
       {d:'2026-07-25', t:'09:30', an:'15:30', linie:'POLSCA · Mazovia',  q:'plan'},
       {d:'2026-07-25', t:'13:00', an:'20:00', linie:'POLSCA · Varsovia', q:'plan'},
@@ -1374,11 +1412,23 @@ const ferTagZeit = d => `${ferWochentag(d)} ${d.toLocaleDateString('de-DE',{day:
 
 function renderFerry(c){
   const det = document.getElementById('ferryDetails');
-  /* Abschalten, sobald die Ostsee hinter ihm liegt — ein Panel, das eine
-     erledigte Frage weiterstellt, ist schlechter als keines. */
+  const fer = c.ferry;
+  const ferAktiv = fer && (fer.state === 'onboard'
+    || (fer.state === 'done' && fer.landTs && (c.now - new Date(fer.landTs)) < 24*3.6e6));
+  /* Abschalten, sobald die Ostsee hinter ihm liegt — aber nicht schon MITTEN
+     auf der Überfahrt. Die Fährroute kreuzt `ausAbLat` (55°N) auf offener See,
+     der reine Breitengrad-Test ließe das Panel also im Moment seiner größten
+     Nützlichkeit verschwinden. Solange eine Überfahrt läuft oder gerade
+     gelandet ist (<24 h), bleibt es sichtbar; erst danach greift der alte
+     Rückfall über den Breitengrad. */
   const pos = c.list.filter(e=> e.lat != null).pop();
-  if(!pos || pos.lat < FERRY.ausAbLat){ det.hidden = true; return; }
+  if(!ferAktiv && (!pos || pos.lat < FERRY.ausAbLat)){ det.hidden = true; return; }
   det.hidden = false;
+
+  /* Läuft eine Überfahrt (oder ist sie frisch gelandet), ist die Frage „welche
+     Fähre“ beantwortet — statt Szenario-Knöpfen und Hafen-Tabelle steht dann
+     nur noch der Status. Der Erklär-<details> bleibt darunter. */
+  if(ferAktiv){ renderFerryStatus(c, fer); return; }
 
   // Der frischeste Kilometerstand, den wir haben — `live` schreibt der Scraper
   // bei jedem Lauf, das Log nur ab 1 km Bewegung. Kilometer wachsen nur.
@@ -1541,7 +1591,18 @@ function renderFerry(c){
      nicht bei jedem Blick aufs Board wieder. */
   w.innerHTML = `<div class="ferscen-hint">Tagesleistung antippen</div>
     <div class="ferscen">${knoepfe}</div>${pause}${belegHinweis}${karten}
-    <details class="ferinfo"${FER_INFO?' open':''}>
+    ${ferryInfoHtml()}`;
+  w.querySelectorAll('.ferscen button').forEach(b=> b.onclick = ()=>{
+    FER_SCEN = Number(b.dataset.scen); renderFerry(c);
+  });
+  const info = w.querySelector('.ferinfo');
+  if(info) info.ontoggle = ()=>{ FER_INFO = info.open; };
+}
+
+/* Der eingeklappte Erklärteil des Fährpanels — geteilt zwischen der
+   Szenario-Tabelle und der Status-Ansicht während der Überfahrt. */
+function ferryInfoHtml(){
+  return `<details class="ferinfo"${FER_INFO?' open':''}>
     <summary>Wie das gerechnet ist — und woher die Fahrpläne stammen</summary>
     <div class="ferinfobody">
     <p class="profnote">Die drei Häfen liegen hintereinander auf der Route — Malmö, dann
@@ -1573,9 +1634,34 @@ function renderFerry(c){
       Tagesleistung beruht, sich verschieben wird. Umbuchen geht bei der Reederei
       unkompliziert, über einen Vermittler selten.</p>
     </div></details>`;
-  w.querySelectorAll('.ferscen button').forEach(b=> b.onclick = ()=>{
-    FER_SCEN = Number(b.dataset.scen); renderFerry(c);
-  });
+}
+
+/* Status statt Planung: während der Überfahrt und 24 h danach. Die Zeiten
+   kommen aus der Spur (boardTs/landTs), der Linien-Name aus dem passenden
+   Fahrplaneintrag, falls einer nah genug lag. */
+function renderFerryStatus(c, fer){
+  const hhmmTs = ts => new Date(ts).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+  const hafen = fer.hafen ? esc(fer.hafen.nm) : 'Schweden';
+  const linie = fer.dep ? ` · ${esc(fer.dep.linie)}` : '';
+  let box;
+  if(fer.state === 'onboard'){
+    const dauer = dhm((c.now - new Date(fer.boardTs)) / 6e4);
+    document.getElementById('ferrySum').innerHTML =
+      `<b>⛴️ Auf der Fähre nach ${esc(FERRY.ziel)}</b>`;
+    box = `<div class="ferstatus on">
+        <div class="fsline"><span class="ferbig">⛴️ Auf der Fähre</span> nach ${esc(FERRY.ziel)}</div>
+        <div class="fsmeta">ab ${hafen} ${hhmmTs(fer.boardTs)} Uhr${linie} · unterwegs seit ${dauer}</div>
+      </div>`;
+  } else {
+    document.getElementById('ferrySum').innerHTML =
+      `Fähre nach ${esc(FERRY.ziel)} · <b>genommen ab ${hafen}</b>`;
+    box = `<div class="ferstatus done">
+        <div class="fsline"><span class="ferbig">⛴️ Fähre genommen</span></div>
+        <div class="fsmeta">${hafen} ${hhmmTs(fer.boardTs)} → ${esc(FERRY.ziel)} ${hhmmTs(fer.landTs)} Uhr${linie}</div>
+      </div>`;
+  }
+  const w = document.getElementById('ferryWrap');
+  w.innerHTML = `${box}${ferryInfoHtml()}`;
   const info = w.querySelector('.ferinfo');
   if(info) info.ontoggle = ()=>{ FER_INFO = info.open; };
 }
@@ -1599,6 +1685,82 @@ function trackStops(){
   if(!TRACK) return [];
   if(STOPS_KEY !== TRACK.updated){ STOPS = findStops(TRACK.points); STOPS_KEY = TRACK.updated; }
   return STOPS;
+}
+
+/* Die tatsächliche Fährüberfahrt aus der Spur lesen. Gesucht ist der
+   Nord→Süd-Übergang durch das Ostsee-Band (FERRY.seeband): der letzte Punkt
+   auf der schwedischen Seite ist die Abfahrt, der erste danach auf der
+   polnischen Seite die Ankunft, alles dazwischen (falls es überhaupt Punkte
+   gibt) die Mittsee-Spur. Das trägt in beiden Wirklichkeiten: dünne Punkte
+   über Wasser ODER eine reine Funkloch-Lücke, bei der der Tracker erst in
+   Polen wieder meldet — dann sind board und land direkt benachbart und die
+   gerade Linie dazwischen IST die Überfahrt.
+   Kein kmScale, keine Punkt-zu-Strecke-Distanz: reiner Koordinatenvergleich
+   im Band. Gecacht wie trackStops() über TRACK.updated. */
+let FERRY_CACHE = null, FERRY_KEY = null;
+let FERRY_OVERRIDE = null;   // Debug-Hook tcr84Faehre(), siehe unten
+function ferryCrossing(){
+  if(FERRY_OVERRIDE !== null) return FERRY_OVERRIDE || null;
+  if(!TRACK) return null;
+  if(FERRY_KEY === TRACK.updated) return FERRY_CACHE;
+  FERRY_KEY = TRACK.updated;
+  FERRY_CACHE = computeFerryCrossing(TRACK.points);
+  return FERRY_CACHE;
+}
+function computeFerryCrossing(pts){
+  const sb = FERRY.seeband;
+  const nord = p => p[0] >= sb.latNord && p[1] >= sb.lonWest && p[1] <= sb.lonOst;
+  const sued = p => p[0] <= sb.latSued && p[1] >= sb.lonWest && p[1] <= sb.lonOst;
+  // Der letzte schwedische Punkt vor einem späteren polnischen: das ist die
+  // Abfahrt. Rückwärts vom Fund des ersten Süd-Punkts, damit ein früher Abstecher
+  // in den Längengrad-Streifen nicht als Board zählt.
+  let iBoard = -1, iLand = -1;
+  for(let i = 0; i < pts.length; i++){
+    if(iBoard < 0){ if(nord(pts[i])) iBoard = i; continue; }
+    if(nord(pts[i])) iBoard = i;            // schiebt bis zum letzten Nord-Punkt vor
+    else if(sued(pts[i])){ iLand = i; break; }
+  }
+  if(iBoard < 0) return null;
+  const boardPt = pts[iBoard];
+  // Läuft die Spur nach dem Board weiter, ohne je die Südseite zu erreichen,
+  // ist er entweder noch an Bord (Punkt im Band) oder gar nicht losgefahren.
+  if(iLand < 0){
+    const rest = pts.slice(iBoard + 1);
+    const imBand = rest.filter(p => p[1] >= sb.lonWest && p[1] <= sb.lonOst
+                                 && p[0] < sb.latNord && p[0] > sb.latSued);
+    if(!imBand.length) return null;          // noch am Hafen, keine Überfahrt
+    const letzter = imBand[imBand.length - 1];
+    if(metersBetween(boardPt, letzter) < sb.mindKm * 1000 / 3) return null;
+    return ferryInfo('onboard', boardPt, letzter, imBand);
+  }
+  const landPt = pts[iLand];
+  if(metersBetween(boardPt, landPt) < sb.mindKm * 1000) return null;
+  const mid = pts.slice(iBoard + 1, iLand);
+  return ferryInfo('done', boardPt, landPt, mid);
+}
+function ferryInfo(state, boardPt, endPt, midPts){
+  const boardTs = localIso(new Date(boardPt[3] * 1000));
+  const landTs = state === 'done' ? localIso(new Date(endPt[3] * 1000)) : null;
+  // Nächstgelegener Hafen zum Abfahrtspunkt.
+  let hafen = null, hd = Infinity;
+  FERRY.haefen.forEach(h => {
+    if(!h.pos) return;
+    const d = metersBetween(boardPt, h.pos);
+    if(d < hd){ hd = d; hafen = h; }
+  });
+  // Die Abfahrt, deren Fahrplanzeit am nächsten an der echten Abfahrt liegt
+  // (±3 h) — nur für den Linien-Namen, nicht für die Zeiten selbst.
+  let dep = null;
+  if(hafen){
+    const bMs = new Date(boardTs).getTime();
+    let dd = 3 * 3.6e6;
+    hafen.ab.forEach(a => {
+      const diff = Math.abs(new Date(`${a.d}T${a.t}`).getTime() - bMs);
+      if(diff < dd){ dd = diff; dep = a; }
+    });
+  }
+  return { state, boardTs, landTs, boardPt, landPt: state === 'done' ? endPt : null,
+           midPts: midPts || [], hafen, dep };
 }
 
 function renderLog(c){
@@ -1902,6 +2064,29 @@ function renderMap(c){
   L.polyline(latlngs, {color:'#0C1620', weight:6, opacity:.55}).addTo(group);
   L.polyline(latlngs, {color:'#D9A441', weight:3}).addTo(group);
 
+  /* Die Fährüberfahrt als eigener, gestrichelter Abschnitt übers Wasser — die
+     einzige Stelle der Spur, die nicht gefahren wurde. Bei einer Funkloch-Lücke
+     ist das schlicht die Gerade board→land, sonst folgt sie den Mittsee-Punkten.
+     Ein ⛴️ auf der Mitte trägt Abfahrt und Ankunft in der Sprechblase. */
+  const fer = c.ferry;
+  if(fer && fer.boardPt){
+    const wasser = [ [fer.boardPt[0], fer.boardPt[1]],
+      ...fer.midPts.map(p=> [p[0], p[1]]) ];
+    if(fer.landPt) wasser.push([fer.landPt[0], fer.landPt[1]]);
+    L.polyline(wasser, {color:'#0C1620', weight:6, opacity:.55}).addTo(group);
+    L.polyline(wasser, {color:'#BCD7DE', weight:3, dashArray:'2 7'}).addTo(group);
+    const mitte = wasser[Math.floor(wasser.length/2)];
+    const linie = fer.dep ? `<br>${esc(fer.dep.linie)}` : '';
+    const anTxt = fer.state === 'done'
+      ? ` → an ${hhmm(fer.landPt[3])}`
+      : ' · unterwegs';
+    L.marker(mitte, {icon: L.divIcon({className:'ferIcon', html:'⛴️',
+        iconSize:[24,24], iconAnchor:[12,12]})})
+      .bindPopup(`<strong>Fähre nach ${esc(FERRY.ziel)}</strong><br>` +
+        `ab ${hhmm(fer.boardPt[3])}${anTxt}${linie}`)
+      .addTo(group);
+  }
+
   /* Pausen. Die letzte kann noch laufen — die liegt dann zwangsläufig unter
      dem Messingpunkt der aktuellen Position und bekäme einen unerreichbaren
      eigenen Marker. Ihre Angaben wandern deshalb in dessen Sprechblase. */
@@ -2104,6 +2289,27 @@ window.tcr84FeierReset = ()=>{
   SEEN_MEM.clear();
   try{ localStorage.removeItem(SEEN_KEY); }catch(e){}
   return 'zurückgesetzt — beim nächsten erreichten Kontrollpunkt feiert es wieder.';
+};
+/* Die echte Überfahrt steht erst in ~1 Woche an — bis dahin lässt sich die
+   Fähr-Anzeige nur über einen synthetischen Stand ausprobieren:
+     tcr84Faehre('onboard')  gerade an Bord (Live-Zeile ⛴️, Karte, Panel-Status)
+     tcr84Faehre('done')     gerade gelandet (bleibt 24 h stehen)
+     tcr84Faehre('off')      Override aus, echte Erkennung wieder aktiv */
+window.tcr84Faehre = state=>{
+  if(!state || state === 'off'){ FERRY_OVERRIDE = null; render(); return 'Fähr-Override aus.'; }
+  const now = Date.now() / 1000;
+  const tb = FERRY.haefen.find(h=> h.nm === 'Trelleborg').pos;
+  const zp = FERRY.zielPos;
+  const mid = [(tb[0]+zp[0])/2, (tb[1]+zp[1])/2];
+  if(state === 'onboard'){
+    const m = [mid[0], mid[1], 0, now - 1.5*3600];
+    FERRY_OVERRIDE = ferryInfo('onboard', [tb[0], tb[1], 0, now - 3*3600], m, [m]);
+  } else if(state === 'done'){
+    FERRY_OVERRIDE = ferryInfo('done', [tb[0], tb[1], 0, now - 9*3600],
+      [zp[0], zp[1], 0, now - 2*3600], [[mid[0], mid[1], 0, now - 5.5*3600]]);
+  } else return "unbekannt — 'onboard', 'done' oder 'off'";
+  render();
+  return 'Fähr-Override: ' + state;
 };
 
 function render(){
