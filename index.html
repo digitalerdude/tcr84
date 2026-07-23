@@ -894,7 +894,8 @@ function renderLive(c){
       lv.speed ? ' · '+one(lv.speed)+' km/h' : ''}</span>`);
   }
 
-  teile.push(`<span class="wxval">${num(Number(lv.km))} km</span>`);
+  // Kilometerstand steht schon in der Kennzahl „Gefahren“ darunter — hier
+  // wäre er Dopplung. Platz und Meldungsalter sind die eigene Information.
   if(lv.rank!=null) teile.push(`<span>Platz ${lv.rank}</span>`);
   /* `fixMinsAgo` ist das Alter der Trackermeldung ZUM ZEITPUNKT UNSERES ABRUFS,
      kein laufender Wert. Roh angezeigt stand hier eine Stunde nach dem Abruf
@@ -2023,13 +2024,16 @@ function renderWeather(){
   const el = document.getElementById('wxLine');
   if(!el || !WX){ if(el){ el.style.display='none'; syncNowbar(); } return; }
   const code = WX_CODES[WX.weather_code] || ['','—'];
+  // Böen fließen weiter in die Warnfarbe ein (bei ≥45 wird die Windangabe rot),
+  // werden aber nicht mehr als Zahl angezeigt: „Böen 20“ war ohne Kontext nicht
+  // zu deuten und blähte die Zeile auf. Weniger Text, gleiche Aussage.
   const gust = WX.wind_gusts_10m;
   const windy = WX.wind_speed_10m >= 30 || (gust!=null && gust >= 45);
   el.style.display = 'flex';
   el.innerHTML =
     `<span>${code[0]} ${code[1]}</span>` +
     `<span class="wxval">${one(WX.temperature_2m)}° <span style="color:var(--muted)">(gefühlt ${one(WX.apparent_temperature)}°)</span></span>` +
-    `<span class="${windy?'wxwarn':'wxval'}">💨 ${num(WX.wind_speed_10m)} km/h aus ${windDir(WX.wind_direction_10m)}${gust!=null?', Böen '+num(gust):''}</span>` +
+    `<span class="${windy?'wxwarn':'wxval'}">💨 ${num(WX.wind_speed_10m)} km/h aus ${windDir(WX.wind_direction_10m)}</span>` +
     (WX.precipitation>0 ? `<span class="wxval">🌧️ ${one(WX.precipitation)} mm/h</span>` : '');
   syncNowbar();
 }
