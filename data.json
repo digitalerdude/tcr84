@@ -1097,14 +1097,27 @@
       "speed": 14.2,
       "ele": 5,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784831397883",
+      "ts": "2026-07-23T20:26",
+      "tsSrc": "track",
+      "km": 1083.73,
+      "place": "Kvastebyen",
+      "note": "Platz 276",
+      "lat": 59.19089,
+      "lon": 11.186839,
+      "speed": 0.4,
+      "ele": 8,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-23T18:04:42.652Z",
+  "updated": "2026-07-23T18:29:57.993Z",
   "live": {
-    "ts": "2026-07-23T20:04",
-    "km": 1080.06,
-    "fixMinsAgo": 6,
-    "speed": 14.2,
+    "ts": "2026-07-23T20:29",
+    "km": 1083.73,
+    "fixMinsAgo": 4,
+    "speed": 0.4,
     "rank": 276
   }
 }
