@@ -1045,14 +1045,27 @@
       "speed": 25.1,
       "ele": 50,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784825343273",
+      "ts": "2026-07-23T18:43",
+      "tsSrc": "track",
+      "km": 1053.78,
+      "place": "Missingmyr",
+      "note": "Platz 276",
+      "lat": 59.34523,
+      "lon": 10.923186,
+      "speed": 8.6,
+      "ele": 55,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-23T16:23:54.379Z",
+  "updated": "2026-07-23T16:49:03.411Z",
   "live": {
-    "ts": "2026-07-23T18:23",
-    "km": 1046.71,
-    "fixMinsAgo": 5,
-    "speed": 25.1,
+    "ts": "2026-07-23T18:49",
+    "km": 1053.78,
+    "fixMinsAgo": 6,
+    "speed": 8.6,
     "rank": 276
   }
 }
