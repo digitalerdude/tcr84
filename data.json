@@ -800,14 +800,27 @@
       "speed": 7.7,
       "ele": 321,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784793536345",
+      "ts": "2026-07-23T09:48",
+      "tsSrc": "track",
+      "km": 897.29,
+      "place": "Kongsjorden",
+      "note": "Platz 276",
+      "lat": 60.037435,
+      "lon": 9.210816,
+      "speed": 26,
+      "ele": 224,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-23T07:33:46.700Z",
+  "updated": "2026-07-23T07:58:56.466Z",
   "live": {
-    "ts": "2026-07-23T09:33",
-    "km": 889.85,
-    "fixMinsAgo": 5,
-    "speed": 7.7,
+    "ts": "2026-07-23T09:58",
+    "km": 897.29,
+    "fixMinsAgo": 10,
+    "speed": 26,
     "rank": 276
   }
 }
