@@ -696,14 +696,27 @@
       "speed": 7.7,
       "ele": 957,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784781454902",
+      "ts": "2026-07-23T06:25",
+      "tsSrc": "track",
+      "km": 825.77,
+      "place": "Sønstebøsetre",
+      "note": "Platz 276",
+      "lat": 60.375272,
+      "lon": 8.488469,
+      "speed": 20.3,
+      "ele": 1032,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-23T04:12:24.794Z",
+  "updated": "2026-07-23T04:37:35.154Z",
   "live": {
-    "ts": "2026-07-23T06:12",
-    "km": 822.56,
-    "fixMinsAgo": 2,
-    "speed": 7.7,
+    "ts": "2026-07-23T06:37",
+    "km": 825.77,
+    "fixMinsAgo": 12,
+    "speed": 20.3,
     "rank": 276
   }
 }
