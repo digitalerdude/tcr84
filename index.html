@@ -224,24 +224,26 @@
   .ferhead .pn{font-size:15px;letter-spacing:-.01em}
   .ferhead .pk{font-family:var(--mono);font-size:10px;color:var(--muted)}
   .ferhead .pa{font-family:var(--mono);font-size:11.5px;color:var(--ice)}
-  .ferdep{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;margin-top:5px;
-          font-family:var(--mono);font-size:11px;color:var(--muted)}
-  .ferdep .dt{color:var(--ice)}
-  .ferdep.first .dt{color:var(--brass)}
-  .ferdep .wt{margin-left:auto}
-  /* Schmal wird die Zeile ohnehin umbrochen — dann wirkt die rechtsbündige
-     Wartezeit wie eine dritte Spalte, die es nicht gibt. Also in den Fluss. */
-  @media (max-width:560px){.ferdep .wt{margin-left:0}}
+  /* Je Abfahrt zwei klare Zeilen statt eines umbrechenden Fließbands: oben die
+     Zeiten (das Scan-Kriterium), darunter gedämpft Linie/Preis/Wartezeit. So
+     bricht mobil nichts mehr ragged über drei Zeilen. Das Datum wiederholt
+     sich innerhalb eines Hafens meist — es steht deshalb nur, wenn es wechselt
+     (dedup in renderFerry), sonst nur die Uhrzeit. */
+  .ferdep{margin-top:9px;font-family:var(--mono)}
+  .ferdep .fdtime{display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline;
+          font-size:12.5px;color:var(--ice)}
   .ferdep .mk{color:var(--line)}
-  .ferdep.first .mk{color:var(--brass)}
+  .ferdep.first .mk,.ferdep.first .dt{color:var(--brass)}
+  .ferdep .arr{color:var(--muted)}
+  .ferdep .fdmeta{display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline;
+          font-size:10.5px;color:var(--muted);margin-top:2px}
   /* Abfahrten ohne Radmitnahme bleiben stehen und treten zurück: sie sind
      die Antwort auf "warum fehlt die 17:30?", nicht Rauschen. */
   .ferdep.aus{opacity:.45}
   .ferdep.aus .dt{color:var(--muted);text-decoration:line-through}
   .ferdep .plan{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
-                border:1px solid var(--line);border-radius:2px;padding:1px 4px;margin-left:7px}
-  .ferdep .norad{margin-left:auto;color:var(--alert)}
-  @media (max-width:560px){.ferdep .norad{margin-left:0}}
+                border:1px solid var(--line);border-radius:2px;padding:1px 4px}
+  .ferdep .norad{color:var(--alert)}
   .fernone{font-family:var(--mono);font-size:11px;color:var(--prose);margin-top:5px}
   .ferknapp{font-family:var(--mono);font-size:11px;color:var(--prose);line-height:1.6;
             margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
@@ -278,6 +280,14 @@
   .profread{font-family:var(--mono);font-size:11px;color:var(--muted);min-height:17px;
             display:flex;gap:12px;flex-wrap:wrap}
   .profread .rv{color:var(--brass)}
+  /* Mobil konkurrieren Umschalter und Auslese-Zeile um die Breite, und die
+     Zeile bricht auf drei Zeilen um. Also stapeln: Umschalter oben rechts,
+     die Auslese darunter auf voller Breite (direkt über dem Diagramm, das
+     sie beschreibt). */
+  @media (max-width:560px){
+    .profhead{flex-direction:column-reverse;align-items:stretch;gap:8px}
+    .profwin{align-self:flex-end}
+  }
   /* Umschalter Ausschnitt/Gesamt — kompaktes Segmentpaar, rechts oben im
      Diagramm. Aktives Segment in Messing. */
   .profwin{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);
@@ -1676,17 +1686,23 @@ function renderFerry(c){
           für diesen Tag ist der Fahrplan hier nicht mit Rad geprüft.</div></div>`;
     if(!b.deps.length) return `<div class="ferport">${kopf}
         <div class="fernone">Keine geprüfte Abfahrt nach seiner Ankunft.</div></div>`;
+    let vorTag = null;   // für die Datums-Deduplizierung innerhalb des Hafens
     const zeilen = b.deps.map(d=>{
       const top = d === b.beste;
-      const nachsatz = !d.rad ? '<span class="norad">kein Fahrrad an Bord</span>'
-        : `<span class="wt">${dur(d.warten)} Warten${d.nacht?'':` + ${dur(d.dauer*3.6e6)} Tagfahrt`}</span>`;
+      const tag = `${ferWochentag(d.ab)} ${d.ab.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}`;
+      // Datum nur, wenn es sich ändert — sonst reicht die Uhrzeit.
+      const abTxt = tag === vorTag ? ferZeit(d.ab) : `${tag}, ${ferZeit(d.ab)}`;
+      vorTag = tag;
+      const arr = `→ ${ferZeit(d.an)}${d.an.getDate()!==d.ab.getDate()?' (+1)':''}${d.nacht?' 🌙':''}`;
       // Fahrplan der Reederei, Rad nicht einzeln geprüft — sichtbar, aber leise.
       const beleg = d.rad && d.q === 'plan' ? '<span class="plan" title="Fahrplan der Reederei — Radmitnahme nicht einzeln geprüft">Plan</span>' : '';
+      const meta = !d.rad
+        ? '<span class="norad">kein Fahrrad an Bord</span>'
+        : `<span class="pk">${esc(d.linie)}${d.preis?` · ab ${d.preis} €`:''}</span>${beleg}` +
+          `<span class="wt">${dur(d.warten)} Warten${d.nacht?'':` + ${dur(d.dauer*3.6e6)} Tagfahrt`}</span>`;
       return `<div class="ferdep${top?' first':''}${d.rad?'':' aus'}">
-          <span class="dt"><span class="mk">${d.rad ? (top?'↳':'·') : '×'}</span> ${ferTagZeit(d.ab)}</span>
-          <span>→ ${ferZeit(d.an)}${d.an.getDate()!==d.ab.getDate()?' (+1)':''}${d.nacht?' 🌙':''}</span>
-          <span class="pk">${esc(d.linie)}${d.preis?` · ab ${d.preis} €`:''}</span>${beleg}
-          ${nachsatz}
+          <div class="fdtime"><span class="mk">${d.rad ? (top?'↳':'·') : '×'}</span> <span class="dt">${abTxt}</span> <span class="arr">${arr}</span></div>
+          <div class="fdmeta">${meta}</div>
         </div>`;
     }).join('');
     /* Nur zeigen, wenn sie WIRKLICH besser gewesen wäre — sonst ist das kein
