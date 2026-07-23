@@ -839,14 +839,27 @@
       "speed": 5.6,
       "ele": 185,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784801093897",
+      "ts": "2026-07-23T12:03",
+      "tsSrc": "track",
+      "km": 936.55,
+      "place": "Lampeland",
+      "note": "Platz 276",
+      "lat": 59.830424,
+      "lon": 9.5832,
+      "speed": 19.2,
+      "ele": 182,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-23T09:39:45.270Z",
+  "updated": "2026-07-23T10:04:53.987Z",
   "live": {
-    "ts": "2026-07-23T11:39",
-    "km": 926.25,
-    "fixMinsAgo": 1,
-    "speed": 8.2,
+    "ts": "2026-07-23T12:04",
+    "km": 936.55,
+    "fixMinsAgo": 2,
+    "speed": 19.2,
     "rank": 276
   }
 }
