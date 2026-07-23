@@ -837,7 +837,9 @@ function renderMetrics(c){
    beantworten kann: das bekommt nur alle paar Kilometer einen Eintrag, steht
    der Fahrer, bleibt es stundenlang stumm und das Board wirkt eingefroren.
    `data.live` schreibt der Scraper dagegen bei JEDEM Lauf.
-   Drei Zustände, bewusst unterscheidbar: Pause / unterwegs / Abruf hängt. */
+   Zustände, bewusst unterscheidbar: auf der Fähre / bestätigte Pause (≥40 min
+   im Track) / steht gerade (Tempo 0, noch unbestätigt) / unterwegs / Abruf
+   hängt. */
 /* Der Streifen selbst verschwindet, sobald weder Live-Stand noch Wetter etwas
    zu sagen haben — ein leerer Kasten unter dem Namen wäre sonst sichtbar. */
 function syncNowbar(){
@@ -879,6 +881,14 @@ function renderLive(c){
     teile.push(`<span>🚲 <span class="wxval">Pause seit ${new Date(lv.stopSince)
       .toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>` +
       ` · ${dhm(dauer)}</span>`);
+  } else if(lv.speed != null && Number(lv.speed) === 0){
+    /* Tempo 0 gemeldet, aber die 40-min-Standphase im Track ist noch nicht
+       bestätigt (oder der GPX-Export hinkt hinterher) — dann steht kein
+       `stopSince`. Bis dahin „unterwegs“ zu behaupten, war falsch. „steht
+       gerade“ nennt nur die gemeldete Momentangeschwindigkeit, ohne eine
+       Pause samt Dauer/Grund zu behaupten — dieselbe Zurückhaltung wie sonst
+       (die Spur kennt den Grund nicht). Parkendes Rad, keine Wippanimation. */
+    teile.push(`<span>🚲 <span class="wxval">steht gerade</span></span>`);
   } else {
     teile.push(`<span><span class="rideAnim">🚴</span> <span class="wxval">unterwegs</span>${
       lv.speed ? ' · '+one(lv.speed)+' km/h' : ''}</span>`);
