@@ -60,6 +60,15 @@ const TOL = {
 // Tempo- und Prognoserechnungen im Board um die Zeitzonendifferenz.
 const TS_LOKAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
 
+/* data.json-Zeitstempel sind lokale Zeit OHNE Zeitzonen-Suffix. Ein nacktes
+   `new Date(s)` interpretiert sie in der Zeitzone DIESES Rechners — auf dem
+   Mac (Europe/Berlin) zufällig richtig, auf einem UTC-Runner zwei Stunden
+   daneben. Fester Offset wie in waechter.yml, aus demselben Grund: das
+   Rennen liegt komplett in der Sommerzeit. */
+function alsLokal(s) {
+  return new Date(s + '+02:00');
+}
+
 function haversine(a, b) {
   const R = 6371000, rad = Math.PI / 180;
   const dLat = (b[0] - a[0]) * rad, dLon = (b[1] - a[1]) * rad;
@@ -107,7 +116,7 @@ export function runChecks({ now = new Date() } = {}) {
   let letzte = null;
   if (data) {
     const st = data.settings || {};
-    const start = new Date(st.start), dl = new Date(st.deadline);
+    const start = alsLokal(st.start), dl = alsLokal(st.deadline);
     if (!isFinite(start) || !isFinite(dl)) fehler('settings.start/deadline nicht parsebar.');
     else if (start >= dl) fehler('settings.start liegt nicht vor settings.deadline.');
 
@@ -121,14 +130,14 @@ export function runChecks({ now = new Date() } = {}) {
       if (ids.has(e.id)) fehler(`${wo}: doppelte id ${e.id}.`);
       ids.add(e.id);
       if (!isFinite(Number(e.km))) fehler(`${wo}: km ist keine Zahl.`);
-      if (new Date(e.ts) > new Date(now.getTime() + 5 * 60000))
+      if (alsLokal(e.ts) > new Date(now.getTime() + 5 * 60000))
         fehler(`${wo}: liegt in der Zukunft — klassisches Zeichen für einen UTC-Stempel im lokalen Feld.`);
       if (i > 0) {
         const v = es[i - 1];
-        if (new Date(e.ts) < new Date(v.ts)) fehler(`${wo}: steht vor dem Eintrag davor (${v.ts}).`);
+        if (alsLokal(e.ts) < alsLokal(v.ts)) fehler(`${wo}: steht vor dem Eintrag davor (${v.ts}).`);
         if (Number(e.km) < Number(v.km))
           fehler(`${wo}: Kilometerstand fällt (${v.km} → ${e.km}). Rückwärts geht es im Rennen nicht.`);
-        const dh = (new Date(e.ts) - new Date(v.ts)) / 3.6e6;
+        const dh = (alsLokal(e.ts) - alsLokal(v.ts)) / 3.6e6;
         const kmh = dh > 0 ? (Number(e.km) - Number(v.km)) / dh : 0;
         if (kmh > TOL.maxKmh) warnung(`${wo}: ${kmh.toFixed(0)} km/h seit der Meldung davor — unplausibel.`);
       }
@@ -140,14 +149,14 @@ export function runChecks({ now = new Date() } = {}) {
     if (!lv || !lv.ts) warnung('data.live fehlt — die Kopfzeile des Boards bleibt leer.');
     else {
       if (!TS_LOKAL.test(String(lv.ts))) fehler(`live.ts (${lv.ts}) ist nicht lokale Zeit ohne Zeitzone.`);
-      const altMin = (now - new Date(lv.ts)) / 60000;
+      const altMin = (now - alsLokal(lv.ts)) / 60000;
       if (altMin < -5) fehler(`live.ts (${lv.ts}) liegt in der Zukunft — Zeitzonenfehler im Scraper?`);
       else if (altMin > TOL.abrufAltMin)
         warnung(`Letzter Abruf ist ${Math.round(altMin)} min her — das Board zeigt „Abruf hängt“. launchd-Job prüfen.`);
       else ok(`live: Abruf vor ${Math.round(altMin)} min, ${lv.km} km${lv.stopSince ? ', Pause läuft' : ''}.`);
       if (letzte && lv.km != null && Number(lv.km) < Number(letzte.km) - 0.05)
         fehler(`live.km (${lv.km}) liegt unter dem letzten Log-Eintrag (${letzte.km}).`);
-      if (lv.stopSince && new Date(lv.stopSince) > new Date(lv.ts))
+      if (lv.stopSince && alsLokal(lv.stopSince) > alsLokal(lv.ts))
         fehler('live.stopSince liegt nach live.ts — die Pause hätte noch nicht begonnen.');
       /* `fixMinsAgo` ist eine eingefrorene Dauer, kein laufender Wert: gültig
          nur zusammen mit live.ts. Wer sie roh anzeigt, behauptet stundenalte
@@ -261,7 +270,7 @@ export function runChecks({ now = new Date() } = {}) {
     /* `fixMinsAgo` ist eine eingefrorene Dauer, gültig nur zusammen mit
        live.ts — siehe die Regel oben. Also neu aufaddieren statt roh nehmen. */
     const fixAltMin = lv && lv.ts && lv.fixMinsAgo != null
-      ? lv.fixMinsAgo + (now - new Date(lv.ts)) / 60000
+      ? lv.fixMinsAgo + (now - alsLokal(lv.ts)) / 60000
       : null;
 
     if (stilleMin <= TOL.funkstilleMin) {
@@ -379,7 +388,7 @@ export function runChecks({ now = new Date() } = {}) {
     let weit = 0, geprueft = 0, schlimmsteKm = 0, schlimmsteMin = 0, vorausEilend = 0;
     for (const e of (data.entries || [])) {
       if (e.lat == null || e.lon == null) continue;
-      if (new Date(e.ts).getTime() / 1000 > spurEndeSec + 60) { vorausEilend++; continue; }
+      if (alsLokal(e.ts).getTime() / 1000 > spurEndeSec + 60) { vorausEilend++; continue; }
       geprueft++;
       let best = null, bd = Infinity;
       for (const p of pts) {
@@ -388,7 +397,7 @@ export function runChecks({ now = new Date() } = {}) {
       }
       const km = bd / 1000;
       if (km > TOL.meldungZurSpurKm) { weit++; schlimmsteKm = Math.max(schlimmsteKm, km); }
-      else schlimmsteMin = Math.max(schlimmsteMin, (new Date(e.ts).getTime() / 1000 - best[3]) / 60);
+      else schlimmsteMin = Math.max(schlimmsteMin, (alsLokal(e.ts).getTime() / 1000 - best[3]) / 60);
     }
     if (weit) fehler(`${weit} von ${geprueft} Meldungen liegen bis zu ${schlimmsteKm.toFixed(1)} km neben der Spur — falscher Fahrer?`);
     else if (geprueft) ok(`${geprueft} GPS-Meldungen liegen auf der aufgezeichneten Spur.`);
