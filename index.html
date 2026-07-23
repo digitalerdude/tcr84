@@ -236,9 +236,18 @@
            border:1px solid var(--line);border-bottom:none}
   @media (min-width:641px){.hmstrip{grid-template-columns:repeat(4,1fr)}}
   .profbox{border:1px solid var(--line);background:var(--panel);padding:10px 10px 6px}
+  .profhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:2px}
   .profread{font-family:var(--mono);font-size:11px;color:var(--muted);min-height:17px;
-            display:flex;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+            display:flex;gap:12px;flex-wrap:wrap}
   .profread .rv{color:var(--brass)}
+  /* Umschalter Ausschnitt/Gesamt — kompaktes Segmentpaar, rechts oben im
+     Diagramm. Aktives Segment in Messing. */
+  .profwin{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);
+           border-radius:6px;overflow:hidden;flex:none}
+  .profwin button{background:var(--panel);border:none;color:var(--muted);cursor:pointer;
+           font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;padding:4px 9px;white-space:nowrap}
+  .profwin button.on{background:var(--panel2);color:var(--brass)}
+  @media (hover:hover){.profwin button:not(.on):hover{color:var(--ice)}}
   .profbox svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
   /* SVG-Farben über Klassen statt var() in Präsentationsattributen — die
      werden nicht überall gleich zuverlässig ersetzt. */
@@ -876,6 +885,18 @@ const esc = s => String(s).replace(/[<>&"]/g, ch=> ({'<':'&lt;','>':'&gt;','&':'
    zwei Diagramme mit denselben IDs wären sonst nicht ansprechbar. */
 const PROFS = {};
 
+/* Standardmäßig zeigt das Board-Höhenprofil nur die letzten Tage, nicht die
+   ganze Strecke. Grund: die Y-Achse skaliert auf Min/Max der gesamten Fahrt,
+   und sobald die norwegischen Berge (~1.300 m) mit der jetzigen Ebene (~5 m)
+   auf einer Achse liegen, wird genau der Abschnitt, auf dem er GERADE fährt,
+   zu einem platten Strich am unteren Rand gequetscht — dazu staucht die
+   mitwachsende X-Achse die letzten Tage horizontal immer weiter. Der
+   Ausschnitt reskaliert beide Achsen aufs aktuelle Gelände; ein Umschalter
+   holt die Gesamtstrecke (der motivierende „so weit sind wir geklettert“-
+   Blick) zurück. `PROF_FULL` überlebt das 60s-Neuzeichnen wie LOG_ALL. */
+const PROF_FENSTER_TAGE = 2;
+let PROF_FULL = false;
+
 /* profile.json hält je Block nur den kumulierten Stand am Blockende fest
    ([tEnd, kmEnde, cumUp, cumDown]; ein Block ist knapp eine Stunde Fahrt).
    Für beliebige Zeitpunkte dazwischen wird linear interpoliert — das ist
@@ -907,7 +928,7 @@ let PROF = null; // gerenderter Zustand für die Zeigersteuerung
 
 // Das eigenständige Diagramm im Board: mit Kennzahlenstreifen und Erklärkasten.
 function renderProfile(c){
-  renderProfileInto(c, {wrapId:'profileWrap', prefix:'prof', strip:true, explain:true});
+  renderProfileInto(c, {wrapId:'profileWrap', prefix:'prof', strip:true, explain:true, window:true});
 }
 // Die gekoppelte Zweitfassung unter der Karte: nur das Diagramm, dafür schiebt
 // der Zeiger einen Marker über die Karte mit.
@@ -926,13 +947,33 @@ function renderProfileInto(c, o){
      gerechnete Streckenlänge und werden hier auf die Renn-Kilometer des
      Trackers gestreckt (`kmScale`). `marks` sind die Meldungen aus data.json,
      auf dieselbe Achse gelegt. */
-  const pts = PROFILE
+  const ptsAll = PROFILE
     ? PROFILE.points.map(([k,e])=> ({km: k*c.kmScale, ele: e}))
     : [];
-  const marks = c.list.filter(e=> e.lat!=null).map(e=> ({
+  let marks = c.list.filter(e=> e.lat!=null).map(e=> ({
     km:Number(e.km), ts:e.ts, place:e.place||'',
-    ele: pts.length ? eleAtKm(pts, Number(e.km)) : (e.ele!=null?Number(e.ele):null)
+    ele: ptsAll.length ? eleAtKm(ptsAll, Number(e.km)) : (e.ele!=null?Number(e.ele):null)
   })).filter(m=> m.ele!=null);
+
+  /* Ausschnitt der letzten Tage (nur das Board-Diagramm, nicht die an die
+     Karte gekoppelte Zweitfassung). Der Schnitt-Kilometer kommt über die Zeit:
+     `cumClimbAt` liefert den gerouteten Stand vor N Tagen, auf die Tracker-
+     Achse gestreckt (`kmScale`) liegt er auf derselben Skala wie `pts.km`.
+     Erst ab genug Daten — vor dem N-ten Tag ist „Ausschnitt“ gleich „Gesamt“,
+     dann bleibt der Umschalter aus. */
+  let pts = ptsAll, fenster = false, fensterAb = null;
+  const genugFuerFenster = o.window && ptsAll.length > 2 && PROFILE
+    && PROFILE.chunks && PROFILE.chunks.length;
+  if(genugFuerFenster){
+    const cut = cumClimbAt(c.now.getTime()/1000 - PROF_FENSTER_TAGE*86400);
+    fensterAb = cut ? cut.km * c.kmScale : null;
+    // Nur windowen, wenn der Schnitt wirklich Strecke abschneidet — sonst ist
+    // „Ausschnitt“ dasselbe Bild wie „Gesamt“ und der Umschalter nur Zierde.
+    if(fensterAb != null && fensterAb > ptsAll[0].km + 1 && !PROF_FULL){
+      const w = ptsAll.filter(p=> p.km >= fensterAb);
+      if(w.length > 1){ pts = w; fenster = true; marks = marks.filter(m=> m.km >= pts[0].km); }
+    }
+  }
 
   const strip = !o.strip ? '' : [
     ['Aktuelle Höhe', c.ele!=null? num(c.ele):'–', 'm ü. NN', ''],
@@ -1016,10 +1057,20 @@ function renderProfileInto(c, o){
   const dots = marks.map((m,i)=>
     `<circle class="${i===marks.length-1?'pdot':'pmark'}" cx="${X(m.km).toFixed(1)}" cy="${Y(m.ele).toFixed(1)}"
              r="${i===marks.length-1?4.5:2.4}" ${i===marks.length-1?'stroke-width="1.5"':''}/>`).join('');
+  /* Der Umschalter erscheint nur, wenn Ausschnitt und Gesamt sich wirklich
+     unterscheiden — vor dem zweiten Tag ist beides dasselbe Bild. */
+  const zeigeToggle = o.window && fensterAb != null && fensterAb > ptsAll[0].km + 1;
+  const winHtml = zeigeToggle
+    ? `<div class="profwin">
+         <button class="${!PROF_FULL?'on':''}" data-full="0">Letzte ${PROF_FENSTER_TAGE} Tage</button>
+         <button class="${PROF_FULL?'on':''}" data-full="1">Gesamt</button>
+       </div>`
+    : '';
+
   const P = o.prefix;
   wrap.innerHTML = stripHtml +
     `<div class="profbox">
-       <div class="profread" id="${P}Read"></div>
+       <div class="profhead"><div class="profread" id="${P}Read"></div>${winHtml}</div>
        <svg id="${P}Svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img"
             aria-label="Höhenprofil der gefahrenen Strecke, aktuell ${num(cur.ele)} Meter">
          <defs><linearGradient id="${P}Fill" x1="0" y1="0" x2="0" y2="1">
@@ -1074,6 +1125,10 @@ function renderProfileInto(c, o){
   // Der Erklärkasten überlebt das 60s-Neuzeichnen — anders als beim Log-Detail
   // wäre ein Zuklappen mitten im Lesen hier echt ärgerlich.
   if(wasOpen){ const d = wrap.querySelector('details'); if(d) d.open = true; }
+
+  wrap.querySelectorAll('.profwin button').forEach(b=> b.onclick = ()=>{
+    PROF_FULL = b.dataset.full === '1'; renderProfile(c);
+  });
 
   PROFS[o.prefix] = {pts, cols, marks, X, Y, L, R, W, T, base, cur,
                      kmScale:c.kmScale, totalKm:c.km, opt:o};
