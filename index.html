@@ -264,6 +264,29 @@
   .ferstatus .ferbig{font-weight:600}
   .ferstatus.on .ferbig{color:var(--brass)}
   .ferstatus .fsmeta{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:6px}
+  /* Countdown-Kachel für die gebuchte Überfahrt — bewusst die auffälligste
+     Karte im Fährpanel: "welche Fähre" ist beantwortet, übrig bleibt nur noch
+     das Ticken bis zur Abfahrt. Gleiche Messing-Kante wie der Status während
+     der Überfahrt selbst, damit der spätere Übergang zwischen beiden nicht
+     wie ein Bruch wirkt. Die große Zahl pulst sanft wie ein frisch erreichter
+     Kontrollpunkt in der Leiter (`.anchor.fresh`, gleiches Keyframe) — hier
+     bewusst über die ganze Wartezeit statt nur 24 h, weil das Gebuchte selbst
+     der Moment ist, nicht ein einzelner Zeitpunkt. */
+  .ferbooked{border:1px solid var(--line);border-left:3px solid var(--brass);
+             background:var(--panel);padding:15px 16px;margin:14px 0 4px}
+  .ferb-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+                text-transform:uppercase;color:var(--brass)}
+  .ferb-head{font-size:16px;letter-spacing:-.01em;color:var(--bone);margin-top:5px}
+  .ferb-count{display:flex;align-items:baseline;gap:9px;margin-top:11px;flex-wrap:wrap}
+  .ferb-num{font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:-.01em;
+            color:var(--brass);animation:cpGlow 2.6s ease-in-out infinite}
+  .ferb-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--muted)}
+  .ferb-meta{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:9px}
+  /* Die einzige echte Fließtext-Zeile in der Kachel — deshalb --prose statt
+     --muted, siehe Konvention unten bei .profnote. */
+  .ferb-cheer{font-size:13px;color:var(--prose);margin-top:11px;line-height:1.5}
+  @media (prefers-reduced-motion:reduce){.ferb-num{animation:none}}
   /* Emoji-Marker der Karte: nur das Zeichen, kein Leaflet-Kästchen. */
   .ferIcon{font-size:19px;line-height:24px;text-align:center;text-shadow:0 0 3px #0C1620}
   /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
@@ -1522,6 +1545,19 @@ const FERRY = {
   szenarien: [
     {nm:'vorsichtig', kmT:260}, {nm:'Plan', kmT:300}, {nm:'stark', kmT:340},
   ],
+  /* Die eine tatsächlich gebuchte Überfahrt (Buchung am 24.07.2026 bestätigt).
+     Sobald das hier gesetzt ist, beantwortet es die Frage, um die sich der
+     ganze Rest der Datei dreht ("welche Fähre") endgültig — renderFerry()
+     zeigt dann keine Szenario-Tabelle mehr, sondern nur noch den Countdown zur
+     Abfahrt (renderFerryBooked()).
+     Kein manuelles Zurücksetzen nötig: erkennt ferryCrossing() später die
+     echte GPS-Überfahrt, greift in renderFerry() schon der ältere
+     `ferAktiv`-Zweig zuerst, und dieser Codepfad wird nie mehr erreicht. */
+  booked: {
+    hafen: 'Ystad', linie: 'POLSCA · M/F Polonia',
+    d: '2026-07-25', t: '23:50', an: '07:30',
+    preis: 50, q: 'rad', gebuchtAm: '24.07.2026',
+  },
 };
 
 let FER_SCEN = 1;   // gewähltes Szenario; Modulvariable, damit sie das 60s-Re-Render überlebt
@@ -1548,6 +1584,23 @@ const ferWochentag = d => d.toLocaleDateString('de-DE',{weekday:'short'}).replac
 const ferZeit = d => d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
 const ferTagZeit = d => `${ferWochentag(d)} ${d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}, ${ferZeit(d)}`;
 
+/* Dieselbe Kalibrierung wie beim Höhenprofil, aber geklemmt (0,92…1,02) —
+   geteilt zwischen der Szenario-Rechnung und dem Countdown zur gebuchten
+   Fähre, damit beide bei einer Änderung nicht auseinanderlaufen. Siehe
+   Kommentar an der ursprünglichen Verwendungsstelle in renderFerry(). */
+function ferrySkala(c){ return Math.min(1.02, Math.max(0.92, c.kmScale || 1)); }
+
+/* Abfahrt/Ankunft der gebuchten Fähre als Date-Paar, gleiche Folgetag-Regel
+   wie ferryDeps(): `an` vor `t` heißt, sie legt erst nach Mitternacht an. */
+function bookedDeparture(){
+  const b = FERRY.booked;
+  if(!b) return null;
+  const ab = new Date(`${b.d}T${b.t}`);
+  const an = new Date(`${b.d}T${b.an}`);
+  if(an <= ab) an.setDate(an.getDate()+1);
+  return {ab, an};
+}
+
 function renderFerry(c){
   const det = document.getElementById('ferryDetails');
   const fer = c.ferry;
@@ -1567,6 +1620,11 @@ function renderFerry(c){
      Fähre“ beantwortet — statt Szenario-Knöpfen und Hafen-Tabelle steht dann
      nur noch der Status. Der Erklär-<details> bleibt darunter. */
   if(ferAktiv){ renderFerryStatus(c, fer); return; }
+
+  /* Ist eine Überfahrt gebucht, ist "welche Fähre" keine offene Frage mehr —
+     die ganze Szenario-Rechnung darunter dient nur noch der Suche danach und
+     wird durch den Countdown zur Abfahrt ersetzt. */
+  if(FERRY.booked){ renderFerryBooked(c); return; }
 
   // Der frischeste Kilometerstand, den wir haben — `live` schreibt der Scraper
   // bei jedem Lauf, das Log nur ab 1 km Bewegung. Kilometer wachsen nur.
@@ -1598,7 +1656,7 @@ function renderFerry(c){
      ihm wanderten die Hafendistanzen um Dutzende Kilometer. Beobachtet wurde
      stabil 0,957; alles außerhalb dieses Bandes ist ein Zeichen für einen
      Rückstand, nicht dafür, dass BRouter plötzlich anders routet. */
-  const skala = Math.min(1.02, Math.max(0.92, c.kmScale || 1));
+  const skala = ferrySkala(c);
   const bloecke = FERRY.haefen.map(h=>{
     const zielKm = FERRY.ankerKm + h.brouterKm * skala;
     const rest = zielKm - km;
@@ -1741,6 +1799,43 @@ function renderFerry(c){
   });
   const info = w.querySelector('.ferinfo');
   if(info) info.ontoggle = ()=>{ FER_INFO = info.open; };
+}
+
+/* Die Frage "welche Fähre" ist beantwortet — dieser Zweig zeigt nur noch, ob
+   die Zeit bis zur Abfahrt reicht: ein Countdown als Fokuspunkt für die
+   nächsten Stunden, kein Vergleich mehr. Läuft die Abfahrt laut Uhr schon,
+   hat die Spur die Überfahrt aber noch nicht bestätigt (der `ferAktiv`-Zweig
+   weiter oben greift erst dann), sagt die Karte das ehrlich statt eine
+   negative Uhr laufen zu lassen — dieselbe Vorsicht wie bei "Trackerstille
+   ist kein Stillstand" weiter oben in dieser Datei: eine Lücke am Ende der
+   Spur heißt nicht automatisch, dass etwas falsch lief. */
+function renderFerryBooked(c){
+  const b = FERRY.booked;
+  const dep = bookedDeparture();
+  const jetzt = c.now;
+  const sum = document.getElementById('ferrySum');
+  const w = document.getElementById('ferryWrap');
+
+  if(jetzt >= dep.ab){
+    sum.innerHTML = `⛴️ Fähre ${esc(b.hafen)} → ${esc(FERRY.ziel)} · <b>müsste unterwegs sein</b>`;
+    w.innerHTML = `<div class="ferbooked">
+        <div class="ferb-eyebrow"><span class="ferryAnim">⛴️</span> ${esc(b.linie)}</div>
+        <div class="ferb-head">Vermutlich schon auf See</div>
+        <div class="ferb-meta">Ab ${esc(b.hafen)} ${ferZeit(dep.ab)} → an ${esc(FERRY.ziel)} ${ferZeit(dep.an)} Uhr —
+          diese Karte zieht nach, sobald die Spur die Überfahrt bestätigt.</div>
+      </div>`;
+    return;
+  }
+
+  sum.innerHTML = `🎉 Fähre gebucht · <b>${ferTagZeit(dep.ab)} ab ${esc(b.hafen)}</b>`;
+
+  w.innerHTML = `<div class="ferbooked">
+      <div class="ferb-eyebrow">🎉 Fähre gebucht</div>
+      <div class="ferb-head"><span class="ferryAnim">⛴️</span> ${esc(b.hafen)} → ${esc(FERRY.ziel)}</div>
+      <div class="ferb-count"><span class="ferb-num">${dhm((dep.ab-jetzt)/6e4)}</span><span class="ferb-lbl">bis zur Abfahrt</span></div>
+      <div class="ferb-meta">${esc(b.linie)} · ${ferTagZeit(dep.ab)} → an ${ferTagZeit(dep.an)} in ${esc(FERRY.ziel)}${b.preis?` · ${b.preis} €`:''}</div>
+      <div class="ferb-cheer">Stark gefahren bis hierhin — jetzt heißt's ankommen, dann übernimmt die Fähre. 💪</div>
+    </div>`;
 }
 
 /* Der eingeklappte Erklärteil des Fährpanels — geteilt zwischen der
