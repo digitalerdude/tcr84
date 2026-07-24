@@ -1357,14 +1357,27 @@
       "speed": 0,
       "ele": 36,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784891743243",
+      "ts": "2026-07-24T13:12",
+      "tsSrc": "track",
+      "km": 1231.9,
+      "place": "Ljungskile",
+      "note": "Platz 276",
+      "lat": 58.237365,
+      "lon": 11.916143,
+      "speed": 29.5,
+      "ele": 13,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-24T10:50:34.541Z",
+  "updated": "2026-07-24T11:15:43.342Z",
   "live": {
-    "ts": "2026-07-24T12:50",
-    "km": 1224.16,
-    "fixMinsAgo": 11,
-    "speed": 0,
+    "ts": "2026-07-24T13:15",
+    "km": 1231.9,
+    "fixMinsAgo": 3,
+    "speed": 29.5,
     "rank": 276
   }
 }
