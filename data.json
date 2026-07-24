@@ -1123,14 +1123,27 @@
       "speed": 33,
       "ele": 23,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784864579775",
+      "ts": "2026-07-24T05:38",
+      "tsSrc": "track",
+      "km": 1095.38,
+      "place": "Isebakke",
+      "note": "Platz 276",
+      "lat": 59.12234,
+      "lon": 11.291517,
+      "speed": 22,
+      "ele": 12,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-24T03:17:48.668Z",
+  "updated": "2026-07-24T03:42:59.920Z",
   "live": {
-    "ts": "2026-07-24T05:17",
-    "km": 1086.79,
-    "fixMinsAgo": 4,
-    "speed": 33,
+    "ts": "2026-07-24T05:42",
+    "km": 1095.38,
+    "fixMinsAgo": 5,
+    "speed": 22,
     "rank": 276
   }
 }
