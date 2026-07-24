@@ -1318,14 +1318,27 @@
       "speed": 22,
       "ele": 92,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784887218497",
+      "ts": "2026-07-24T11:54",
+      "tsSrc": "track",
+      "km": 1214.07,
+      "place": "Uddevalla",
+      "note": "Platz 276",
+      "lat": 58.351762,
+      "lon": 11.895882,
+      "speed": 17.2,
+      "ele": 26,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-24T09:35:10.155Z",
+  "updated": "2026-07-24T10:00:18.601Z",
   "live": {
-    "ts": "2026-07-24T11:35",
-    "km": 1206.38,
-    "fixMinsAgo": 5,
-    "speed": 22,
+    "ts": "2026-07-24T12:00",
+    "km": 1214.07,
+    "fixMinsAgo": 6,
+    "speed": 17.2,
     "rank": 276
   }
 }
