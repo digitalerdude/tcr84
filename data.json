@@ -1994,14 +1994,27 @@
       "speed": 21.6,
       "ele": 53,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785002152534",
+      "ts": "2026-07-25T19:49",
+      "tsSrc": "track",
+      "km": 1664.81,
+      "place": "Folkestorp",
+      "note": "Platz 276",
+      "lat": 55.44435,
+      "lon": 13.808202,
+      "speed": 0,
+      "ele": 37,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-25T17:30:43.812Z",
+  "updated": "2026-07-25T17:55:52.710Z",
   "live": {
-    "ts": "2026-07-25T19:30",
-    "km": 1659.28,
-    "fixMinsAgo": 2,
-    "speed": 21.6,
+    "ts": "2026-07-25T19:55",
+    "km": 1664.81,
+    "fixMinsAgo": 7,
+    "speed": 0,
     "rank": 276
   }
 }
