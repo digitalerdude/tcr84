@@ -39,6 +39,7 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
       "note": "Platz 66",
       "lat": 61.772323,         // optional, nur bei automatisch erfassten Einträgen
       "lon": 10.21984,          // optional
+      "cc": "NO",               // optional, ISO-Ländercode aus derselben Nominatim-Antwort
       "speed": 7.2,             // optional, km/h bei Erfassung
       "ele": 245,               // optional, Höhe in m an dieser Meldung
       "eleSrc": "dem",          // woher `ele` stammt: dem | gps
@@ -204,8 +205,19 @@ der Straßenname (Skåbuvegen), als Ortsangabe unbrauchbar. Bleibt alles leer, i
 es tatsächlich Niemandsland — dann ist die Gemeinde die ehrliche Antwort und darf
 sich auch wiederholen.
 
+**Das Land fällt in derselben Antwort mit ab** (`address.country_code`, seit
+23.07.2026 als `cc` am Eintrag). Es kostet keine zusätzliche Anfrage und trägt
+im Board das Verpflegungs-Panel — damit ist das Land **gemessen statt geraten**.
+Die naheliegende Alternative wären Bounding-Boxen im Frontend gewesen; die
+überlappen auf dem Balkan (Kroatien, Bosnien und Montenegro liegen ineinander
+verschachtelt) und hätten ausgerechnet dort danebengelegen, wo die Route am
+kleinteiligsten wird. Gesetzt wird `cc` nur, wenn Nominatim wirklich geantwortet
+hat — ein leeres Feld wäre eine Behauptung über den Aufenthaltsort.
+
 Nach einer Änderung an dieser Kette `--places` laufen lassen, sonst stehen alte
-grobe und neue feine Namen im selben Log nebeneinander. Der Modus fasst nur
+grobe und neue feine Namen im selben Log nebeneinander. `--places` trägt im
+selben Durchgang auch `cc` nach (am 25.07.2026 einmal über 150 Einträge
+gelaufen: 87× Norwegen, 63× Schweden). Der Modus fasst nur
 Einträge mit `lat`/`lon` an (von Hand gesetzte bleiben unberührt) und hält 1,1 s
 Abstand je Anfrage — Nominatims Nutzungsregeln erlauben eine pro Sekunde.
 
@@ -791,6 +803,9 @@ ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
   sobald sie beantwortet ist. Eingeklappt ist dafür sein **Erklärteil** — die
   Tabelle ist die Antwort, der Text darunter die Begründung, und wer die einmal
   gelesen hat, braucht sie nicht bei jedem Blick aufs Board wieder.
+  Dasselbe gilt für das **Verpflegungs-Panel**, das ab dem Ablegen an seine
+  Stelle tritt: auch das ist keine Detail-Ebene, sondern das, was an dieser
+  Stelle gelesen werden soll. Ein Gimmick hinter einem Klick ist keins.
 - **Fließtext bekommt `--prose`, nicht `--muted`.** `--muted` ist für Etiketten und
   kurze Wortgruppen, wo das Zurücktreten die Aufgabe ist (Kennzahlen-Untertitel,
   Achsen, Spaltenköpfe). Über einen ganzen Absatz getragen wird daraus schlechte
@@ -1046,6 +1061,70 @@ ist Umbuchbarkeit mehr wert als jeder Preisvorteil.
 (`q:'rad'`) oder Monatsfahrplan der Reederei (`q:'plan'`) — **nie ein
 Vergleichsportal**. `geprueftAm`/`geprueftBis` mitziehen, sonst behauptet das
 Panel eine Prüfung, die es nicht gab.
+
+**Das Panel endet mit dem Ablegen** (25.07.2026). Sobald die Fähre weg ist,
+fällt der Erklärteil weg — er begründet die *Wahl* einer Fähre, und die ist
+dann keine Frage mehr. Stehen bleiben ⛴️-Emoji, Hafen und Zeiten als reiner
+Status (`renderFerryStatus()`, plus 24 h nach der Landung). Den frei
+gewordenen Platz übernimmt das Verpflegungs-Panel.
+
+### Verpflegung (`renderFuel()`, 25.07.2026)
+
+Das Gimmick, das die Fährplanung ablöst — der einzige Teil des Boards, der
+nichts entscheidet und vor nichts warnt. Es rechnet die Fahrt in die Währung
+um, die auf einem Ultra-Rennen wirklich zählt, und sagt, was es dafür im
+nächsten Land gibt. Manuel isst vegetarisch, die Karten sind entsprechend
+gewählt.
+
+**Die Rechnung steht auf zwei Termen**, weil die Fahrt aus zwei verschiedenen
+Arbeiten besteht — das ist keine Verkomplizierung, sondern der Unterschied
+zwischen 1.600 flachen und 1.600 bergigen Kilometern:
+
+| Term | Herleitung | Wert |
+|---|---|---|
+| Ebene | Roll (Crr 0,006) + Luft (CdA 0,42) ≈ 15 N bei ~22 km/h; 15 kJ mechanisch je km, bei 23 % Wirkungsgrad | **15,6 kcal/km** |
+| Höhe | m·g·h: 95 kg × 1 hm = 932 J mechanisch, durch denselben Wirkungsgrad | **0,97 kcal/hm** |
+
+Der Höhen-Term ist genau die bekannte Faustregel „100 hm bei 100 kg ≈ 100 kcal“.
+**Systemgewicht 95 kg** (Fahrer, Rad, Gepäck) ist die einzige von außen gesetzte
+Zahl, alles andere folgt daraus. Höhenmeter kommen aus `c.climbUp`, also aus
+`profile.json` — hier keine zweite Höhenquelle aufmachen, auch nicht „nur fürs
+Gimmick“.
+
+Gezeigt wird die **reine Fahrleistung** (was ein Radcomputer anzeigt), der
+Grundumsatz steht als Nebenzeile daneben. Beide Zahlen, keine verschluckt die
+andere. Die Zahlen im Grundumsatz-Satz sind auf **Hunderter** gerundet, nicht
+auf Tausender: bei Tausendern ergaben sie für den Leser keine Summe mehr
+(40.594 + 11.000 stand neben 51.000, weil 10.622 einmal auf- und einmal
+abgerundet wurde). Wer nachrechnet, soll aufgehen sehen, was dasteht.
+
+**Die Währung wandert mit dem Land.** Gezählt wird in dem Snack, den es dort
+gibt — in Schweden in Zimtschnecken, in Polen in Pączki. `pl` (Mehrzahl) steht
+je Land ausgeschrieben da, weil sie sich aus dem Singular nicht ableiten lässt:
+Skolebrød und Lángos bleiben gleich, Pączek wird zu Pączki, Halušky und
+Priganice sind schon Mehrzahl. Eine Regel dafür gäbe es nicht, nur eine Reihe
+falscher Formen.
+
+**Auf See zeigt die Karte das Zielland**, nicht das zuletzt gemessene: er ist
+unterwegs dorthin, und in dieser Nacht ist das die interessante Auskunft
+(„Nach der Überfahrt in Polen auf der Speisekarte“). Die Kilometer zählen
+dabei weiter in der alten Währung — sie sind ja in Schweden entstanden.
+
+Die Speisekarte setzt **Beschreibung unter das Gericht**, nicht daneben. Das
+ist die Optik einer echten Karte und zugleich das einzige Layout, das mobil
+trägt: in derselben Zeile wuchs die Beschreibung über die Breite und schob die
+Punktlinie mitten in den umbrechenden Text.
+
+Kalorienangaben sind **Hausnummern für übliche Portionen**, keine Laborwerte —
+sie stehen im Panel deshalb mit „rund“ dabei. Die einzige geschätzte Zahl ist
+der Ausblick auf die Reststrecke: deren Höhenmeter sind mit dem bisherigen
+Schnitt hochgerechnet, der aus Skandinavien stammt. Der Balkan ist deutlich
+bergiger, also ist die Zahl ausdrücklich als Untergrenze ausgewiesen und nicht
+als Prognose verkauft.
+
+Zum Vorführen/Testen in der Konsole: `tcr84Land('BA')` · `tcr84Land()` listet
+die Codes · `tcr84Land('off')`. Sichtbar ist das Panel erst ab dem Ablegen,
+zum Ausprobieren davor also mit `tcr84Faehre('done')` kombinieren.
 
 Die Tagesleistungen (260/300/340 km) sind Leistungen **inklusive Pausen**,
 die Währung der Tagesbalken, nicht reines Fahrtempo. Der mittlere Wert ist

@@ -179,21 +179,33 @@ async function waitForAppReady(page, timeoutMs = 40000) {
  * Karte statt eines Landkreises. Auf Stufe 16 wäre `name` dagegen meist der
  * Straßenname (Skåbuvegen), das ist als Ortsangabe unbrauchbar. Bleibt alles
  * leer, ist es wirklich Niemandsland — dann ist die Gemeinde die ehrliche
- * Antwort und darf sich auch wiederholen. */
+ * Antwort und darf sich auch wiederholen.
+ *
+ * Zurück kommt {place, cc}: der Ländercode fällt in derselben Antwort mit ab
+ * (`address.country_code`) und kostet keine zusätzliche Anfrage. Er trägt im
+ * Board das Verpflegungs-Panel, das je Land eine andere Snack-Empfehlung zeigt
+ * — und er ist damit GEMESSEN statt geraten. Die Alternative wären
+ * Bounding-Boxen im Frontend gewesen; die überlappen auf dem Balkan (Kroatien,
+ * Bosnien und Montenegro liegen ineinander verschachtelt) und hätten genau
+ * dort falsch gelegen, wo die Route am kleinteiligsten ist. */
 async function reverseGeocode(lat, lon) {
+  const leer = { place: '', cc: '' };
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=14&accept-language=de`;
     const res = await fetch(url, {
       signal: AbortSignal.timeout(CONFIG.netzTimeoutMs),
       headers: { 'User-Agent': 'tcr84-tracker-updater (personal dotwatch board, github.com/digitalerdude/tcr84)' },
     });
-    if (!res.ok) return '';
+    if (!res.ok) return leer;
     const data = await res.json();
     const a = data.address || {};
-    return a.village || a.hamlet || a.town || a.city || a.suburb || data.name ||
-           a.municipality || a.county || '';
+    return {
+      place: a.village || a.hamlet || a.town || a.city || a.suburb || data.name ||
+             a.municipality || a.county || '',
+      cc: (a.country_code || '').toUpperCase(),
+    };
   } catch {
-    return '';
+    return leer;
   }
 }
 
@@ -874,12 +886,15 @@ async function refreshPlaces() {
   log(`${entries.length} Einträge mit Koordinaten — Ortsnamen neu auflösen…`);
   let changed = 0;
   for (const e of entries) {
-    const place = await reverseGeocode(e.lat, e.lon);
+    const { place, cc } = await reverseGeocode(e.lat, e.lon);
     if (place && place !== e.place) {
       log(`  ${e.ts}  ${e.place || '—'} → ${place}`);
       e.place = place;
       changed++;
     }
+    // Das Land wird im selben Durchgang nachgetragen — es kam später dazu als
+    // die Ortsnamen, der Bestand hat es also nicht.
+    if (cc && cc !== e.cc) { e.cc = cc; changed++; }
     await new Promise(r => setTimeout(r, 1100));
   }
   if (!changed) { log('nichts geändert.'); return; }
@@ -983,7 +998,10 @@ async function main() {
     return;
   }
 
-  const place = rider.lat != null ? await reverseGeocode(rider.lat, rider.lon) : (last ? last.place : '');
+  const geo = rider.lat != null
+    ? await reverseGeocode(rider.lat, rider.lon)
+    : { place: last ? last.place : '', cc: last ? last.cc || '' : '' };
+  const place = geo.place;
 
   /* Zeitstempel = Zeitpunkt der MESSUNG, nicht des Abrufs (siehe die Notiz
      über fixTimestamps()). Die Spur des laufenden Abrufs liegt schon vor,
@@ -1012,6 +1030,10 @@ async function main() {
     place,
     note: rider.rank != null ? `Platz ${rider.rank}` : '',
   };
+  // Nur setzen, wenn Nominatim wirklich geantwortet hat — ein leeres `cc` wäre
+  // eine Behauptung über den Aufenthaltsort, das Panel fällt dann lieber auf
+  // die letzte Meldung mit Land zurück.
+  if (geo.cc) entry.cc = geo.cc;
   if (rider.lat != null) { entry.lat = rider.lat; entry.lon = rider.lon; }
   if (rider.currentSpeed != null) { entry.speed = rider.currentSpeed; }
   // Die GPS-Höhe des Trackers wird immer mitgeschrieben, ist aber nicht die

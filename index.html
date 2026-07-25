@@ -292,6 +292,61 @@
   /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
      zu sehen ist — dafür fällt sie aus dem Versalsatz der übrigen Summaries. */
   #ferrySum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
+  #fuelSum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
+
+  /* ---------- Verpflegung ----------
+     Der einzige Teil des Boards, der nichts entscheidet und nichts warnt.
+     Er darf deshalb lauter aussehen als der Rest — aber nicht lauter als die
+     Kennzahlen oben, sonst kippt das Board von Dotwatch zu Spielerei. Die
+     große Zahl bekommt Messing, die Speisekarte darunter bleibt im
+     Mono-Etikettensatz der übrigen Tabellen. */
+  .fuelhero{border:1px solid var(--line);border-left:3px solid var(--brass);
+            background:var(--panel2);padding:15px 16px 16px}
+  .fuelbig{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .fuelnum{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;
+           color:var(--brass);line-height:1}
+  .fuelunit{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+            text-transform:uppercase;color:var(--muted)}
+  .fuelsub{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:9px}
+  .fuelsub b{color:var(--brass);font-weight:600}
+  /* Der Emoji-Schwarm. Jedes Teil bekommt eine eigene, aus dem Index
+     abgeleitete Drehung — deterministisch, damit das 60s-Re-Render nicht
+     jedes Mal ein anderes Bild zeigt. Kein Math.random(). */
+  .fuelswarm{display:flex;flex-wrap:wrap;gap:2px 1px;margin-top:12px;line-height:1}
+  .fuelswarm i{font-style:normal;font-size:16px;display:inline-block;
+               transform:rotate(var(--r)) translateY(var(--y))}
+  .fuelrest{font-family:var(--mono);font-size:11px;color:var(--muted);
+            margin-top:10px;line-height:1.6}
+
+  /* Speisekarte: Gericht links, Kalorien rechts, dazwischen die Punktlinie —
+     die Optik einer echten Karte, und zugleich die klarste Zuordnung von
+     Name zu Zahl bei stark unterschiedlichen Namenslängen. */
+  .fuelmenu{border:1px solid var(--line);background:var(--panel);
+            padding:13px 15px 14px;margin-top:12px}
+  .fmhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+          text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .fmhead b{color:var(--brass);font-weight:600;letter-spacing:.16em}
+  /* Gericht und Kalorien in einer Zeile, die Beschreibung darunter — die Optik
+     einer echten Speisekarte, und zugleich das einzige Layout, das mobil
+     trägt: stand die Beschreibung in derselben Zeile, wuchs sie über die
+     Breite und schob die Punktlinie mitten in den umbrechenden Text. */
+  .fmrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:7px;font-size:13.5px;
+         color:var(--bone);padding:5px 0}
+  .fmrow .dots{flex:1;border-bottom:1px dotted var(--line);min-width:16px}
+  .fmrow .kc{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .fmrow .em{font-size:14px}
+  .fmrow .was{flex-basis:100%;margin-left:21px;color:var(--muted);font-size:12px;line-height:1.4}
+  .fmnote{font-size:12.5px;color:var(--prose);margin-top:11px;line-height:1.55}
+  .fmnote b{color:var(--ice);font-weight:500}
+
+  /* Die kommenden Länder: eine Reihe Häppchen, kein Block. Sie sind Ausblick,
+     nicht Information — deshalb klein, einzeilig und ohne Kalorienangabe. */
+  .fuelnext{margin-top:12px}
+  .fnrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .fnchip{font-family:var(--mono);font-size:11px;color:var(--muted);
+          border:1px solid var(--line);border-radius:999px;padding:4px 10px;
+          display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .fnchip .fl{font-size:13px}
 
   /* Höhenprofil: Kennzahlenstreifen + SVG-Diagramm als ein zusammenhängender Block.
      Der Streifen ist mobil zweispaltig und wird ab 641px vierspaltig. */
@@ -461,6 +516,11 @@
       <details id="ferryDetails" open hidden>
         <summary id="ferrySum">Fährplanung Südschweden</summary>
         <div class="setbody" id="ferryWrap"></div>
+      </details>
+
+      <details id="fuelDetails" open hidden>
+        <summary id="fuelSum">Verpflegung</summary>
+        <div class="setbody" id="fuelWrap"></div>
       </details>
 
       <h2>Positionslog</h2>
@@ -1899,10 +1959,263 @@ function renderFerryStatus(c, fer){
         <div class="fsmeta">${hafen} ${hhmmTs(fer.boardTs)} → ${esc(FERRY.ziel)} ${hhmmTs(fer.landTs)} Uhr${linie}</div>
       </div>`;
   }
-  const w = document.getElementById('ferryWrap');
-  w.innerHTML = `${box}${ferryInfoHtml()}`;
-  const info = w.querySelector('.ferinfo');
-  if(info) info.ontoggle = ()=>{ FER_INFO = info.open; };
+  /* Ohne den Erklärteil: der begründet die WAHL einer Fähre, und die ist ab
+     dem Ablegen keine Frage mehr. Ab hier ist das Panel nur noch ein Status —
+     das Emoji und die Zeiten bleiben, die Fahrplan-Tabelle und ihre
+     Herleitung verschwinden. Ihren Platz nimmt das Verpflegungs-Panel ein. */
+  document.getElementById('ferryWrap').innerHTML = box;
+}
+
+/* ---------- Verpflegung: Kalorien und Landesküche ----------
+
+   Das Panel, das die Fährplanung ablöst, sobald die Ostsee-Frage beantwortet
+   ist. Es entscheidet nichts, warnt vor nichts und niemand muss danach
+   handeln — es rechnet die Fahrt in die Währung um, die auf einem
+   Ultra-Rennen tatsächlich zählt, und sagt, was es dafür im nächsten Land
+   gibt. Manuel isst vegetarisch, die Karten sind entsprechend gewählt.
+
+   DIE RECHNUNG steht auf zwei Termen, weil die Fahrt aus zwei verschiedenen
+   Arbeiten besteht — und das ist keine Verkomplizierung, sondern der
+   Unterschied zwischen 1.600 flachen und 1.600 bergigen Kilometern:
+
+     Ebene   Rollwiderstand (Crr 0,006) und Luftwiderstand (CdA 0,42) ergeben
+             bei rund 22 km/h zusammen ~15 N. Über 1.000 m sind das 15 kJ
+             mechanisch, bei 23 % Wirkungsgrad des Menschen 65 kJ
+             metabolisch — 15,6 kcal je Kilometer.
+     Höhe    m·g·h: 95 kg über einen Höhenmeter sind 932 J mechanisch, durch
+             denselben Wirkungsgrad 4,05 kJ — 0,97 kcal je Höhenmeter. Das
+             ist genau die bekannte Faustregel „100 hm bei 100 kg ≈ 100 kcal“.
+
+   Systemgewicht 95 kg (Fahrer, Rad und Gepäck) ist die EINZIGE von außen
+   gesetzte Zahl; alles andere folgt daraus. Gezeigt wird die reine
+   Fahrleistung — das, was ein Radcomputer anzeigt und was er ZUSÄTZLICH zum
+   Grundumsatz essen muss. Der Grundumsatz steht als Nebenzeile daneben,
+   damit beide Zahlen dastehen und keine die andere verschluckt.
+
+   Die Höhenmeter kommen aus `c.climbUp`, also aus profile.json — dieselbe
+   und einzige Höhenquelle wie überall sonst im Board. Hier keine zweite
+   aufmachen, auch nicht „nur fürs Gimmick“.
+
+   Das LAND kommt aus `entry.cc`, das der Scraper aus derselben
+   Nominatim-Antwort mitschreibt wie den Ortsnamen (siehe reverseGeocode()).
+   Es ist damit gemessen statt geraten. Der naheliegende Weg wären
+   Bounding-Boxen im Frontend gewesen — die überlappen auf dem Balkan
+   (Kroatien, Bosnien und Montenegro liegen ineinander verschachtelt) und
+   hätten ausgerechnet dort danebengelegen, wo die Route am kleinteiligsten
+   ist. Fehlt `cc`, schweigt das Panel über das Land, statt eines zu raten. */
+const FUEL = {
+  systemKg: 95,
+  kcalProKm: 15.6,
+  kcalProHm: 0.97,
+  grundumsatzTag: 1750,   // Fahrer allein, ruhend — nur für die Nebenzeile
+  swarmMax: 60,           // Deckel für den Emoji-Haufen, sonst 19 Zeilen am Rennende
+  /* Die Route in Länderreihenfolge. `em`/`snack`/`kcal` ist die WÄHRUNG des
+     Landes: der Snack, in dem hier gezählt wird. `pl` ist dessen Mehrzahl und
+     steht ausgeschrieben da, weil sie sich aus dem Singular nicht ableiten
+     lässt: Skolebrød und Lángos bleiben gleich, Pączek wird zu Pączki,
+     Halušky und Priganice sind schon Mehrzahl. Eine Regel dafür gäbe es
+     nicht, nur eine Reihe falscher Formen. `karte` ist die Empfehlung —
+     durchweg vegetarisch, durchweg unterwegs zu bekommen. Kalorienangaben
+     sind Hausnummern für übliche Portionen, keine Laborwerte; sie stehen im
+     Panel deshalb mit „rund“ dabei. */
+  laender: [
+    {cc:'NO', nm:'Norwegen', flag:'🇳🇴', em:'🥐', snack:'Skolebrød', pl:'Skolebrød', kcal:350, karte:[
+      ['🥐','Skolebrød','Hefeteig, Vanillecreme, Kokos',350],
+      ['🌀','Kanelbolle','die norwegische Zimtschnecke',300],
+      ['🧀','Brunost aufs Knekkebrød','Karamellkäse, hält ewig',200],
+    ]},
+    {cc:'SE', nm:'Schweden', flag:'🇸🇪', em:'🍥', snack:'Zimtschnecke', pl:'Zimtschnecken', kcal:300, karte:[
+      ['🍥','Kanelbulle','die Zimtschnecke — Manus Standard',300],
+      ['🌿','Kardemummabulle','Kardamom statt Zimt',320],
+      ['🥪','Ostmacka','Käsebrot zum Kaffee',250],
+    ], notiz:'Fika ist hier praktisch Streckenverpflegung — und in dieser Währung rechnet das Panel gerade.'},
+    {cc:'PL', nm:'Polen', flag:'🇵🇱', em:'🍩', snack:'Pączek', pl:'Pączki', kcal:300, karte:[
+      ['🍩','Pączek','Krapfen, klassisch mit Rosenkonfitüre',300],
+      ['🥟','Pierogi ruskie','Kartoffel und Quark, eine Portion',450],
+      ['🥯','Drożdżówka','Hefeteilchen mit Pudding',280],
+      ['🍰','Sernik','polnischer Käsekuchen',350],
+    ]},
+    {cc:'CZ', nm:'Tschechien', flag:'🇨🇿', em:'🧀', snack:'Smažák', pl:'Smažáky', kcal:700, karte:[
+      ['🧀','Smažený sýr','frittierter Käse im Brötchen',700],
+      ['🥔','Bramborák','Kartoffelpuffer mit Knoblauch',300],
+      ['🍪','Koláče','Hefegebäck mit Quark oder Mohn',250],
+    ], notiz:'Der frittierte Käse ist das kalorienreichste Ding auf der ganzen Route — ein Smažák deckt fast einen halben Fahrtag Klettern.'},
+    {cc:'SK', nm:'Slowakei', flag:'🇸🇰', em:'🥔', snack:'Halušky', pl:'Halušky', kcal:750, karte:[
+      ['🥔','Bryndzové halušky','Nocken mit Schafskäse, Nationalgericht',750],
+      ['🍫','Horalky','Haselnusswaffel, an jedem Kiosk',150],
+      ['🌙','Šúľance s makom','Mohnnudeln',400],
+    ], notiz:'Hier liegt CP2 am Chopok — die Halušky danach sind verdient.'},
+    {cc:'HU', nm:'Ungarn', flag:'🇭🇺', em:'🫓', snack:'Lángos', pl:'Lángos', kcal:450, karte:[
+      ['🫓','Lángos','Fladen mit Sauerrahm und Käse',450],
+      ['🍫','Túró Rudi','Quarkriegel aus jedem Kühlregal',130],
+      ['🍥','Kürtőskalács','Baumstriezel vom Rost',400],
+    ]},
+    {cc:'HR', nm:'Kroatien', flag:'🇭🇷', em:'🥧', snack:'Burek', pl:'Burek', kcal:550, karte:[
+      ['🥧','Burek sa sirom','Blätterteigrolle mit Käse',550],
+      ['🧀','Štrukli','Quarkstrudel, Zagreber Küche',400],
+      ['🍩','Fritule','Teigbällchen mit Rosinen',250],
+    ]},
+    {cc:'BA', nm:'Bosnien', flag:'🇧🇦', em:'🥬', snack:'Zeljanica', pl:'Zeljanice', kcal:500, karte:[
+      ['🥬','Zeljanica','Blätterteig mit Spinat',500],
+      ['🧀','Sirnica','dieselbe Rolle mit Käse',520],
+      ['🍎','Tufahija','Apfel mit Walnuss in Sirup',350],
+    ], notiz:'Wichtig für ihn: <b>„Burek“ heißt hier ausschließlich die Fleischvariante.</b> Vegetarisch bestellt man Sirnica (Käse) oder Zeljanica (Spinat) — in Kroatien meint Burek beides, hier nicht.'},
+    {cc:'ME', nm:'Montenegro', flag:'🇲🇪', em:'🍯', snack:'Priganice', pl:'Priganice', kcal:350, karte:[
+      ['🍯','Priganice','Teigbällchen mit Honig und Kajmak',350],
+      ['🌽','Cicvara','Maisgrieß mit Kajmak, Bergküche',600],
+      ['🧀','Njeguški sir','Bergkäse vom Lovćen',300],
+    ]},
+    {cc:'AL', nm:'Albanien', flag:'🇦🇱', em:'🥟', snack:'Byrek', pl:'Byrek', kcal:400, karte:[
+      ['🥟','Byrek me spinaq','Spinatblätterteig, überall und billig',400],
+      ['🍯','Petulla','frittierter Teig mit Honig',350],
+      ['🍮','Trileçe','Milchkuchen, drei Sorten Milch',400],
+    ], notiz:'CP4 Leskovik liegt hier — und Byrek gibt es in Albanien an jeder Tankstelle.'},
+    {cc:'GR', nm:'Griechenland', flag:'🇬🇷', em:'🥙', snack:'Spanakopita', pl:'Spanakopites', kcal:350, karte:[
+      ['🥙','Spanakopita','Spinat und Feta im Blätterteig',350],
+      ['🥧','Bougatsa','Grießcreme im Blätterteig, warm',400],
+      ['🥯','Koulouri','Sesamkringel, das Frühstück to go',250],
+      ['🍯','Loukoumades','Honigbällchen',300],
+    ], notiz:'Letztes Land. In Kalamata gibt es die Spanakopita zur Zieleinfahrt.'},
+  ],
+};
+
+/* Fahrleistung in Kilokalorien — die beiden Terme aus dem Kommentar oben. */
+function fuelKcal(km, hm){
+  return Math.max(km, 0) * FUEL.kcalProKm + Math.max(hm || 0, 0) * FUEL.kcalProHm;
+}
+
+/* Das Land der jüngsten Meldung, die eines trägt. Alte Einträge aus der Zeit
+   vor `cc` haben keins — deshalb rückwärts suchen statt nur den letzten
+   ansehen. */
+let FUEL_OVERRIDE = null;   // Debug-Hook tcr84Land(), siehe unten
+function fuelLand(c){
+  if(FUEL_OVERRIDE) return FUEL_OVERRIDE;
+  const e = c.list.filter(x=> x.cc).pop();
+  return e ? FUEL.laender.find(l=> l.cc === e.cc) || null : null;
+}
+
+/* Sichtbar ab dem Moment, in dem die Fähre ablegt — entweder weil die Spur
+   die Überfahrt bestätigt hat, oder weil die gebuchte Abfahrtszeit erreicht
+   ist. Der zweite Weg ist nötig, weil mitten auf der Ostsee kein Netz ist:
+   die Spur bestätigt die Überfahrt erst Stunden später, und bis dahin stünde
+   sonst weder Fähre noch Verpflegung da. */
+function fuelSichtbar(c){
+  if(c.ferry && (c.ferry.state === 'onboard' || c.ferry.state === 'done')) return true;
+  const dep = bookedDeparture();
+  return !!(dep && c.now >= dep.ab);
+}
+
+/* Läuft die Überfahrt gerade? Dann zeigt das Panel die Karte des ZIELLANDES
+   statt der des zuletzt gemessenen — er ist unterwegs dorthin, und genau das
+   ist in dieser Nacht die interessante Auskunft. */
+function fuelAufSee(c){
+  if(c.ferry && c.ferry.state === 'onboard') return true;
+  if(c.ferry && c.ferry.state === 'done') return false;
+  const dep = bookedDeparture();
+  return !!(dep && c.now >= dep.ab && c.now < dep.an);
+}
+
+function renderFuel(c){
+  const det = document.getElementById('fuelDetails');
+  if(!fuelSichtbar(c)){ det.hidden = true; return; }
+  det.hidden = false;
+
+  const kcal = fuelKcal(c.km, c.climbUp);
+  const land = fuelLand(c);
+  const idx = land ? FUEL.laender.indexOf(land) : -1;
+  const aufSee = fuelAufSee(c);
+  // Auf See zeigt die Karte das nächste Land, sonst das aktuelle.
+  const ziel = aufSee && idx >= 0 ? FUEL.laender[idx+1] || null : null;
+  const karte = ziel || land;
+
+  /* Gezählt wird in der Währung des Landes, in dem die Kilometer entstanden
+     sind — auf See also weiter in Zimtschnecken, nicht schon in Pączki. */
+  const w = land || FUEL.laender[0];
+  const stueck = Math.round(kcal / w.kcal);
+
+  const schwarm = Array.from({length: Math.min(stueck, FUEL.swarmMax)}, (_, i)=>
+    `<i style="--r:${(i*37 % 19) - 9}deg;--y:${(i*23 % 5) - 2}px">${w.em}</i>`).join('');
+
+  /* Tagesleistung aus derselben Quelle wie der Einschätzungskasten weiter
+     oben — cumClimbAt() über das Fenster seit Mitternacht. */
+  let heute = '';
+  if(PROFILE && PROFILE.chunks && PROFILE.chunks.length){
+    const mitternacht = new Date(c.now.getFullYear(), c.now.getMonth(), c.now.getDate()).getTime()/1000;
+    const a = cumClimbAt(mitternacht), b = cumClimbAt(c.now.getTime()/1000);
+    if(a && b){
+      const kmH = Math.max((b.km - a.km) * c.kmScale, 0);
+      const hmH = Math.max(b.up - a.up, 0);
+      const kcalH = fuelKcal(kmH, hmH);
+      if(kmH >= 5) heute = `<div class="fuelsub">Heute: <b>${num(Math.round(kcalH))} kcal</b>
+        aus ${num(Math.round(kmH))} km und ↑ ${num(Math.round(hmH))} hm
+        — ${num(Math.round(kcalH / w.kcal))} ${esc(w.pl)}.</div>`;
+    }
+  }
+
+  /* Ausblick auf die Reststrecke. Die Höhenmeter dafür sind hochgerechnet und
+     damit die einzige geschätzte Zahl im Panel — der bisherige Schnitt
+     stammt aus Skandinavien, der Balkan ist deutlich bergiger. Also
+     ausdrücklich als Untergrenze ausgewiesen, nicht als Prognose verkauft. */
+  let rest = '';
+  if(c.rest > 0 && c.climbKm > 0){
+    const restRouted = c.kmScale > 0 ? c.rest / c.kmScale : c.rest;
+    const restHm = restRouted * (c.climbUp / c.climbKm);
+    const restKcal = fuelKcal(c.rest, restHm);
+    const zielLand = FUEL.laender[FUEL.laender.length-1];
+    rest = `Bis Kalamata liegen noch rund <b>${num(Math.round(restKcal/1000))}.000 kcal</b> vor ihm
+      — etwa ${num(Math.round(restKcal / zielLand.kcal))} ${esc(zielLand.pl)}. Mit dem
+      bisherigen Höhenschnitt gerechnet; über den Balkan wird es eher mehr.`;
+  }
+  /* Auf Hunderter gerundet, nicht auf Tausender: bei Tausendern ergaben die
+     drei Zahlen im Satz für den Leser keine Summe mehr (40.594 + 11.000
+     stand neben 51.000, weil 10.622 einmal auf- und einmal abgerundet wurde).
+     Wer nachrechnet, soll aufgehen sehen, was dasteht. */
+  const tage = Math.max(c.raceH / 24, 0);
+  const basal = tage * FUEL.grundumsatzTag;
+  const h100 = v => num(Math.round(v/100)*100);
+  const grund = `Dazu kommt der Grundumsatz von rund ${h100(basal)} kcal
+    in ${num(Math.round(tage*10)/10)} Tagen — zusammen also grob
+    <b>${h100(kcal+basal)} kcal</b>, die er unterwegs essen muss.`;
+
+  document.getElementById('fuelSum').innerHTML =
+    `Verpflegung · <b>${num(Math.round(kcal))} kcal ≈ ${num(stueck)} ${esc(w.pl)}</b>`;
+
+  const kopf = ziel
+    ? `${ziel.flag} Nach der Überfahrt in <b>${esc(ziel.nm)}</b> auf der Speisekarte`
+    : karte ? `${karte.flag} In <b>${esc(karte.nm)}</b> auf der Speisekarte` : '';
+
+  const zeilen = karte ? karte.karte.map(([em, nm, was, kc])=>
+    `<div class="fmrow"><span class="em">${em}</span><span>${esc(nm)}</span>
+       <span class="dots"></span><span class="kc">${num(kc)} kcal</span>
+       <span class="was">${esc(was)}</span></div>`).join('') : '';
+
+  const notiz = karte && karte.notiz ? `<div class="fmnote">${karte.notiz}</div>` : '';
+
+  /* Die noch kommenden Länder als Ausblick — ohne Kalorien, das ist hier
+     Vorfreude und keine Information. Gezählt wird ab dem Land NACH dem der
+     Speisekarte, nicht ab dem aktuellen: sonst stünde auf See Polen zweimal
+     da, einmal als Karte und einmal als Häppchen. */
+  const kIdx = karte ? FUEL.laender.indexOf(karte) : idx;
+  const kommende = kIdx >= 0 ? FUEL.laender.slice(kIdx+1) : [];
+  const chips = kommende.length ? `<div class="fuelnext">
+      <div class="fmhead">Danach auf der Route</div>
+      <div class="fnrow">${kommende.map(l=>
+        `<span class="fnchip"><span class="fl">${l.flag}</span>${esc(l.nm)}
+           · ${l.em} ${esc(l.snack)}</span>`).join('')}</div>
+    </div>` : '';
+
+  document.getElementById('fuelWrap').innerHTML = `
+    <div class="fuelhero">
+      <div class="fuelbig"><span class="fuelnum">${num(Math.round(kcal))}</span>
+        <span class="fuelunit">kcal erfahren</span></div>
+      <div class="fuelsub">Das sind rund <b>${num(stueck)} ${esc(w.pl)}</b>
+        ${w.em} seit Trondheim.</div>
+      <div class="fuelswarm">${schwarm}</div>
+      ${heute}
+      <div class="fuelrest">${rest}<br>${grund}</div>
+    </div>
+    ${karte ? `<div class="fuelmenu"><div class="fmhead">${kopf}</div>${zeilen}${notiz}</div>` : ''}
+    ${chips}`;
 }
 
 /* Das Log wächst über drei Wochen auf hunderte Zeilen und schob Karte und
@@ -2553,11 +2866,28 @@ window.tcr84Faehre = state=>{
   render();
   return 'Fähr-Override: ' + state;
 };
+/* Dasselbe für die Verpflegung: die Speisekarte eines Landes ansehen, ohne
+   dorthin zu fahren. Neun der elf Länder liegen noch Wochen voraus, und ihre
+   Karten sind das einzige am Panel, was sich nicht von selbst durchprobiert.
+     tcr84Land('BA')   Panel so, als stünde er in Bosnien
+     tcr84Land()       Liste der Ländercodes
+     tcr84Land('off')  zurück auf das gemessene Land
+   Sichtbar ist das Panel erst ab dem Ablegen — zum Ausprobieren davor also
+   mit tcr84Faehre('done') kombinieren. */
+window.tcr84Land = cc=>{
+  if(cc === 'off'){ FUEL_OVERRIDE = null; render(); return 'Land-Override aus.'; }
+  if(!cc) return 'Ländercodes: ' + FUEL.laender.map(l=> `${l.cc} ${l.nm}`).join(' · ');
+  const l = FUEL.laender.find(x=> x.cc === String(cc).toUpperCase());
+  if(!l) return 'unbekannt — ' + FUEL.laender.map(x=> x.cc).join(', ');
+  FUEL_OVERRIDE = l;
+  render();
+  return `Land-Override: ${l.flag} ${l.nm}`;
+};
 
 function render(){
   const c = compute();
   renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c);
-  renderFerry(c); renderLog(c); renderSource(c);
+  renderFerry(c); renderFuel(c); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   maybeCelebrate(c);
   if(EDIT) renderDirty();
