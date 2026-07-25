@@ -980,6 +980,19 @@ function syncNowbar(){
   bar.style.display = sichtbar ? 'flex' : 'none';
 }
 
+/* Unter dieser Geschwindigkeit ist „unterwegs“ nicht mehr die ehrliche
+   Aussage — niemand radelt bei 2,4 km/h, das ist Schrittgeschwindigkeit oder
+   GPS-Rauschen im Stand. Vorher stand hier eine exakte Null, und die griff
+   nicht: als Manuel am 25.07.2026 zwei Stunden am Fährterminal in Ystad
+   wartete, meldete der Tracker zwischendurch 2,4 und 7,1 km/h statt 0 — die
+   40-Minuten-Bestätigung aus der Spur (`stopSince`) lag zu dem Zeitpunkt noch
+   nicht vor, weil der GPX-Export gerade in einem seiner normalen Rückstände
+   steckte (siehe „Der Export arbeitet in Stapeln“). Das Board zeigte in dieser
+   Lücke „🚴 unterwegs · 2,4 km/h“ — sichtbar falsch, während er längst stand.
+   3 km/h ist bewusst niedrig angesetzt: eine echte, wenn auch quälend
+   langsame Steigung bleibt darüber, nur echter Stillstand fällt darunter. */
+const LIVE_STEHT_KMH = 3;
+
 function renderLive(c){
   const el = document.getElementById('liveLine');
   const lv = S.live;
@@ -1012,9 +1025,9 @@ function renderLive(c){
     teile.push(`<span>🚲 <span class="wxval">Pause seit ${new Date(lv.stopSince)
       .toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>` +
       ` · ${dhm(dauer)}</span>`);
-  } else if(lv.speed != null && Number(lv.speed) === 0){
-    /* Tempo 0 gemeldet, aber die 40-min-Standphase im Track ist noch nicht
-       bestätigt (oder der GPX-Export hinkt hinterher) — dann steht kein
+  } else if(lv.speed != null && Number(lv.speed) <= LIVE_STEHT_KMH){
+    /* Tempo nahe null gemeldet, aber die 40-min-Standphase im Track ist noch
+       nicht bestätigt (oder der GPX-Export hinkt hinterher) — dann steht kein
        `stopSince`. Bis dahin „unterwegs“ zu behaupten, war falsch. „steht
        gerade“ nennt nur die gemeldete Momentangeschwindigkeit, ohne eine
        Pause samt Dauer/Grund zu behaupten — dieselbe Zurückhaltung wie sonst
@@ -2650,9 +2663,16 @@ function renderWind(){
   const btn = document.getElementById('windBtn');
   const rest = windRest();
   btn.disabled = rest > 0;
-  btn.querySelector('.wbtxt').textContent = rest > 0
-    ? `wieder in ${dhm(rest/6e4)}`
-    : 'Rückenwind schicken';
+  /* Vorher stand im gesperrten Zustand nur „wieder in 2 h 38 min“ — ein
+     Satzfragment ohne Verb, das direkt neben dem Satz zur echten Windlage
+     stand („Gerade bläst es ihm mit 20 km/h ins Gesicht“). Auf dem schmalen
+     Handy-Layout rutschen Knopf und Satz optisch zusammen, und „wieder in
+     2 h 38 min“ liest sich dann wie eine Fortsetzung der Wettervorhersage,
+     nicht wie ein Button-Zustand. Der Knopf bekommt jetzt einen fest
+     stehenden, in sich verständlichen Text; die Zeitangabe wandert in den
+     Fließtext darunter, wo ein ganzer Satz sie eindeutig macht. */
+  btn.querySelector('.wbem').textContent = rest > 0 ? '✅' : '🌬️';
+  btn.querySelector('.wbtxt').textContent = rest > 0 ? 'Schon gepustet' : 'Rückenwind schicken';
 
   const lage = windLage();
   /* Der Satz zur Wetterlage kommt zuerst — er sagt, wogegen gepustet wird.
@@ -2673,9 +2693,13 @@ function renderWind(){
     : t === 0 ? 'Noch keine einzige Böe — sei die erste.'
     : `<span class="zahl">${num(t)}</span> ${t === 1 ? 'Böe' : 'Böen'} geschickt` +
       (WIND_N.heute > 0 ? ` · ${num(WIND_N.heute)} heute` : '');
+  // Ein ganzer Satz statt eines Fragments am Knopf — und ausdrücklich „für
+  // dich“, damit klar bleibt, dass die Sperre persönlich ist (dein Gerät hat
+  // vor Kurzem gepustet), nicht ein globales Limit für alle Besucher.
+  const sperre = rest > 0 ? `Du kannst in ${dhm(rest/6e4)} wieder pusten.` : '';
 
   document.getElementById('windTxt').innerHTML =
-    [satz, zaehler].filter(Boolean).join('<br>');
+    [satz, zaehler, sperre].filter(Boolean).join('<br>');
 }
 
 document.addEventListener('click', e=>{

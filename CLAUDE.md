@@ -783,6 +783,16 @@ ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
 - **Live-Zeile mit Augenzwinkern:** 🚴 (sanft wippend, `.rideAnim`, respektiert
   `prefers-reduced-motion`) wenn er fährt, 🚲 (abgestelltes Rad) bei Pause —
   bewusst kein Schlaf-Symbol, die Spur kennt den Grund nicht.
+  **„Steht gerade“ greift ab `LIVE_STEHT_KMH` (3 km/h), nicht erst bei exakt
+  0** (25.07.2026). Am Fährterminal in Ystad meldete der Tracker zwei Stunden
+  lang zwischendurch 2,4 und 7,1 km/h statt 0, während `stopSince` noch nicht
+  gesetzt war — der GPX-Export steckte in einem seiner normalen Rückstände
+  (siehe „Der Export arbeitet in Stapeln“), die 40-Minuten-Bestätigung aus der
+  Spur kam erst zwei Stunden später nach. Die Kopfzeile behauptete in dieser
+  Lücke „🚴 unterwegs · 2,4 km/h“ — niemand radelt bei Schrittgeschwindigkeit,
+  das war sichtbar falsch. 3 km/h ist bewusst niedrig: eine echte, wenn auch
+  quälend langsame Steigung bleibt darüber, nur echter Stillstand fällt
+  darunter.
 - **Tagesstreifen unter den Tagesbalken** (`dayStrip()`): je Tag 24 h von links
   nach rechts, Messing = Bewegung, abgedunkelt = Standzeit, Tooltip trägt die
   Summe. Gleiche Quelle wie Karte und Log (`findStops()`/`trackStops()`), damit
@@ -1182,6 +1192,18 @@ Die Drei-Stunden-Sperre im Board ist die Spielregel, keine Sicherung: sie steht
 im `localStorage` und ist damit umgehbar. Das ist in Ordnung und soll so
 bleiben — wer sie umgeht, betrügt niemanden außer sich selbst, und die harte
 Grenze zieht ohnehin der Worker.
+
+**Der gesperrte Knopf braucht einen eigenständigen Satz, keinen Fragment-Text**
+(25.07.2026). Vorher stand im gesperrten Zustand nur „wieder in 2 h 38 min“ am
+Knopf, direkt neben dem Satz zur echten Windlage. Auf dem schmalen
+Handy-Layout rutschen Knopf und Satz optisch zusammen, und das Fragment las
+sich wie eine Fortsetzung der Wettervorhersage („der Wind kommt in 2 h 38 min
+wieder“), nicht wie ein Button-Zustand. Jetzt zeigt der Knopf im gesperrten
+Zustand nur „✅ Schon gepustet“, die Zeitangabe steht als vollständiger,
+ausdrücklich personalisierter Satz im Fließtext darunter — „**Du** kannst in
+3 h wieder pusten.“ Das „du“ ist Absicht: die Sperre ist pro Gerät
+(`localStorage`), kein globales Limit für alle Besucher, und muss sich auch
+so lesen.
 
 Zum Vorführen/Testen in der Konsole: `tcr84Wind('demo')` (Streifen ohne Worker)
 · `tcr84Wind('gegen'|'ruecken'|'seite'|'flaute')` erzwingt eine Windlage ·
