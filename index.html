@@ -2689,9 +2689,14 @@ function renderWind(){
   }
 
   const t = WIND_N.total;
+  /* „X Böen geschickt“ sagt nicht, WOFÜR — direkt unter dem Satz zur echten
+     Windlage („bläst ihm mit 24 km/h ins Gesicht“) liest sich das wie eine
+     Bestätigung derselben Böe, nicht wie ihr Gegenmittel. „Rückenwind“ muss
+     im Zähler selbst stehen, nicht nur am Knopf darüber, den man nach dem
+     ersten Klick nicht mehr liest. */
   const zaehler = !WIND_N.da && !WIND_DEMO ? ''
-    : t === 0 ? 'Noch keine einzige Böe — sei die erste.'
-    : `<span class="zahl">${num(t)}</span> ${t === 1 ? 'Böe' : 'Böen'} geschickt` +
+    : t === 0 ? 'Noch kein Rückenwind geschickt — sei der Erste.'
+    : `<span class="zahl">${num(t)}</span> × Rückenwind für ihn geschickt` +
       (WIND_N.heute > 0 ? ` · ${num(WIND_N.heute)} heute` : '');
   // Ein ganzer Satz statt eines Fragments am Knopf — und ausdrücklich „für
   // dich“, damit klar bleibt, dass die Sperre persönlich ist (dein Gerät hat

@@ -1205,6 +1205,15 @@ ausdrücklich personalisierter Satz im Fließtext darunter — „**Du** kannst 
 (`localStorage`), kein globales Limit für alle Besucher, und muss sich auch
 so lesen.
 
+**Der Zähler muss selbst sagen, dass es Rückenwind ist** (25.07.2026). „X Böen
+geschickt“ steht direkt unter dem Satz zur echten Windlage („Gerade bläst es
+ihm mit 24 km/h ins Gesicht“) — und liest sich dann wie eine Bestätigung
+derselben Böe, nicht wie ihr Gegenmittel. „Rückenwind“ steht zwar am Knopf,
+aber den liest niemand mehr, sobald er einmal gedrückt ist. Der Zähler heißt
+deshalb jetzt „X × Rückenwind **für ihn** geschickt“ — das „für ihn“ ist kein
+Füllwort, es ist die einzige Stelle im Text, die Richtung und Zweck der
+geschickten Böen unmissverständlich macht.
+
 Zum Vorführen/Testen in der Konsole: `tcr84Wind('demo')` (Streifen ohne Worker)
 · `tcr84Wind('gegen'|'ruecken'|'seite'|'flaute')` erzwingt eine Windlage ·
 `tcr84Wind('frei')` hebt die Sperre auf · `tcr84Wind('off')`.
