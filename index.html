@@ -47,6 +47,47 @@
   .pill.warn{color:var(--warn);border-color:var(--warn)}
   .pill.alert{color:var(--alert);border-color:var(--alert)}
 
+  /* ---------- Rückenwind ----------
+     Der einzige Knopf im ganzen Board — er darf deshalb aussehen wie einer.
+     Messing-Rand statt Messing-Fläche: auffällig genug, um gefunden zu werden,
+     aber nicht so laut, dass er den Kilometerstand darunter überstrahlt.
+     Der Streifen sitzt direkt unter Live und Wetter, weil dort der echte Wind
+     schon steht — Knopf und Wirklichkeit gehören nebeneinander. */
+  .windbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;
+           gap:10px 14px;margin-top:9px;padding:10px 13px;
+           border:1px solid var(--line);background:var(--panel)}
+  .windbtn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+           font-family:var(--display);font-size:13.5px;font-weight:500;color:var(--brass);
+           background:transparent;border:1px solid var(--brass);border-radius:999px;
+           padding:7px 15px;transition:background .16s,color .16s,transform .12s}
+  .windbtn:hover:not(:disabled){background:var(--brass);color:var(--night)}
+  .windbtn:active:not(:disabled){transform:scale(.96)}
+  .windbtn:disabled{cursor:default;color:var(--muted);border-color:var(--line)}
+  .windbtn .wbem{font-size:16px;line-height:1}
+  /* Das Wehen im Knopf läuft nur, solange er auch gedrückt werden kann —
+     ein wedelndes Symbol an einem toten Knopf ist eine Einladung ins Leere. */
+  .windbtn:not(:disabled) .wbem{animation:puff 2.4s ease-in-out infinite}
+  @keyframes puff{0%,100%{transform:translateX(0)}50%{transform:translateX(3px)}}
+  .windtxt{font-family:var(--mono);font-size:11.5px;color:var(--prose);
+           line-height:1.55;flex:1;min-width:180px}
+  .windtxt b{color:var(--ice);font-weight:600}
+  .windtxt .zahl{color:var(--brass);font-weight:600}
+  /* Die Böen fliegen über den Streifen und werden nach der Animation wieder
+     eingesammelt. Kein Animations-Loop in JS, gleiche Bauart wie das Konfetti
+     bei den Kontrollpunkten. */
+  .windgust{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .windgust i{position:absolute;font-style:normal;font-size:15px;opacity:0;
+              animation:gust 1.5s ease-out forwards}
+  @keyframes gust{
+    0%{opacity:0;transform:translateX(-30px) translateY(0) rotate(-8deg)}
+    18%{opacity:.95}
+    100%{opacity:0;transform:translateX(320px) translateY(var(--dy)) rotate(12deg)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .windbtn .wbem{animation:none}
+    .windgust i{animation-duration:.01ms}
+  }
+
   .wxline{font-family:var(--mono);font-size:11.5px;color:var(--muted);
           display:flex;gap:2px 14px;flex-wrap:wrap;align-items:center}
   .wxline .wxval{color:var(--ice)}
@@ -487,6 +528,13 @@
     <div class="nowbar" id="nowbar" style="display:none">
       <div class="wxline" id="liveLine" style="display:none"></div>
       <div class="wxline wx" id="wxLine" style="display:none"></div>
+    </div>
+    <div class="windbar" id="windBar" hidden>
+      <button class="windbtn" id="windBtn" type="button">
+        <span class="wbem">🌬️</span><span class="wbtxt">Rückenwind schicken</span>
+      </button>
+      <div class="windtxt" id="windTxt"></div>
+      <div class="windgust" id="windGust" aria-hidden="true"></div>
     </div>
     <div class="sub" id="sourceLine">
       Start 19.07.2026, 20:00 CEST · Limit 08.08.2026 ·
@@ -2454,6 +2502,190 @@ function maybeLoadWeather(c){
 }
 setInterval(()=>{ if(wxLat!=null) loadWeather(wxLat, wxLon); }, 900000);
 
+/* ---------- Rückenwind schicken ----------
+
+   Das einzige Element, mit dem Zuschauer etwas TUN können statt nur zu lesen.
+   Der Knopf schickt eine Böe, ein Zähler sammelt sie. Es ist ausdrücklich
+   Spaß und keine Statistik — aber der Zähler ist echt, und das ist die
+   Bedingung dafür, dass er dastehen darf. Ein plausibel hochlaufender
+   Fantasiezähler wäre die eine Sorte Zahl, die dieses Board nirgends zeigt.
+
+   WARUM EINE FREMDE STELLE: Ein geteilter Zähler braucht einen Ort, an dem
+   alle Besucher dieselbe Zahl sehen. GitHub Pages liefert nur aus und nimmt
+   nichts entgegen, `data.json` ist allein über Git beschreibbar, und
+   localStorage kennt jeder Besucher nur für sich. Also ein winziger
+   Cloudflare Worker, dessen ganze Aufgabe „zähl hoch und gib heraus“ ist —
+   Quelltext und Einrichtung in tools/wind-worker.js. Fehlt `api`, versteckt
+   sich der Streifen ganz: lieber kein Knopf als einer, der ins Leere greift.
+
+   DER ECHTE WIND STEHT DANEBEN, und das ist der eigentliche Witz. Das Board
+   kennt die gemessene Windrichtung (Open-Meteo) und rechnet aus der Spur den
+   tatsächlichen Fahrtkurs — es weiß also, ob ihm gerade wirklich etwas
+   entgegenbläst. Der Knopf wird dadurch komisch statt beliebig: man pustet
+   gegen etwas Bestimmtes. Nirgends darf daraus die Behauptung werden, die
+   Klicks hätten den Wind gedreht; das Board freut sich mit, es rechnet nicht
+   nach.
+
+   Der Kurs kommt NICHT aus zwei benachbarten Spurpunkten — die liegen fünf
+   Minuten auseinander, und bei einer Pause oder GPS-Rauschen zeigt ihre
+   Verbindung in eine zufällige Richtung. Gesucht wird rückwärts der erste
+   Punkt mit `kursMeter` Abstand; darunter ist keine Fahrtrichtung erkennbar,
+   dann schweigt das Panel über die Windlage, statt eine zu erfinden. */
+const WIND = {
+  /* Worker-URL aus tools/wind-worker.js — ohne sie bleibt der Streifen
+     verborgen. Sie ist öffentlich und darf das sein: der Worker kann nichts
+     außer hochzählen, und er bremst Massenklicks selbst. */
+  api: '',
+  cooldownStd: 3,       // so lange, bis dieselbe Person wieder pusten darf
+  kursMeter: 2000,      // Mindestabstand für einen belastbaren Fahrtkurs
+  flauteKmh: 8,         // darunter ist die Windrichtung keine Aussage
+  gegenGrad: 60,        // Abweichung Kurs↔Wind bis hierhin: Gegenwind
+  rueckenGrad: 120,     // darüber: Rückenwind. Dazwischen: von der Seite
+};
+const WIND_KEY = 'tcr84:wind';
+let WIND_N = { total: 0, heute: 0, da: false };
+let WIND_SENDET = false;
+let WIND_DEMO = false;   // Debug-Hook tcr84Wind(), siehe unten
+
+/* Kurs von a nach b in Grad (0 = Nord). Standardformel für die Anfangspeilung
+   auf der Kugel; über wenige Kilometer wäre auch die ebene Näherung genau
+   genug, aber die hier ist nicht teurer. */
+function bearingBetween(a, b){
+  const rad = d => d*Math.PI/180;
+  const φ1 = rad(a[0]), φ2 = rad(b[0]), Δλ = rad(b[1]-a[1]);
+  const y = Math.sin(Δλ)*Math.cos(φ2);
+  const x = Math.cos(φ1)*Math.sin(φ2) - Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return (Math.atan2(y, x)*180/Math.PI + 360) % 360;
+}
+
+function fahrtKurs(){
+  const p = TRACK && TRACK.points;
+  if(!p || p.length < 2) return null;
+  const ziel = p[p.length-1];
+  for(let i = p.length-2; i >= 0; i--){
+    if(metersBetween(p[i], ziel) >= WIND.kursMeter) return bearingBetween(p[i], ziel);
+  }
+  return null;   // steht oder Spur zu kurz — dann gibt es keine Fahrtrichtung
+}
+
+/* Windlage aus gemessenem Wind und gefahrenem Kurs.
+   `wind_direction_10m` ist meteorologisch die Richtung, AUS der es weht;
+   `kurs` die Richtung, IN die er fährt. Ein Nordwind (0°) bei Fahrt nach
+   Süden (180°) ergibt die volle Differenz von 180° — also Rückenwind. */
+let WX_OVERRIDE = null;   // Debug-Hook tcr84Wind(), siehe unten
+function windLage(){
+  const dir = WX_OVERRIDE ? WX_OVERRIDE.dir : (WX ? WX.wind_direction_10m : null);
+  const kmh = WX_OVERRIDE ? WX_OVERRIDE.speed : (WX ? WX.wind_speed_10m : null);
+  if(dir == null || kmh == null) return null;
+  if(kmh < WIND.flauteKmh) return { art:'flaute', kmh };
+  const kurs = fahrtKurs();
+  if(kurs == null) return { art:'unbekannt', kmh };
+  const diff = Math.abs(((dir - kurs + 540) % 360) - 180);
+  const art = diff <= WIND.gegenGrad ? 'gegen'
+            : diff >= WIND.rueckenGrad ? 'ruecken' : 'seite';
+  return { art, kmh, kurs, diff };
+}
+
+const windRest = ()=>{
+  try{
+    const t = Number(localStorage.getItem(WIND_KEY)) || 0;
+    return Math.max(t + WIND.cooldownStd*3.6e6 - Date.now(), 0);
+  }catch(e){ return 0; }
+};
+
+async function windLaden(){
+  if(WIND_DEMO || !WIND.api) return;
+  try{
+    const r = await fetch(WIND.api, { cache:'no-store' });
+    if(!r.ok) return;
+    const j = await r.json();
+    WIND_N = { total: Number(j.total)||0, heute: Number(j.heute)||0, da: true };
+    renderWind();
+  }catch(e){ /* Zähler bleibt auf dem letzten Stand, der Knopf funktioniert weiter */ }
+}
+
+async function windSenden(){
+  if(WIND_SENDET || windRest() > 0) return;
+  WIND_SENDET = true;
+  boeen();
+  // Sofort hochzählen, ohne auf die Antwort zu warten: der Knopf soll sich
+  // anfühlen, als käme die Böe augenblicklich an. Die echte Zahl aus der
+  // Antwort überschreibt das gleich darauf.
+  WIND_N.total++; WIND_N.heute++; WIND_N.da = true;
+  try{ localStorage.setItem(WIND_KEY, String(Date.now())); }catch(e){}
+  renderWind();
+  if(WIND_DEMO || !WIND.api){ WIND_SENDET = false; return; }
+  try{
+    const r = await fetch(WIND.api, { method:'POST', cache:'no-store' });
+    const j = await r.json().catch(()=> null);
+    if(j && j.total != null) WIND_N = { total:Number(j.total), heute:Number(j.heute)||0, da:true };
+  }catch(e){ /* die Böe zählt lokal trotzdem — beim nächsten Laden gleicht es sich ab */ }
+  WIND_SENDET = false;
+  renderWind();
+}
+
+/* Ein paar Böen über den Streifen wehen lassen. Die Elemente räumen sich nach
+   der Animation selbst weg; ohne das sammeln sich über eine lange Sitzung
+   hunderte tote <i> im DOM an. */
+function boeen(){
+  const box = document.getElementById('windGust');
+  if(!box) return;
+  for(let i = 0; i < 7; i++){
+    const el = document.createElement('i');
+    el.textContent = i % 3 === 0 ? '🍃' : '💨';
+    el.style.top = `${8 + (i*37) % 62}%`;
+    el.style.animationDelay = `${i*70}ms`;
+    el.style.setProperty('--dy', `${((i*53) % 19) - 9}px`);
+    box.appendChild(el);
+    setTimeout(()=> el.remove(), 1800 + i*70);
+  }
+}
+
+function renderWind(){
+  const bar = document.getElementById('windBar');
+  if(!bar) return;
+  if(!WIND.api && !WIND_DEMO){ bar.hidden = true; return; }
+  bar.hidden = false;
+
+  const btn = document.getElementById('windBtn');
+  const rest = windRest();
+  btn.disabled = rest > 0;
+  btn.querySelector('.wbtxt').textContent = rest > 0
+    ? `wieder in ${dhm(rest/6e4)}`
+    : 'Rückenwind schicken';
+
+  const lage = windLage();
+  /* Der Satz zur Wetterlage kommt zuerst — er sagt, wogegen gepustet wird.
+     „Unbekannt“ heißt: er steht gerade oder die Spur ist zu kurz für einen
+     Kurs; dann bleibt es bei der nackten Windstärke. */
+  let satz = '';
+  if(lage){
+    const kmh = num(Math.round(lage.kmh));
+    if(lage.art === 'gegen')       satz = `Gerade bläst es ihm mit <b>${kmh} km/h</b> ins Gesicht.`;
+    else if(lage.art === 'ruecken')satz = `Läuft: <b>${kmh} km/h</b> von hinten. Irgendwas macht ihr richtig.`;
+    else if(lage.art === 'seite')  satz = `Wind von der Seite, <b>${kmh} km/h</b> — halb so wild.`;
+    else if(lage.art === 'flaute') satz = `Windstill da draußen. Genießt er bestimmt.`;
+    else                           satz = `Wind mit <b>${kmh} km/h</b>.`;
+  }
+
+  const t = WIND_N.total;
+  const zaehler = !WIND_N.da && !WIND_DEMO ? ''
+    : t === 0 ? 'Noch keine einzige Böe — sei die erste.'
+    : `<span class="zahl">${num(t)}</span> ${t === 1 ? 'Böe' : 'Böen'} geschickt` +
+      (WIND_N.heute > 0 ? ` · ${num(WIND_N.heute)} heute` : '');
+
+  document.getElementById('windTxt').innerHTML =
+    [satz, zaehler].filter(Boolean).join('<br>');
+}
+
+document.addEventListener('click', e=>{
+  if(e.target.closest && e.target.closest('#windBtn')) windSenden();
+});
+// Der Knopf zählt seine Sperre in Minuten herunter; ohne eigenen Takt stünde
+// bis zum nächsten render() eine veraltete Restzeit da.
+setInterval(renderWind, 30000);
+setInterval(windLaden, 120000);
+
 /* ---------- Karte (Leaflet, wird erst beim Öffnen nachgeladen) ---------- */
 let mapObj = null, mapLayer = null, mapFitted = false;
 
@@ -2592,8 +2824,14 @@ function hideMapPosition(){
 
 const hhmm = unix => new Date(unix*1000).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
 // Erst runden, dann zerlegen — sonst wird aus 119,6 min „1 h 60 min“.
+/* Wie dur(), aber mit Minuten auch oberhalb einer Stunde — für Stellen, an
+   denen die Minute die Aussage ist (Fähr-Countdown, Standzeiten).
+   Volle Stunden bleiben ohne Minutenteil: „3 h 0 min“ liest sich wie ein
+   Anzeigefehler, und die Null trägt nichts, was „3 h“ nicht schon sagt. */
 const dhm = mins => { const m = Math.round(mins);
-  return m >= 60 ? `${Math.floor(m/60)} h ${m%60} min` : `${m} min`; };
+  if(m < 60) return `${m} min`;
+  const h = Math.floor(m/60), r = m % 60;
+  return r ? `${h} h ${r} min` : `${h} h`; };
 
 function renderMap(c){
   const marks = c.list.filter(e=> e.lat!=null && e.lon!=null);
@@ -2883,11 +3121,44 @@ window.tcr84Land = cc=>{
   render();
   return `Land-Override: ${l.flag} ${l.nm}`;
 };
+/* Der Rückenwind-Streifen zum Ausprobieren, solange kein Worker eingerichtet
+   ist — und um die vier Windlagen zu sehen, ohne aufs Wetter zu warten:
+     tcr84Wind('demo')    Streifen mit erfundenem Zählerstand einschalten
+     tcr84Wind('gegen')   Windlage erzwingen: gegen | ruecken | seite | flaute
+     tcr84Wind('frei')    die Drei-Stunden-Sperre aufheben
+     tcr84Wind('off')     alles zurück
+   Die erfundene Zahl bleibt ausdrücklich im Testmodus: sobald `WIND.api`
+   steht, kommt sie vom Worker, und niemand sieht je einen Fantasiezähler. */
+window.tcr84Wind = was=>{
+  if(!was || was === 'off'){
+    WIND_DEMO = false; WX_OVERRIDE = null;
+    try{ localStorage.removeItem(WIND_KEY); }catch(e){}
+    render(); return 'Wind-Demo aus.';
+  }
+  if(was === 'frei'){
+    try{ localStorage.removeItem(WIND_KEY); }catch(e){}
+    renderWind(); return 'Sperre aufgehoben — der Knopf geht wieder.';
+  }
+  if(was === 'demo'){
+    WIND_DEMO = true;
+    if(!WIND_N.da) WIND_N = { total: 1247, heute: 47, da: true };
+    render(); return 'Wind-Demo an (erfundener Zählerstand).';
+  }
+  const kurs = fahrtKurs();
+  if(kurs == null) return 'kein Fahrtkurs in der Spur — Windlage nicht erzwingbar';
+  const dreh = { gegen: 0, seite: 90, ruecken: 180 }[was];
+  if(was === 'flaute'){ WX_OVERRIDE = { speed: 3, dir: kurs }; }
+  else if(dreh == null) return "unbekannt — 'demo', 'gegen', 'ruecken', 'seite', 'flaute', 'frei' oder 'off'";
+  else WX_OVERRIDE = { speed: 24, dir: (kurs + dreh) % 360 };
+  WIND_DEMO = true;
+  render();
+  return `Windlage erzwungen: ${was}`;
+};
 
 function render(){
   const c = compute();
   renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c);
-  renderFerry(c); renderFuel(c); renderLog(c); renderSource(c);
+  renderFerry(c); renderFuel(c); renderWind(); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   maybeCelebrate(c);
   if(EDIT) renderDirty();
@@ -3036,6 +3307,9 @@ async function addEntry(){
        bleibt trotzdem leicht — der erste Rendergang läuft ohne sie. */
     refreshTrack().then(ok=>{ if(ok) render(); });
     setInterval(async ()=>{ if(await refreshTrack()) render(); }, 900000);
+    // Der Zählerstand ist unabhängig von allem anderen und darf den ersten
+    // Rendergang nicht aufhalten — der Streifen steht auch ohne ihn schon da.
+    windLaden();
   }
 })();
 </script>

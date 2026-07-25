@@ -14,6 +14,7 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 | `profile.json` | Das daraus gerechnete Höhenprofil (Stützpunkte + kumulierte Höhenmeter je Block). **Einzige Quelle für alle Höhenangaben im Board.** Eigener Ladetakt im Frontend (15 Min), weil es die größte Datei ist. |
 | `tools/update-tracker.mjs` | Automatisierter Scraper, siehe unten. |
 | `tools/check.mjs` | Invarianten-Prüfung der drei JSON-Dateien gegeneinander, siehe unten. |
+| `tools/wind-worker.js` | Cloudflare Worker für den Rückenwind-Zähler — die einzige Stelle außerhalb von GitHub Pages. Einrichtung im Kopfkommentar der Datei, siehe unten. |
 | `tools/com.digitalerdude.tcr84-tracker-updater.plist` | Abschrift der launchd-Konfiguration. Getickt wird nach der Kopie in `~/Library/LaunchAgents/`; `check.mjs` schlägt an, wenn beide auseinanderlaufen. |
 | `tools/package.json` | Playwright-Dependency für den Scraper. `cd tools && npm install`. |
 
@@ -1125,6 +1126,66 @@ als Prognose verkauft.
 Zum Vorführen/Testen in der Konsole: `tcr84Land('BA')` · `tcr84Land()` listet
 die Codes · `tcr84Land('off')`. Sichtbar ist das Panel erst ab dem Ablegen,
 zum Ausprobieren davor also mit `tcr84Faehre('done')` kombinieren.
+
+### Rückenwind schicken (`renderWind()`, 25.07.2026)
+
+Das erste Element, mit dem Zuschauer etwas **tun** können statt nur zu lesen:
+ein Knopf im Kopfbereich schickt eine Böe, ein Zähler sammelt sie, alle drei
+Stunden darf jeder wieder. Anlass waren rund 800 km Gegenwind.
+
+**Warum eine fremde Stelle nötig war.** Ein geteilter Zähler braucht einen Ort,
+an dem alle Besucher dieselbe Zahl sehen. GitHub Pages liefert nur aus,
+`data.json` ist allein über Git beschreibbar, `localStorage` kennt jeder
+Besucher nur für sich — „47 Menschen haben gepustet“ ist damit genau das, was
+eine statische Seite nicht kann. Also ein winziger Cloudflare Worker
+(`tools/wind-worker.js`), dessen ganze Aufgabe „zähl hoch und gib heraus“ ist.
+Er speichert keine IP, sondern einen gesalzenen Hash davon mit drei Stunden
+Verfallszeit, als Bremse gegen jemanden mit einer Schleife im Terminal.
+
+**Der Zähler ist echt, und das ist die Bedingung dafür, dass er dastehen darf.**
+Ein plausibel hochlaufender Fantasiezähler wäre billiger zu bauen gewesen und
+wäre die eine Sorte Zahl, die dieses Board nirgends zeigt — dieselbe Haltung
+wie bei `q:'plan'`, `tsSrc` und „nicht nachgesehen“ statt „keine Fähre“. Fehlt
+`WIND.api`, versteckt sich der ganze Streifen: **lieber kein Knopf als einer,
+der ins Leere greift.** Der erfundene Stand aus `tcr84Wind('demo')` bleibt
+deshalb ausdrücklich im Testmodus.
+
+**Der echte Wind steht daneben, und das ist der eigentliche Witz.** Das Board
+kennt die gemessene Windrichtung (Open-Meteo) und rechnet aus der Spur den
+tatsächlichen Fahrtkurs — es weiß also, ob ihm gerade wirklich etwas
+entgegenbläst, und sagt das („Gerade bläst es ihm mit 20 km/h ins Gesicht“ ·
+„Läuft: 24 km/h von hinten“). Man pustet gegen etwas Bestimmtes, statt ins
+Nichts. **Nirgends darf daraus die Behauptung werden, die Klicks hätten den
+Wind gedreht** — das Board freut sich mit, es rechnet nicht nach. Das ist
+dieselbe Grenze wie bei Schlaf vs. Pause: mitfühlen ja, behaupten nein.
+
+Die naheliegende Regel „er fährt nach Süden, also ist Nordwind Rückenwind“
+trägt nur bis zur Ostsee — ab dem Balkan fährt er streckenweise nach Osten.
+Der gemessene Kurs trifft es überall.
+
+**Der Kurs kommt nicht aus zwei benachbarten Spurpunkten.** Die liegen fünf
+Minuten auseinander, und bei einer Pause oder GPS-Rauschen zeigt ihre
+Verbindung in eine zufällige Richtung — das Board hätte dann bei stehendem
+Fahrer wechselnde Windlagen behauptet. Gesucht wird rückwärts der erste Punkt
+mit `kursMeter` (2 km) Abstand; findet sich keiner, schweigt der Streifen über
+die Windlage, statt eine zu erfinden. Unter `flauteKmh` (8 km/h) ist die
+Richtung ohnehin keine Aussage.
+
+**Grenze des Zählers:** Cloudflare KV erlaubt am selben Schlüssel rund einen
+Schreibvorgang pro Sekunde und kennt kein atomares „lies, erhöhe, schreib“.
+Klicken zwei Leute in derselben Sekunde, kann eine Böe verlorengehen. Für einen
+Spaßzähler ist das der richtige Tausch — Durable Objects wären atomar, brauchen
+aber wrangler und eine Konfigurationsdatei, und der Gegenwert wäre eine Böe,
+die niemand vermisst.
+
+Die Drei-Stunden-Sperre im Board ist die Spielregel, keine Sicherung: sie steht
+im `localStorage` und ist damit umgehbar. Das ist in Ordnung und soll so
+bleiben — wer sie umgeht, betrügt niemanden außer sich selbst, und die harte
+Grenze zieht ohnehin der Worker.
+
+Zum Vorführen/Testen in der Konsole: `tcr84Wind('demo')` (Streifen ohne Worker)
+· `tcr84Wind('gegen'|'ruecken'|'seite'|'flaute')` erzwingt eine Windlage ·
+`tcr84Wind('frei')` hebt die Sperre auf · `tcr84Wind('off')`.
 
 Die Tagesleistungen (260/300/340 km) sind Leistungen **inklusive Pausen**,
 die Währung der Tagesbalken, nicht reines Fahrtempo. Der mittlere Wert ist
