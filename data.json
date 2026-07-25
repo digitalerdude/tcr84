@@ -1903,14 +1903,27 @@
       "speed": 27.8,
       "ele": 84,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1784991556723",
+      "ts": "2026-07-25T16:54",
+      "tsSrc": "fix",
+      "km": 1594,
+      "place": "Ludvigsborg",
+      "note": "Platz 276",
+      "lat": 55.895728,
+      "lon": 13.621525,
+      "speed": 22.9,
+      "ele": 82,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-25T14:33:37.970Z",
+  "updated": "2026-07-25T14:59:16.866Z",
   "live": {
-    "ts": "2026-07-25T16:33",
-    "km": 1586.4,
-    "fixMinsAgo": 4,
-    "speed": 27.8,
+    "ts": "2026-07-25T16:59",
+    "km": 1594,
+    "fixMinsAgo": 5,
+    "speed": 22.9,
     "rank": 276
   }
 }
