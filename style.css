@@ -1,0 +1,503 @@
+  :root{
+    --night:#0C1620; --panel:#14212C; --panel2:#1A2A36; --line:#25394A;
+    --ice:#BCD7DE; --muted:#7F98A6; --bone:#E9E4D8; --brass:#D9A441;
+    /* Fließtext, der nicht Haupttext ist. `--muted` ist für Etiketten und
+       kurze Wortgruppen gedacht, wo das Zurücktreten die Aufgabe ist
+       (Kennzahlen-Untertitel, Achsen, Spaltenköpfe) — über einen ganzen
+       Absatz getragen wird daraus schlechte Lesbarkeit. Kontrast auf
+       --panel: 5,4 bei --muted, 8,3 hier, 10,8 bei --ice. Also heller, aber
+       weiterhin erkennbar zweite Ebene. */
+    --prose:#A6BCC7;
+    --good:#86B08C; --warn:#D9A441; --alert:#C2503C;
+    --display:"Space Grotesk","Helvetica Neue",Arial,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:var(--night);color:var(--bone);font-family:var(--display);
+       font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  a{color:var(--ice)}
+  :focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+  .wrap{max-width:1120px;margin:0 auto;padding:24px 18px 64px}
+
+  .masthead{border-bottom:1px solid var(--line);padding-bottom:16px;margin-bottom:22px}
+  .eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .titlerow{display:flex;flex-wrap:wrap;align-items:baseline;gap:12px;margin-top:6px}
+  .cap{font-family:var(--mono);font-size:42px;font-weight:600;color:var(--brass);line-height:1}
+  h1{font-size:27px;font-weight:700;letter-spacing:-.02em;margin:0}
+  .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:11px;line-height:1.8}
+  .sub a{color:var(--muted)}
+  .pill{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;
+        border:1px solid var(--line);border-radius:999px;padding:5px 12px;color:var(--muted);white-space:nowrap}
+  .pill.good{color:var(--good);border-color:var(--good)}
+  .pill.warn{color:var(--warn);border-color:var(--warn)}
+  .pill.alert{color:var(--alert);border-color:var(--alert)}
+
+  /* ---------- Rückenwind ----------
+     Der einzige Knopf im ganzen Board — er darf deshalb aussehen wie einer.
+     Messing-Rand statt Messing-Fläche: auffällig genug, um gefunden zu werden,
+     aber nicht so laut, dass er den Kilometerstand darunter überstrahlt.
+     Der Streifen sitzt direkt unter Live und Wetter, weil dort der echte Wind
+     schon steht — Knopf und Wirklichkeit gehören nebeneinander. */
+  .windbar{position:relative;display:flex;flex-wrap:wrap;align-items:center;
+           gap:10px 14px;margin-top:9px;padding:10px 13px;
+           border:1px solid var(--line);background:var(--panel)}
+  .windbtn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;
+           font-family:var(--display);font-size:13.5px;font-weight:500;color:var(--brass);
+           background:transparent;border:1px solid var(--brass);border-radius:999px;
+           padding:7px 15px;transition:background .16s,color .16s,transform .12s}
+  .windbtn:hover:not(:disabled){background:var(--brass);color:var(--night)}
+  .windbtn:active:not(:disabled){transform:scale(.96)}
+  .windbtn:disabled{cursor:default;color:var(--muted);border-color:var(--line)}
+  .windbtn .wbem{font-size:16px;line-height:1}
+  /* Das Wehen im Knopf läuft nur, solange er auch gedrückt werden kann —
+     ein wedelndes Symbol an einem toten Knopf ist eine Einladung ins Leere. */
+  .windbtn:not(:disabled) .wbem{animation:puff 2.4s ease-in-out infinite}
+  @keyframes puff{0%,100%{transform:translateX(0)}50%{transform:translateX(3px)}}
+  .windtxt{font-family:var(--mono);font-size:11.5px;color:var(--prose);
+           line-height:1.55;flex:1;min-width:180px}
+  .windtxt b{color:var(--ice);font-weight:600}
+  .windtxt .zahl{color:var(--brass);font-weight:600}
+  /* Die Böen fliegen über den Streifen und werden nach der Animation wieder
+     eingesammelt. Kein Animations-Loop in JS, gleiche Bauart wie das Konfetti
+     bei den Kontrollpunkten. */
+  .windgust{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .windgust i{position:absolute;font-style:normal;font-size:15px;opacity:0;
+              animation:gust 1.5s ease-out forwards}
+  @keyframes gust{
+    0%{opacity:0;transform:translateX(-30px) translateY(0) rotate(-8deg)}
+    18%{opacity:.95}
+    100%{opacity:0;transform:translateX(320px) translateY(var(--dy)) rotate(12deg)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .windbtn .wbem{animation:none}
+    .windgust i{animation-duration:.01ms}
+  }
+
+  .wxline{font-family:var(--mono);font-size:11.5px;color:var(--muted);
+          display:flex;gap:2px 14px;flex-wrap:wrap;align-items:center}
+  .wxline .wxval{color:var(--ice)}
+  .wxline .wxwarn{color:var(--warn)}
+  /* Der "Jetzt"-Streifen: alles was sich laufend ändert (Live-Stand + Wetter) in
+     einem abgesetzten Kasten. Vorher standen Meta-, Live- und Wetterzeile in
+     derselben Formatierung untereinander — drei gleich laute Zeilen, in denen
+     nicht zu sehen war, was Momentaufnahme ist und was seit Wochen feststeht. */
+  .nowbar{display:flex;flex-wrap:wrap;align-items:center;gap:3px 20px;margin-top:13px;
+          border:1px solid var(--line);background:var(--panel);padding:9px 13px}
+  .nowbar .wx{opacity:.68}
+  /* Kleines Augenzwinkern in der Live-Zeile: der Fahrer radelt, wenn er
+     fährt (🚴, sanft wippend), und das Rad ist abgestellt, wenn er steht
+     (🚲). Bewusst KEIN Schlaf-Symbol für die Pause — die Spur zeigt nur,
+     dass er steht, nie warum. */
+  .rideAnim{display:inline-block;animation:ride .9s ease-in-out infinite}
+  @keyframes ride{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+  /* Die Fähre schaukelt langsamer und breiter als das Rad wippt. */
+  .ferryAnim{display:inline-block;animation:sail 2.6s ease-in-out infinite}
+  @keyframes sail{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-1px) rotate(2deg)}}
+  @media (prefers-reduced-motion:reduce){.rideAnim,.ferryAnim{animation:none}}
+
+  .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
+  /* Ohne min-width:0 wächst diese Spalte (Grid-Track 1fr bzw. mobil Flex-Item)
+     per default-min-width:auto auf Inhaltsbreite — ein breiter, horizontal
+     scrollbarer Block wie die Tagesbalken schöbe sonst die ganze Seite auf,
+     statt in sich zu scrollen. */
+  .main{min-width:0}
+  .ladder-panel{position:sticky;top:18px}
+  @media (max-width:820px){
+    /* align-items:stretch MUSS hier stehen: die Basis-.cols-Regel setzt für das
+       Grid `align-items:start`, und das wirkt in die Flex-Spalte hinein — ohne
+       Streckung nimmt .main die Inhaltsbreite statt der Spaltenbreite, und ein
+       breiter Scroll-Block (Tagesbalken) schöbe die ganze Seite auf. */
+    .cols{display:flex;flex-direction:column;gap:24px;align-items:stretch}
+    .ladder-panel{position:static;order:2}
+    .main{order:1}
+  }
+
+  .ladder{position:relative;height:min(62vh,540px);min-height:400px;margin-top:12px}
+  .rail{position:absolute;left:74px;top:0;bottom:0;width:8px;border-radius:4px;
+    background:linear-gradient(to bottom,#DDEAEE 0%,#8FB6C4 18%,#5E7F86 42%,#8F8C6B 62%,#C79A4E 82%,#C2683F 100%);opacity:.9}
+  .rail-shade{position:absolute;left:74px;width:8px;border-radius:4px;background:var(--night);opacity:.72}
+  .anchor{position:absolute;left:0;right:0;transform:translateY(-50%)}
+  .anchor .tick{position:absolute;left:66px;width:24px;height:1px;background:var(--line)}
+  .anchor .lat{position:absolute;left:0;width:62px;text-align:right;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+  .anchor .nm{position:absolute;left:96px;font-size:13px;letter-spacing:-.01em;white-space:nowrap}
+  .anchor .km{position:absolute;left:96px;top:15px;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}
+  .anchor.done .nm,.anchor.done .km{color:var(--muted)}
+  /* Frisch erreichter Kontrollpunkt (< 24 h): leuchtet in der Leiter golden,
+     damit der Moment nicht kommentarlos im Log versinkt. */
+  .anchor.fresh .nm{color:var(--brass);animation:cpGlow 1.8s ease-in-out infinite}
+  @keyframes cpGlow{0%,100%{opacity:1}50%{opacity:.45}}
+  @media (prefers-reduced-motion:reduce){.anchor.fresh .nm{animation:none}}
+  .dot{position:absolute;left:70px;width:16px;height:16px;border-radius:50%;background:var(--brass);
+       box-shadow:0 0 0 4px rgba(217,164,65,.18);transform:translateY(-50%);transition:top .6s ease}
+  .dot-label{position:absolute;left:96px;transform:translateY(-50%);font-family:var(--mono);font-size:12px;
+       color:var(--brass);white-space:nowrap;transition:top .6s ease}
+  @media (prefers-reduced-motion:reduce){.dot,.dot-label{transition:none}}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line)}
+  @media (max-width:640px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .cell{background:var(--panel);padding:13px 15px 15px}
+  .cell .k{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+  .cell .v{font-family:var(--mono);font-size:24px;font-weight:600;margin-top:6px;letter-spacing:-.02em}
+  .cell .u{font-size:13px;color:var(--muted);font-weight:400}
+  .cell .n{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
+  .v.good{color:var(--good)} .v.warn{color:var(--warn)} .v.alert{color:var(--alert)}
+
+  .verdict{border:1px solid var(--line);border-left:3px solid var(--brass);background:var(--panel);
+           padding:14px 15px;margin-top:16px;font-size:14.5px}
+  .verdict.good{border-left-color:var(--good)}
+  .verdict.warn{border-left-color:var(--warn)}
+  .verdict.alert{border-left-color:var(--alert)}
+
+  h2{font-size:11px;font-family:var(--mono);letter-spacing:.18em;text-transform:uppercase;
+     color:var(--muted);margin:30px 0 11px;font-weight:500}
+
+  .editbox{border:1px solid var(--brass);background:var(--panel);padding:16px;margin-top:26px}
+  .form{display:grid;grid-template-columns:1.1fr .7fr 1fr 1.3fr auto;gap:10px;align-items:end}
+  @media (max-width:820px){.form{grid-template-columns:1fr 1fr}}
+  label{display:block;font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;
+        text-transform:uppercase;color:var(--muted);margin-bottom:5px}
+  input{width:100%;background:var(--panel2);border:1px solid var(--line);color:var(--bone);
+        font-family:var(--mono);font-size:16px;padding:9px 10px;border-radius:2px}
+  input::placeholder{color:#5D7382}
+  button{font-family:var(--display);font-size:14px;font-weight:500;padding:10px 16px;border-radius:2px;
+         border:1px solid var(--brass);background:var(--brass);color:#12202B;cursor:pointer}
+  button:hover{background:#E6B458}
+  button.ghost{background:transparent;color:var(--muted);border-color:var(--line)}
+  button.ghost:hover{color:var(--bone);border-color:var(--muted)}
+  .btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  .msg{font-family:var(--mono);font-size:12px;color:var(--brass);margin-top:8px;min-height:16px}
+  .msg.err{color:var(--alert)}
+  textarea{width:100%;height:150px;background:#0A131B;color:var(--ice);border:1px solid var(--line);
+           font-family:var(--mono);font-size:11.5px;padding:10px;margin-top:12px;border-radius:2px}
+
+  /* Feste Spaltenbreite statt flex:1 — sonst quetschten sich die km-/Höhen-
+     meter-Zahlen mit jedem neuen Tag enger, bis sie unleserlich wurden. Bei
+     ~62 px passen mobil rund 5 Tage ins Sichtfenster; darüber hinaus scrollt
+     die Reihe horizontal (jüngster Tag rechts, siehe renderDays). Die drei
+     Zeilen teilen sich `--daycol`, damit Balken, Streifen und Datum spalten-
+     genau übereinanderstehen. */
+  /* Weiche Farbkante als Hinweis „hier geht es weiter“: der native Scrollbalken
+     ist auf dem Handy meist unsichtbar, bis man wischt. Die Fades erscheinen nur
+     auf der Seite, wo tatsächlich noch Tage außerhalb liegen (Klassen more-left/
+     more-right, in renderDays gesetzt). */
+  .dayscrollwrap{position:relative}
+  .dayscrollwrap::before,.dayscrollwrap::after{content:'';position:absolute;top:0;bottom:0;
+        width:26px;pointer-events:none;opacity:0;transition:opacity .18s;z-index:2}
+  .dayscrollwrap::before{left:0;background:linear-gradient(to right,var(--night),transparent)}
+  .dayscrollwrap::after{right:0;background:linear-gradient(to left,var(--night),transparent)}
+  .dayscrollwrap.more-left::before{opacity:1}
+  .dayscrollwrap.more-right::after{opacity:1}
+  /* Nativen Scrollbalken ausblenden: er saß am unteren Rand des Containers und
+     überdeckte die Datumszeile. Die Fade-Kante trägt den „weiter“-Hinweis
+     ohnehin verlässlicher (Touch-Geräte blenden den Balken selbst aus), das
+     Wischen/Trackpad-Scrollen bleibt unverändert. */
+  .dayscroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-ms-overflow-style:none;max-width:100%}
+  .dayscroll::-webkit-scrollbar{display:none}
+  /* min-width:100% + width:max-content: solange die Spalten in die Breite
+     passen, füllt der Track das Sichtfenster (Balken strecken sich, kein leerer
+     Rand auf dem Desktop); wachsen sie darüber hinaus, wird der Track breiter
+     als 100 % und scrollt. Die Spalten selbst wachsen mit (flex-grow), fallen
+     aber nie unter --daycol (flex-shrink:0) — genau dort setzt der Scroll ein. */
+  .daystrack{--daycol:62px;display:flex;flex-direction:column;min-width:100%;width:max-content}
+  .days{display:flex;gap:5px;align-items:flex-end;height:92px;border-bottom:1px solid var(--line)}
+  .day{flex:1 0 var(--daycol);display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+  .bar{width:100%;background:var(--ice);opacity:.5;border-radius:2px 2px 0 0;min-height:2px}
+  .bar.top{opacity:1;background:var(--brass)}
+  /* Tagesstreifen unter den Balken: 24 Stunden von links nach rechts, Messing
+     wo der Tracker Bewegung zeigt, abgedunkelt wo er stand. */
+  .daystrips{display:flex;gap:5px;margin-top:4px}
+  .daystripcell{flex:1 0 var(--daycol)}
+  .daystrip{position:relative;height:4px;border-radius:2px;overflow:hidden}
+  .daystrip b{position:absolute;top:0;height:100%;background:var(--brass);opacity:.7}
+  .daystrip i{position:absolute;top:0;height:100%;background:var(--night)}
+  .daystrip i.ferry{background:var(--ice)}
+  .striplegend{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:7px}
+  .striplegend .lg-ride{color:var(--brass)}
+  .striplegend .lg-ferry{color:var(--ice)}
+  .daylabels{display:flex;gap:5px;margin-top:6px}
+  .daylabel{flex:1 0 var(--daycol);text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
+  .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
+  .dayhm{font-family:var(--mono);font-size:8.5px;color:var(--brass);opacity:.8}
+
+  /* Fährplanung: je Hafen ein Kasten, der als Angelpunkt empfohlene mit
+     Messing-Kante wie beim Einschätzungskasten. Die Abfahrtszeiten stehen
+     in der Monoschrift, damit die Spalten untereinander stehen. */
+  /* Bis hierhin ließ sich im Board alles nur AUSKLAPPEN — die drei Szenario-
+     Knöpfe sind der erste echte Klick-mich-Regler. Ohne gelernte Erwartung
+     sahen sie als flacher Streifen mit 1px-Trennlinie eher wie eine
+     Kopfzeile aus als wie etwas zum Antippen. Jetzt: eigene Kachel je
+     Knopf (Rand, Radius, Schatten) statt eines nahtlosen Balkens, plus
+     Press-Feedback beim Antippen — dieselben Signale wie ein Knopf im
+     wirklichen Leben. */
+  .ferscen-hint{font-family:var(--mono);font-size:9.5px;letter-spacing:.16em;
+        text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+  .ferscen{display:flex;gap:7px;margin:0 0 15px}
+  .ferscen button{flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+        color:var(--muted);cursor:pointer;font-family:var(--mono);font-size:10px;letter-spacing:.14em;
+        text-transform:uppercase;padding:10px 4px;box-shadow:0 1px 2px rgba(0,0,0,.3);
+        transition:transform .12s ease,border-color .15s ease,box-shadow .15s ease}
+  .ferscen button:active{transform:translateY(1px) scale(.98);box-shadow:0 1px 0 rgba(0,0,0,.2)}
+  .ferscen button.on{border-color:var(--brass);color:var(--brass);
+        box-shadow:0 0 0 1px var(--brass) inset,0 1px 2px rgba(0,0,0,.3)}
+  .ferscen button b{display:block;font-size:13px;letter-spacing:0;margin-top:4px;color:var(--bone);font-weight:600}
+  .ferscen button.on b{color:var(--brass)}
+  @media (hover:hover){
+    .ferscen button:hover{border-color:var(--ice)}
+    .ferscen button.on:hover{border-color:var(--brass)}
+  }
+  .ferport{border:1px solid var(--line);border-left:3px solid var(--line);
+           background:var(--panel);padding:11px 13px;margin-bottom:9px}
+  .ferport.pick{border-left-color:var(--brass)}
+  .ferhead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 14px;align-items:baseline}
+  .ferhead .pn{font-size:15px;letter-spacing:-.01em}
+  .ferhead .pk{font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .ferhead .pa{font-family:var(--mono);font-size:11.5px;color:var(--ice)}
+  /* Je Abfahrt zwei klare Zeilen statt eines umbrechenden Fließbands: oben die
+     Zeiten (das Scan-Kriterium), darunter gedämpft Linie/Preis/Wartezeit. So
+     bricht mobil nichts mehr ragged über drei Zeilen. Das Datum wiederholt
+     sich innerhalb eines Hafens meist — es steht deshalb nur, wenn es wechselt
+     (dedup in renderFerry), sonst nur die Uhrzeit. */
+  .ferdep{margin-top:9px;font-family:var(--mono)}
+  .ferdep .fdtime{display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline;
+          font-size:12.5px;color:var(--ice)}
+  .ferdep .mk{color:var(--line)}
+  .ferdep.first .mk,.ferdep.first .dt{color:var(--brass)}
+  .ferdep .arr{color:var(--muted)}
+  .ferdep .fdmeta{display:flex;flex-wrap:wrap;gap:0 8px;align-items:baseline;
+          font-size:10.5px;color:var(--muted);margin-top:2px}
+  /* Abfahrten ohne Radmitnahme bleiben stehen und treten zurück: sie sind
+     die Antwort auf "warum fehlt die 17:30?", nicht Rauschen. */
+  .ferdep.aus{opacity:.45}
+  .ferdep.aus .dt{color:var(--muted);text-decoration:line-through}
+  .ferdep .plan{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+                border:1px solid var(--line);border-radius:2px;padding:1px 4px}
+  .ferdep .norad{color:var(--alert)}
+  .fernone{font-family:var(--mono);font-size:11px;color:var(--prose);margin-top:5px}
+  .ferknapp{font-family:var(--mono);font-size:11px;color:var(--prose);line-height:1.6;
+            margin-top:8px;padding-top:7px;border-top:1px dashed var(--line)}
+  .ferknapp b{color:var(--brass);font-weight:500}
+  /* Der innere Klapper sitzt schon in einem Kasten — also ohne eigenen
+     Rahmen und ohne den Abstand, den ein Kasten oben braucht. */
+  .ferinfo{border:none;background:none;margin-top:6px}
+  .ferinfo > summary{padding:9px 0}
+  .ferinfo > summary:hover{color:var(--ice)}
+  .ferinfobody{padding-top:2px}
+  .ferpause{font-family:var(--mono);font-size:11px;color:var(--prose);line-height:1.65;
+            border-left:2px solid var(--line);padding-left:10px;margin:0 0 13px}
+  /* Status während/nach der Überfahrt — Messing-Kante wie der empfohlene
+     Hafen, damit sofort klar ist: das ist gerade DIE Sache. */
+  .ferstatus{border:1px solid var(--line);border-left:3px solid var(--brass);
+             background:var(--panel);padding:13px 15px;margin:14px 0 4px}
+  .ferstatus .fsline{font-size:15px;letter-spacing:-.01em;color:var(--bone)}
+  .ferstatus .ferbig{font-weight:600}
+  .ferstatus.on .ferbig{color:var(--brass)}
+  .ferstatus .fsmeta{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:6px}
+  /* Countdown-Kachel für die gebuchte Überfahrt — bewusst die auffälligste
+     Karte im Fährpanel: "welche Fähre" ist beantwortet, übrig bleibt nur noch
+     das Ticken bis zur Abfahrt. Gleiche Messing-Kante wie der Status während
+     der Überfahrt selbst, damit der spätere Übergang zwischen beiden nicht
+     wie ein Bruch wirkt. Die große Zahl pulst sanft wie ein frisch erreichter
+     Kontrollpunkt in der Leiter (`.anchor.fresh`, gleiches Keyframe) — hier
+     bewusst über die ganze Wartezeit statt nur 24 h, weil das Gebuchte selbst
+     der Moment ist, nicht ein einzelner Zeitpunkt. */
+  .ferbooked{border:1px solid var(--line);border-left:3px solid var(--brass);
+             background:var(--panel);padding:15px 16px;margin:14px 0 4px}
+  .ferb-eyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.18em;
+                text-transform:uppercase;color:var(--brass)}
+  .ferb-head{font-size:16px;letter-spacing:-.01em;color:var(--bone);margin-top:5px}
+  .ferb-count{display:flex;align-items:baseline;gap:9px;margin-top:11px;flex-wrap:wrap}
+  .ferb-num{font-family:var(--mono);font-size:26px;font-weight:600;letter-spacing:-.01em;
+            color:var(--brass);animation:cpGlow 2.6s ease-in-out infinite}
+  .ferb-lbl{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;
+            text-transform:uppercase;color:var(--muted)}
+  .ferb-meta{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:9px}
+  /* Die einzige echte Fließtext-Zeile in der Kachel — deshalb --prose statt
+     --muted, siehe Konvention unten bei .profnote. */
+  .ferb-cheer{font-size:13px;color:var(--prose);margin-top:11px;line-height:1.5}
+  @media (prefers-reduced-motion:reduce){.ferb-num{animation:none}}
+  /* Emoji-Marker der Karte: nur das Zeichen, kein Leaflet-Kästchen. */
+  .ferIcon{font-size:19px;line-height:24px;text-align:center;text-shadow:0 0 3px #0C1620}
+  /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
+     zu sehen ist — dafür fällt sie aus dem Versalsatz der übrigen Summaries. */
+  #ferrySum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
+  #fuelSum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
+
+  /* ---------- Verpflegung ----------
+     Der einzige Teil des Boards, der nichts entscheidet und nichts warnt.
+     Er darf deshalb lauter aussehen als der Rest — aber nicht lauter als die
+     Kennzahlen oben, sonst kippt das Board von Dotwatch zu Spielerei. Die
+     große Zahl bekommt Messing, die Speisekarte darunter bleibt im
+     Mono-Etikettensatz der übrigen Tabellen. */
+  .fuelhero{border:1px solid var(--line);border-left:3px solid var(--brass);
+            background:var(--panel2);padding:15px 16px 16px}
+  .fuelbig{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .fuelnum{font-family:var(--mono);font-size:34px;font-weight:600;letter-spacing:-.02em;
+           color:var(--brass);line-height:1}
+  .fuelunit{font-family:var(--mono);font-size:10.5px;letter-spacing:.18em;
+            text-transform:uppercase;color:var(--muted)}
+  .fuelsub{font-family:var(--mono);font-size:11.5px;color:var(--ice);margin-top:9px}
+  .fuelsub b{color:var(--brass);font-weight:600}
+  /* Der Emoji-Schwarm. Jedes Teil bekommt eine eigene, aus dem Index
+     abgeleitete Drehung — deterministisch, damit das 60s-Re-Render nicht
+     jedes Mal ein anderes Bild zeigt. Kein Math.random(). */
+  .fuelswarm{display:flex;flex-wrap:wrap;gap:2px 1px;margin-top:12px;line-height:1}
+  .fuelswarm i{font-style:normal;font-size:16px;display:inline-block;
+               transform:rotate(var(--r)) translateY(var(--y))}
+  .fuelrest{font-family:var(--mono);font-size:11px;color:var(--muted);
+            margin-top:10px;line-height:1.6}
+
+  /* Speisekarte: Gericht links, Kalorien rechts, dazwischen die Punktlinie —
+     die Optik einer echten Karte, und zugleich die klarste Zuordnung von
+     Name zu Zahl bei stark unterschiedlichen Namenslängen. */
+  .fuelmenu{border:1px solid var(--line);background:var(--panel);
+            padding:13px 15px 14px;margin-top:12px}
+  .fmhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+          text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .fmhead b{color:var(--brass);font-weight:600;letter-spacing:.16em}
+  /* Gericht und Kalorien in einer Zeile, die Beschreibung darunter — die Optik
+     einer echten Speisekarte, und zugleich das einzige Layout, das mobil
+     trägt: stand die Beschreibung in derselben Zeile, wuchs sie über die
+     Breite und schob die Punktlinie mitten in den umbrechenden Text. */
+  .fmrow{display:flex;flex-wrap:wrap;align-items:baseline;gap:7px;font-size:13.5px;
+         color:var(--bone);padding:5px 0}
+  .fmrow .dots{flex:1;border-bottom:1px dotted var(--line);min-width:16px}
+  .fmrow .kc{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap}
+  .fmrow .em{font-size:14px}
+  .fmrow .was{flex-basis:100%;margin-left:21px;color:var(--muted);font-size:12px;line-height:1.4}
+  .fmnote{font-size:12.5px;color:var(--prose);margin-top:11px;line-height:1.55}
+  .fmnote b{color:var(--ice);font-weight:500}
+
+  /* Die kommenden Länder: eine Reihe Häppchen, kein Block. Sie sind Ausblick,
+     nicht Information — deshalb klein, einzeilig und ohne Kalorienangabe. */
+  .fuelnext{margin-top:12px}
+  .fnrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .fnchip{font-family:var(--mono);font-size:11px;color:var(--muted);
+          border:1px solid var(--line);border-radius:999px;padding:4px 10px;
+          display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+  .fnchip .fl{font-size:13px}
+
+  /* Höhenprofil: Kennzahlenstreifen + SVG-Diagramm als ein zusammenhängender Block.
+     Der Streifen ist mobil zweispaltig und wird ab 641px vierspaltig. */
+  .hmstrip{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:var(--line);
+           border:1px solid var(--line);border-bottom:none}
+  @media (min-width:641px){.hmstrip{grid-template-columns:repeat(4,1fr)}}
+  .profbox{border:1px solid var(--line);background:var(--panel);padding:10px 10px 6px}
+  .profhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:2px}
+  .profread{font-family:var(--mono);font-size:11px;color:var(--muted);min-height:17px;
+            display:flex;gap:12px;flex-wrap:wrap}
+  .profread .rv{color:var(--brass)}
+  /* Mobil konkurrieren Umschalter und Auslese-Zeile um die Breite, und die
+     Zeile bricht auf drei Zeilen um. Also stapeln: Umschalter oben rechts,
+     die Auslese darunter auf voller Breite (direkt über dem Diagramm, das
+     sie beschreibt). */
+  @media (max-width:560px){
+    .profhead{flex-direction:column-reverse;align-items:stretch;gap:8px}
+    .profwin{align-self:flex-end}
+  }
+  /* Umschalter Ausschnitt/Gesamt — kompaktes Segmentpaar, rechts oben im
+     Diagramm. Aktives Segment in Messing. */
+  .profwin{display:flex;gap:1px;background:var(--line);border:1px solid var(--line);
+           border-radius:6px;overflow:hidden;flex:none}
+  .profwin button{background:var(--panel);border:none;color:var(--muted);cursor:pointer;
+           font-family:var(--mono);font-size:9.5px;letter-spacing:.04em;padding:4px 9px;white-space:nowrap}
+  .profwin button.on{background:var(--panel2);color:var(--brass)}
+  @media (hover:hover){.profwin button:not(.on):hover{color:var(--ice)}}
+  .profbox svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+  /* SVG-Farben über Klassen statt var() in Präsentationsattributen — die
+     werden nicht überall gleich zuverlässig ersetzt. */
+  .profbox svg text{font-family:var(--mono);fill:var(--muted)}
+  .profbox .gl{stroke:var(--line)}
+  .profbox .pl{stroke:var(--brass)}
+  .profbox .cpl,.profbox .gd{stroke:var(--ice)}
+  .profbox .pband{fill:var(--brass);opacity:.55}
+  .profbox .pdot{fill:var(--brass);stroke:var(--night)}
+  .profbox .pmark{fill:var(--ice);opacity:.55}
+  .profbox .pcur{fill:var(--ice)}
+  /* Zweitfassung des Profils unter der Karte: sitzt bündig darunter, ohne
+     eigene Kennzahlen — die stehen schon oben im Board. */
+  .mapprof{margin-top:10px}
+  .mapprof .profbox{padding:8px 10px 4px}
+  .profnote{font-size:13px;color:var(--prose);margin:0;line-height:1.6}
+  .profnote + .profnote{margin-top:10px}
+  /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
+  #profileWrap details{margin-top:-1px}
+
+  /* Feiermoment beim Erreichen eines Kontrollpunkts. Vollflächig, weil der
+     Moment im Rennen selten ist (fünfmal in drei Wochen) — er darf den Blick
+     einmal ganz haben und ist mit einem Klick wieder weg. */
+  .celebrate{position:fixed;inset:0;z-index:9000;display:flex;align-items:center;justify-content:center;
+             background:rgba(6,12,18,.84);padding:20px;animation:celFade .3s ease}
+  @keyframes celFade{from{opacity:0}to{opacity:1}}
+  .celPanel{position:relative;background:var(--panel);border:1px solid var(--brass);
+            max-width:390px;width:100%;padding:26px 22px 22px;text-align:center;
+            animation:celPop .45s cubic-bezier(.2,1.25,.4,1)}
+  @keyframes celPop{from{opacity:0;transform:scale(.88) translateY(14px)}to{opacity:1;transform:none}}
+  .celEyebrow{font-family:var(--mono);font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted)}
+  .celPanel h3{font-size:25px;margin:7px 0 0;letter-spacing:-.02em}
+  .celSub{font-family:var(--mono);font-size:12px;color:var(--ice);margin-top:11px;line-height:1.75}
+  .celStats{display:flex;justify-content:center;gap:22px;margin-top:15px;
+            font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .celStats b{display:block;font-size:18px;color:var(--bone);font-weight:600;margin-bottom:3px;letter-spacing:-.02em}
+  /* Fortschrittspunkte: erledigte Kontrollpunkte gefüllt, kommende hohl, das
+     Ziel als Raute. Vier gleich aussehende Feiern erzählen sonst nicht, dass
+     es vorangeht — hier sieht man auf einen Blick, das wievielte Etappenziel
+     das war. */
+  .celPath{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:17px}
+  .celPath i{width:8px;height:8px;border-radius:50%;border:1.5px solid var(--brass);display:block;opacity:.55}
+  .celPath i.on{background:var(--brass);opacity:1}
+  .celPath i.fin{border-radius:2px;transform:rotate(45deg);width:9px;height:9px}
+  .celNext{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px}
+  .celNext b{color:var(--ice);font-weight:500}
+  .celClose{margin-top:19px;width:100%}
+  /* Der Haken zeichnet sich selbst: Kreis, dann Häkchen — reines
+     stroke-dashoffset, kein Bild und keine Bibliothek. */
+  .celMark{width:72px;height:72px;margin:0 auto;display:block}
+  .celMark .cm-c,.celMark .cm-k{fill:none;stroke:var(--good);stroke-linecap:round;stroke-linejoin:round}
+  .celMark .cm-c{stroke-width:3;stroke-dasharray:170;stroke-dashoffset:170;animation:celDraw .55s ease-out .1s forwards}
+  .celMark .cm-k{stroke-width:4;stroke-dasharray:44;stroke-dashoffset:44;animation:celDraw .35s ease-out .5s forwards}
+  @keyframes celDraw{to{stroke-dashoffset:0}}
+  .confetti{position:fixed;inset:0;z-index:9001;pointer-events:none;overflow:hidden}
+  .confetti i{position:absolute;top:-8vh;display:block;animation:confFall linear forwards}
+  @keyframes confFall{to{transform:translate(var(--dx,0),114vh) rotate(var(--rot,720deg))}}
+  @media (prefers-reduced-motion:reduce){
+    .celPanel{animation:none}
+    .celMark .cm-c,.celMark .cm-k{animation:none;stroke-dashoffset:0}
+  }
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+     text-align:left;font-weight:500;padding:0 8px 8px 0;border-bottom:1px solid var(--line)}
+  td{padding:9px 8px 9px 0;border-bottom:1px solid #1C2C39;vertical-align:top}
+  td.num{font-family:var(--mono);white-space:nowrap;font-size:13px}
+  .del{background:none;border:none;color:#5D7382;cursor:pointer;font-size:16px;padding:0 4px}
+  .del:hover{color:var(--alert)}
+  .empty{color:var(--muted);font-size:14px;border:1px dashed var(--line);padding:16px;text-align:center}
+  tr.logRow.hasDetail{cursor:pointer}
+  tr.logRow.hasDetail:hover td{background:var(--panel2)}
+  .gpsMark{color:var(--muted);font-size:11px}
+  tr.logPause td{padding:7px 8px;border-bottom:1px solid #1C2C39;background:var(--panel2);
+                 font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.04em}
+  tr.logPause .pv{color:var(--bone)}
+  .logMore{width:100%;background:var(--panel);border:1px solid var(--line);border-top:none;
+           cursor:pointer;padding:11px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+           text-transform:uppercase;color:var(--muted);text-align:left}
+  .logMore:hover{color:var(--bone);background:var(--panel2)}
+  tr.logDetail td{padding:2px 8px 12px 0;border-bottom:1px solid #1C2C39;background:var(--panel2)}
+  tr.logDetail .dk{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
+  tr.logDetail .dk a{color:var(--brass)}
+  #mapWrap{height:320px;border-radius:2px;overflow:hidden}
+  #mapWrap .leaflet-container{background:var(--panel);font-family:var(--display)}
+  /* Popups an das Board angleichen — Leaflets Weiß auf Weiß blendet hier sonst */
+  #mapWrap .leaflet-popup-content-wrapper,#mapWrap .leaflet-popup-tip{
+    background:var(--panel2);color:var(--bone);border:1px solid var(--line);border-radius:2px;box-shadow:none}
+  #mapWrap .leaflet-popup-content{margin:9px 12px;font-size:12.5px;line-height:1.55}
+  #mapWrap .leaflet-popup-close-button{color:var(--muted)}
+  details{border:1px solid var(--line);background:var(--panel);margin-top:22px}
+  summary{cursor:pointer;padding:12px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+          text-transform:uppercase;color:var(--muted)}
+  .setbody{padding:4px 15px 18px;border-top:1px solid var(--line)}
+  .setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:14px}
+  footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);
+         font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8}
+  code{background:#0A131B;padding:1px 5px;border-radius:2px;font-size:11px}
