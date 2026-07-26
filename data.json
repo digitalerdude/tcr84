@@ -2478,14 +2478,28 @@
       "speed": 28.6,
       "ele": 78,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785076661939",
+      "ts": "2026-07-26T16:33",
+      "tsSrc": "fix",
+      "km": 1851.45,
+      "place": "Stolzenberg",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 52.830114,
+      "lon": 15.353604,
+      "speed": 0,
+      "ele": 76,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T14:12:25.718Z",
+  "updated": "2026-07-26T14:37:42.107Z",
   "live": {
-    "ts": "2026-07-26T16:12",
-    "km": 1847.19,
-    "fixMinsAgo": 3,
-    "speed": 28.6,
+    "ts": "2026-07-26T16:37",
+    "km": 1851.45,
+    "fixMinsAgo": 4,
+    "speed": 0,
     "rank": 276
   }
 }
