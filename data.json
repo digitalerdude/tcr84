@@ -2436,14 +2436,28 @@
       "speed": 0,
       "ele": 87,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785072048260",
+      "ts": "2026-07-26T15:18",
+      "tsSrc": "track",
+      "km": 1828.58,
+      "place": "Rehfelde",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 53.008375,
+      "lon": 15.305753,
+      "speed": 27,
+      "ele": 96,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T12:55:38.219Z",
+  "updated": "2026-07-26T13:20:48.437Z",
   "live": {
-    "ts": "2026-07-26T14:55",
-    "km": 1823.98,
-    "fixMinsAgo": 6,
-    "speed": 0,
+    "ts": "2026-07-26T15:20",
+    "km": 1828.58,
+    "fixMinsAgo": 2,
+    "speed": 27,
     "rank": 276
   }
 }
