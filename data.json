@@ -2366,14 +2366,28 @@
       "speed": 24.6,
       "ele": 22,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785064486601",
+      "ts": "2026-07-26T13:09",
+      "tsSrc": "fix",
+      "km": 1789.12,
+      "place": "Witkowo Drugie",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 53.293122,
+      "lon": 15.058165,
+      "speed": 22.9,
+      "ele": 29,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T10:48:58.647Z",
+  "updated": "2026-07-26T11:14:46.822Z",
   "live": {
-    "ts": "2026-07-26T12:48",
-    "km": 1779.09,
-    "fixMinsAgo": 4,
-    "speed": 24.6,
+    "ts": "2026-07-26T13:14",
+    "km": 1789.12,
+    "fixMinsAgo": 5,
+    "speed": 22.9,
     "rank": 276
   }
 }
