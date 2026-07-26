@@ -2548,14 +2548,28 @@
       "speed": 22.8,
       "ele": 47,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785084695162",
+      "ts": "2026-07-26T18:45",
+      "tsSrc": "fix",
+      "km": 1889.92,
+      "place": "Schwerin an der Warthe",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 52.584809,
+      "lon": 15.51445,
+      "speed": 0.2,
+      "ele": 33,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T16:18:47.568Z",
+  "updated": "2026-07-26T16:51:35.335Z",
   "live": {
-    "ts": "2026-07-26T18:18",
-    "km": 1880.17,
-    "fixMinsAgo": 3,
-    "speed": 22.8,
+    "ts": "2026-07-26T18:51",
+    "km": 1889.92,
+    "fixMinsAgo": 6,
+    "speed": 0.2,
     "rank": 276
   }
 }
