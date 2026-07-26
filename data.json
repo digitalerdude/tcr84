@@ -2394,14 +2394,28 @@
       "speed": 24.2,
       "ele": 34,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785067507935",
+      "ts": "2026-07-26T13:59",
+      "tsSrc": "fix",
+      "km": 1807.21,
+      "place": "Dölitz in Pommern",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 53.177741,
+      "lon": 15.212976,
+      "speed": 20.4,
+      "ele": 48,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T11:39:58.354Z",
+  "updated": "2026-07-26T12:05:08.039Z",
   "live": {
-    "ts": "2026-07-26T13:39",
-    "km": 1798.67,
-    "fixMinsAgo": 5,
-    "speed": 24.2,
+    "ts": "2026-07-26T14:05",
+    "km": 1807.21,
+    "fixMinsAgo": 6,
+    "speed": 20.4,
     "rank": 276
   }
 }
