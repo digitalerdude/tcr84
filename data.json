@@ -2226,14 +2226,28 @@
       "speed": 21.3,
       "ele": 2,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785049351199",
+      "ts": "2026-07-26T08:59",
+      "tsSrc": "track",
+      "km": 1700.87,
+      "place": "Dargebanz",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 53.872111,
+      "lon": 14.540552,
+      "speed": 26.7,
+      "ele": 4,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T06:37:18.688Z",
+  "updated": "2026-07-26T07:02:31.349Z",
   "live": {
-    "ts": "2026-07-26T08:37",
-    "km": 1692.29,
-    "fixMinsAgo": 6,
-    "speed": 21.3,
+    "ts": "2026-07-26T09:02",
+    "km": 1700.87,
+    "fixMinsAgo": 3,
+    "speed": 26.7,
     "rank": 276
   }
 }
