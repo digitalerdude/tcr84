@@ -2282,14 +2282,28 @@
       "speed": 23.2,
       "ele": 16,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785055389188",
+      "ts": "2026-07-26T10:39",
+      "tsSrc": "track",
+      "km": 1735.75,
+      "place": "Neu Dischenhagen",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 53.682184,
+      "lon": 14.810162,
+      "speed": 28.5,
+      "ele": 21,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T08:17:59.335Z",
+  "updated": "2026-07-26T08:43:09.281Z",
   "live": {
-    "ts": "2026-07-26T10:17",
-    "km": 1725.52,
-    "fixMinsAgo": 3,
-    "speed": 23.2,
+    "ts": "2026-07-26T10:43",
+    "km": 1735.75,
+    "fixMinsAgo": 4,
+    "speed": 28.5,
     "rank": 276
   }
 }
