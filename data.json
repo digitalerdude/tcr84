@@ -2198,14 +2198,28 @@
       "speed": 1,
       "ele": 3,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785045949493",
+      "ts": "2026-07-26T07:59",
+      "tsSrc": "fix",
+      "km": 1679.49,
+      "place": "Swinemünde",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 53.864031,
+      "lon": 14.29344,
+      "speed": 25.5,
+      "ele": 1,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-26T05:39:51.056Z",
+  "updated": "2026-07-26T06:05:49.724Z",
   "live": {
-    "ts": "2026-07-26T07:39",
-    "km": 1673,
-    "fixMinsAgo": 5,
-    "speed": 1,
+    "ts": "2026-07-26T08:05",
+    "km": 1679.49,
+    "fixMinsAgo": 6,
+    "speed": 25.5,
     "rank": 276
   }
 }
