@@ -225,8 +225,10 @@
   .daystrip{position:relative;height:4px;border-radius:2px;overflow:hidden}
   .daystrip b{position:absolute;top:0;height:100%;background:var(--brass);opacity:.7}
   .daystrip i{position:absolute;top:0;height:100%;background:var(--night)}
+  .daystrip i.ferry{background:var(--ice)}
   .striplegend{font-family:var(--mono);font-size:9.5px;color:var(--muted);margin-top:7px}
   .striplegend .lg-ride{color:var(--brass)}
+  .striplegend .lg-ferry{color:var(--ice)}
   .daylabels{display:flex;gap:5px;margin-top:6px}
   .daylabel{flex:1 0 var(--daycol);text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
   .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
@@ -949,10 +951,10 @@ function renderMetrics(c){
        wissen wir ja gar nicht, ob die Pause noch läuft. */
     if(S.live && S.live.stopSince && (c.now - new Date(S.live.ts))/6e4 <= 150){
       const mitternacht = new Date(c.now.getFullYear(), c.now.getMonth(), c.now.getDate()).getTime()/1000;
-      const a = cumClimbAt(mitternacht), b = cumClimbAt(c.now.getTime()/1000);
-      if(a && b){
-        const kmHeute = Math.round((b.km - a.km) * c.kmScale);
-        const hmHeute = Math.max(Math.round(b.up - a.up), 0);
+      const eff = effortBetween(mitternacht, c.now.getTime()/1000);
+      if(eff){
+        const kmHeute = Math.round(eff.km * c.kmScale);
+        const hmHeute = Math.round(eff.up);
         if(kmHeute >= 30) p.push(`Heute stehen schon <strong>${num(kmHeute)} km</strong> und ↑ ${num(hmHeute)} hm in den Beinen — die Pause ist verdient.`);
       }
     }
@@ -1005,18 +1007,15 @@ function renderLive(c){
 
   /* Die Überfahrt hat Vorrang vor allem anderen: während er auf der Fähre
      sitzt, meldet der Tracker Tempo 0, und ohne diesen Zweig stünde hier
-     „🚲 Pause“ — genau das Falsche. `done` bleibt 24 h stehen, danach ist die
-     Überfahrt Geschichte und die normale Zeile übernimmt wieder. */
+     „🚲 Pause“ — genau das Falsche. Ist die Überfahrt vorbei, übernimmt sofort
+     wieder die normale Zeile (keine 24h-Nachlaufzeit mehr, siehe renderFerry()
+     — dieselbe Entscheidung, dieselbe Begründung: sobald er wieder fährt,
+     zeigt das echte Live-Tempo mehr als eine stehende „Fähre genommen“-Notiz). */
   const fer = c.ferry;
-  const ferFrisch = fer && fer.state === 'done' && fer.landTs
-    && (c.now - new Date(fer.landTs)) < 24*3.6e6;
   if(fer && fer.state === 'onboard'){
     teile.push(`<span><span class="ferryAnim">⛴️</span> <span class="wxval">Auf der Fähre</span>` +
       ` · seit ${new Date(fer.boardTs).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr` +
       ` nach ${esc(FERRY.ziel)}</span>`);
-  } else if(ferFrisch){
-    teile.push(`<span>⛴️ <span class="wxval">Fähre genommen</span>` +
-      ` · an ${new Date(fer.landTs).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>`);
   } else if(alterAbruf > 150){
     // Nicht der Fahrer hängt, sondern unsere Abfrage — das muss man auseinanderhalten.
     teile.push(`<span class="wxwarn">⚠ Abruf zuletzt ${fmt(lv.ts)}</span>`);
@@ -1126,6 +1125,53 @@ function climbBetween(tsA, tsB){
   const b = cumClimbAt(new Date(tsB).getTime()/1000);
   if(!a || !b) return null;
   return {up: Math.max(Math.round(b.up-a.up), 0), down: Math.max(Math.round(b.down-a.down), 0)};
+}
+/* Kilometer/Höhenmeter zwischen zwei Zeitpunkten, aber ohne eine dazwischen
+   liegende Fährüberfahrt mitzuzählen. profile.json bucht eine Überfahrt seit
+   dem 26.07.2026 mit 0 Höhenmetern (siehe update-tracker.mjs), aber weiterhin
+   mit ihrer Luftlinien-Distanz als "km" — sonst gäbe es gar keinen Wert, auf
+   den sich `kmScale` beim Zeichnen bezieht. cumClimbAt() interpoliert diese
+   km linear über die ganze Blockdauer, und liegt Mitternacht mitten in der
+   Überfahrt (wie in der Nacht Ystad→Świnoujście), bekäme „seit Mitternacht"
+   einen Teil einer Strecke gutgeschrieben, die er sitzend auf einem Schiff
+   zurückgelegt hat, nicht tretend. Deshalb wird der Anteil der Überfahrt, der
+   in [t1,t2] fällt, aus dem km-Delta wieder herausgerechnet — auch bei nur
+   teilweiser Überlappung, denn genau die tritt hier ein (die Nacht beginnt
+   vor der Abfahrt und endet nach Mitternacht, aber vor der Landung). */
+function effortBetween(t1, t2){
+  const a = cumClimbAt(t1), b = cumClimbAt(t2);
+  if(!a || !b) return null;
+  let km = b.km - a.km;
+  const up = Math.max(b.up - a.up, 0), down = Math.max(b.down - a.down, 0);
+  const fer = ferryCrossing();
+  if(fer && fer.state === 'done'){
+    const bT = new Date(fer.boardTs).getTime()/1000, lT = new Date(fer.landTs).getTime()/1000;
+    const from = Math.max(bT, t1), to = Math.min(lT, t2);
+    if(from < to){
+      const fa = cumClimbAt(from), fb = cumClimbAt(to);
+      if(fa && fb) km -= (fb.km - fa.km);
+    }
+  }
+  return {km: Math.max(km, 0), up, down};
+}
+/* Offizielle Tracker-Kilometer zu einem Zeitpunkt, linear zwischen den zwei
+   umgebenden Log-Einträgen. Anderes Lineal als effortBetween() oben (das
+   rechnet auf profile.json/BRouter-Kilometern, umgerechnet über `kmScale`,
+   der selbst driftet — siehe die kmScale-WARNUNG in check.mjs nach der
+   Fähre). Für die Gesamtsumme seit Trondheim zählt aber `c.km`, das
+   offizielle Lineal des Trackers, und dessen Fähranteil muss auch auf diesem
+   Lineal herausgerechnet werden, nicht über den Umweg des anderen. */
+function kmAt(list, unixSec){
+  if(!list.length) return null;
+  if(unixSec <= new Date(list[0].ts).getTime()/1000) return Number(list[0].km);
+  for(let i = 1; i < list.length; i++){
+    const tPrev = new Date(list[i-1].ts).getTime()/1000, tCur = new Date(list[i].ts).getTime()/1000;
+    if(unixSec <= tCur){
+      const f = tCur > tPrev ? (unixSec - tPrev)/(tCur - tPrev) : 1;
+      return Number(list[i-1].km) + (Number(list[i].km) - Number(list[i-1].km))*f;
+    }
+  }
+  return Number(list[list.length-1].km);
 }
 let PROF = null; // gerenderter Zustand für die Zeigersteuerung
 
@@ -1449,6 +1495,18 @@ function dayStrip(key){
     const a = Math.max(s.from, von), b = Math.min(laeuft ? spurEnde : s.to, bis);
     if(b > a){ segs += `<i style="left:${pct(a)}%;width:${((b-a)/864).toFixed(2)}%"></i>`; standMin += (b-a)/60; }
   }
+  /* Die Fähre selbst hinterlässt in der Spur keine Punkte (offene See) und
+     fiele ohne diesen Zusatz unter „durchgefahren" — Messing wäre falsch (er
+     trat nicht), die normale Standzeit-Abdunklung auch (er stand nicht,
+     das Schiff fuhr). Anders als bei einer echten Pause/einem Funkloch kennen
+     wir den Grund hier aber genau (ferryCrossing(), echte GPS-Zeiten), daher
+     eine eigene Farbe statt der üblichen Zurückhaltung „Standzeit, nie mehr". */
+  const fer = ferryCrossing();
+  if(fer && fer.state === 'done'){
+    const bT = new Date(fer.boardTs).getTime()/1000, lT = new Date(fer.landTs).getTime()/1000;
+    const a = Math.max(bT, von), b = Math.min(lT, bis);
+    if(b > a) segs += `<i class="ferry" title="Fähre" style="left:${pct(a)}%;width:${((b-a)/864).toFixed(2)}%"></i>`;
+  }
   return `<div class="daystrip" title="${standMin >= 5 ? dhm(standMin)+' Standzeit' : 'durchgefahren'}">` +
          `<b style="left:${pct(von)}%;width:${((bis-von)/864).toFixed(2)}%"></b>${segs}</div>`;
 }
@@ -1469,11 +1527,14 @@ function renderDays(c){
         d.getTime() <= lastT; d.setDate(d.getDate()+1)){
       const from = Math.max(d.getTime()/1000, PROFILE.startUnix ?? 0);
       const to = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1).getTime()/1000;
-      const a = cumClimbAt(from), b = cumClimbAt(Math.min(to, lastT/1000));
-      if(!a || !b) continue;
+      // effortBetween() statt cumClimbAt(): rechnet eine dazwischen liegende
+      // Fährüberfahrt wieder raus, sonst bekäme ihr Tag dieselbe erfundene
+      // Kilometer-/Standzeit-Gutschrift wie vorher die Verpflegung.
+      const eff = effortBetween(from, Math.min(to, lastT/1000));
+      if(!eff) continue;
       const key = dayKey(d);
-      byDay[key] = Math.max((b.km - a.km) * c.kmScale, 0);
-      upDay[key] = Math.max(Math.round(b.up - a.up), 0);
+      byDay[key] = eff.km * c.kmScale;
+      upDay[key] = Math.round(eff.up);
     }
   } else {
     for(let i=1;i<c.list.length;i++){
@@ -1493,7 +1554,8 @@ function renderDays(c){
       (TRACK ? `<div class="daystrips">${keys.map(k=>`<div class="daystripcell">${dayStrip(k)}</div>`).join('')}</div>` : '') +
       `<div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>` +
     `</div></div></div>` +
-    (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit</div>` : '');
+    (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit${
+      c.ferry && c.ferry.state === 'done' ? ` · <span class="lg-ferry">▬</span> Fähre` : ''}</div>` : '');
 
   /* Beim ersten Aufbau — und immer, wenn der Nutzer ohnehin ganz rechts steht —
      ans rechte Ende scrollen, damit der jüngste (und laufende) Tag zu sehen
@@ -1725,14 +1787,16 @@ function bookedDeparture(){
 function renderFerry(c){
   const det = document.getElementById('ferryDetails');
   const fer = c.ferry;
-  const ferAktiv = fer && (fer.state === 'onboard'
-    || (fer.state === 'done' && fer.landTs && (c.now - new Date(fer.landTs)) < 24*3.6e6));
+  /* Nur solange die Überfahrt tatsächlich läuft — die 24h-Nachlaufzeit nach
+     der Landung (bis 26.07.2026 in Kraft) ist auf Wunsch wieder raus: sobald
+     `ferryCrossing()` 'done' meldet, entscheidet allein noch der Breitengrad
+     unten, ob das Panel abschaltet. */
+  const ferAktiv = fer && fer.state === 'onboard';
   /* Abschalten, sobald die Ostsee hinter ihm liegt — aber nicht schon MITTEN
      auf der Überfahrt. Die Fährroute kreuzt `ausAbLat` (55°N) auf offener See,
      der reine Breitengrad-Test ließe das Panel also im Moment seiner größten
-     Nützlichkeit verschwinden. Solange eine Überfahrt läuft oder gerade
-     gelandet ist (<24 h), bleibt es sichtbar; erst danach greift der alte
-     Rückfall über den Breitengrad. */
+     Nützlichkeit verschwinden. Solange eine Überfahrt läuft, bleibt es
+     sichtbar; danach greift der Rückfall über den Breitengrad. */
   const pos = c.list.filter(e=> e.lat != null).pop();
   if(!ferAktiv && (!pos || pos.lat < FERRY.ausAbLat)){ det.hidden = true; return; }
   det.hidden = false;
@@ -2181,7 +2245,21 @@ function renderFuel(c){
   if(!fuelSichtbar(c)){ det.hidden = true; return; }
   det.hidden = false;
 
-  const kcal = fuelKcal(c.km, c.climbUp);
+  /* Die Fähre hat ihn getragen, nicht er sich selbst — ihre km fließen nicht
+     in "erfahren" ein. Abgezogen wird, was der Tracker selbst zwischen
+     Ablegen und Landen an km gutgeschrieben hat (kmAt() über die echten
+     GPS-Zeiten aus ferryCrossing(), nicht die Fahrplanzeiten — die Spur weiß
+     es genauer als der Fahrplan). In der Praxis wenig: der Tracker zählte
+     für die ganze Überfahrt nur ein paar km, vermutlich mangels Fixen auf
+     offener See — aber genau die sollen hier draußen bleiben. */
+  let kmErfahren = c.km;
+  if(c.ferry && c.ferry.state === 'done'){
+    const bT = new Date(c.ferry.boardTs).getTime()/1000, lT = new Date(c.ferry.landTs).getTime()/1000;
+    const vor = kmAt(c.list, bT), nach = kmAt(c.list, lT);
+    if(vor != null && nach != null) kmErfahren = Math.max(kmErfahren - Math.max(nach - vor, 0), 0);
+  }
+
+  const kcal = fuelKcal(kmErfahren, c.climbUp);
   const land = fuelLand(c);
   const idx = land ? FUEL.laender.indexOf(land) : -1;
   const aufSee = fuelAufSee(c);
@@ -2198,14 +2276,15 @@ function renderFuel(c){
     `<i style="--r:${(i*37 % 19) - 9}deg;--y:${(i*23 % 5) - 2}px">${w.em}</i>`).join('');
 
   /* Tagesleistung aus derselben Quelle wie der Einschätzungskasten weiter
-     oben — cumClimbAt() über das Fenster seit Mitternacht. */
+     oben — effortBetween() über das Fenster seit Mitternacht, das eine
+     dazwischen liegende Fähre wieder herausrechnet (siehe Kommentar dort). */
   let heute = '';
   if(PROFILE && PROFILE.chunks && PROFILE.chunks.length){
     const mitternacht = new Date(c.now.getFullYear(), c.now.getMonth(), c.now.getDate()).getTime()/1000;
-    const a = cumClimbAt(mitternacht), b = cumClimbAt(c.now.getTime()/1000);
-    if(a && b){
-      const kmH = Math.max((b.km - a.km) * c.kmScale, 0);
-      const hmH = Math.max(b.up - a.up, 0);
+    const eff = effortBetween(mitternacht, c.now.getTime()/1000);
+    if(eff){
+      const kmH = eff.km * c.kmScale;
+      const hmH = eff.up;
       const kcalH = fuelKcal(kmH, hmH);
       if(kmH >= 5) heute = `<div class="fuelsub">Heute: <b>${num(Math.round(kcalH))} kcal</b>
         aus ${num(Math.round(kmH))} km und ↑ ${num(Math.round(hmH))} hm

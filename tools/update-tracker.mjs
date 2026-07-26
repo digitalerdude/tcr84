@@ -262,6 +262,21 @@ function haversine(a, b) {
   return 2 * EARTH_R * Math.asin(Math.sqrt(x));
 }
 
+/* Dieselbe Geometrie wie FERRY.seeband in index.html, hier absichtlich
+   dupliziert (gleiches Motiv wie cumAt() in check.mjs). BRouter kennt kein
+   Wasser: über die echte Fährstrecke Ystad–Świnoujście fand es den
+   nächstbesten Landweg und lieferte 561 statt 171 Luftlinien-km, dazu 1.050
+   erfundene Höhenmeter in jede Richtung (gefunden am 26.07.2026, siehe
+   profile.json-Reparatur vom selben Tag). Ein Sprung von einer Bandseite zur
+   anderen wird deshalb nicht mehr geroutet, sondern als Luftlinie mit 0
+   Höhenmetern gebucht — ungenauer als eine echte Straße, aber ehrlicher als
+   ein erfundener Umweg. */
+const SEEBAND = { latNord: 55.30, latSued: 54.05, lonWest: 12.6, lonOst: 14.5 };
+const inSeebandNord = p => p[0] >= SEEBAND.latNord && p[1] >= SEEBAND.lonWest && p[1] <= SEEBAND.lonOst;
+const inSeebandSued = p => p[0] <= SEEBAND.latSued && p[1] >= SEEBAND.lonWest && p[1] <= SEEBAND.lonOst;
+const istFaehrsprung = (a, b) =>
+  (inSeebandNord(a) && inSeebandSued(b)) || (inSeebandSued(a) && inSeebandNord(b));
+
 /* Radroute DURCH eine Folge von Wegpunkten (nicht nur zwischen zweien) —
    BRouter nimmt beliebig viele `lonlats`, durch die Trennung mit `|`.
    Genau das macht die echte Spur nutzbar: die Route wird alle ~1,6 km an
@@ -371,11 +386,29 @@ async function updateProfile(trackPoints, { rebuild = false } = {}) {
   // Startzeit merken: die Blöcke halten nur ihr Ende fest, für die
   // Interpolation vor dem ersten Blockende braucht das Board einen Nullpunkt.
   if (prof.startUnix == null) prof.startUnix = seq[0][2];
-  const step = CONFIG.waypointsPerRequest - 1;     // ein Punkt Überlappung an der Naht
   let requests = 0, added = 0;
 
-  for (let i = 0; i + 1 < seq.length; i += step) {
-    const chunk = seq.slice(i, i + CONFIG.waypointsPerRequest);
+  for (let i = 0; i + 1 < seq.length; ) {
+    if (istFaehrsprung(seq[i], seq[i + 1])) {
+      const [a, b] = [seq[i], seq[i + 1]];
+      const km = Math.round(haversine([a[0], a[1]], [b[0], b[1]]) / 10) / 100;
+      log(`  Fährsprung erkannt (${a[0].toFixed(3)},${a[1].toFixed(3)} → ` +
+          `${b[0].toFixed(3)},${b[1].toFixed(3)}): ${km} km Luftlinie statt BRouter-Umweg, 0 Höhenmeter.`);
+      prof.routedKm = Math.round((prof.routedKm + km) * 100) / 100;
+      prof.throughUnix = b[2];
+      prof.anchor = b;
+      prof.chunks.push([b[2], prof.routedKm, prof.climbUp, prof.climbDown]);
+      added += 1;
+      i += 1;
+      continue;
+    }
+    // Chunk normal bis zu waypointsPerRequest weit füllen, aber vor einem
+    // Fährsprung kappen — der darf nicht mit in dieselbe BRouter-Anfrage.
+    let end = Math.min(i + CONFIG.waypointsPerRequest, seq.length);
+    for (let k = i + 1; k < end; k++) {
+      if (istFaehrsprung(seq[k - 1], seq[k])) { end = k; break; }
+    }
+    const chunk = seq.slice(i, end);
     if (chunk.length < 2) break;
     const routes = await routeChunk(chunk.map(p => [p[0], p[1]]));
     requests++;
@@ -392,11 +425,12 @@ async function updateProfile(trackPoints, { rebuild = false } = {}) {
     }
     // Auch bei übersprungenem Block weiterrücken, sonst hängt der Lauf für
     // immer an derselben kaputten Stelle.
-    const end = chunk[chunk.length - 1];
-    prof.throughUnix = end[2];
-    prof.anchor = end;
-    prof.chunks.push([end[2], prof.routedKm, prof.climbUp, prof.climbDown]);
+    const last = chunk[chunk.length - 1];
+    prof.throughUnix = last[2];
+    prof.anchor = last;
+    prof.chunks.push([last[2], prof.routedKm, prof.climbUp, prof.climbDown]);
     await new Promise(r => setTimeout(r, CONFIG.brouterDelayMs));
+    i = end - 1;   // ein Punkt Überlappung an der Naht, wie beim festen Schritt oben
   }
 
   prof.updated = new Date().toISOString();
