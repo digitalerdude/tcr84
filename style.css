@@ -83,18 +83,74 @@
      derselben Formatierung untereinander — drei gleich laute Zeilen, in denen
      nicht zu sehen war, was Momentaufnahme ist und was seit Wochen feststeht. */
   .nowbar{display:flex;flex-wrap:wrap;align-items:center;gap:3px 20px;margin-top:13px;
-          border:1px solid var(--line);background:var(--panel);padding:9px 13px}
+          border:1px solid var(--line);background:var(--panel);padding:9px 13px;
+          position:relative;overflow:hidden;}
+  .nowbar > *{position:relative;z-index:2}
   .nowbar .wx{opacity:.68}
+  
+  /* Nacht: dunklerer Grundton, Sterne UND Mond in derselben ::before-Ebene —
+     zwei Pseudo-Elemente pro Element sind das Limit, ::after trägt schon den
+     Regen. Der Mond ist eine fünfte, nicht wiederholte Hintergrund-Ebene
+     neben den vier Sternenmustern (CSS ordnet mehrere background-*-Listen
+     positionsweise einander zu). is-night/is-sunny schließen sich gegenseitig
+     aus (is_day ist 0 oder 1), eine Kollision auf ::before gibt es also nie. */
+  body.is-night .nowbar{background:linear-gradient(160deg, rgba(6,12,20,.55), var(--panel) 55%)}
+  body.is-night .nowbar::before{content:"";position:absolute;inset:0;
+    background-image:
+      radial-gradient(1px 1px at 20px 30px, #fff, rgba(0,0,0,0)),
+      radial-gradient(1px 1px at 40px 70px, #fff, rgba(0,0,0,0)),
+      radial-gradient(1px 1px at 90px 40px, #fff, rgba(0,0,0,0)),
+      radial-gradient(1.5px 1.5px at 160px 120px, #fff, rgba(0,0,0,0)),
+      radial-gradient(circle, #F3EAC9 0%, #D8CE9E 55%, rgba(243,234,201,0) 72%);
+    background-repeat:repeat,repeat,repeat,repeat,no-repeat;
+    background-size:200px 200px,200px 200px,200px 200px,200px 200px,22px 22px;
+    background-position:0 0,0 0,0 0,0 0,top 8px right 14px;
+    opacity:.55;animation:twinkle 4s ease-in-out infinite alternate;z-index:1;pointer-events:none}
+  @keyframes twinkle{0%{opacity:.35}100%{opacity:.75}}
+
+  /* Sonnig: derselbe ::before-Slot wie die Nacht (nie gleichzeitig aktiv).
+     "heller" heißt ein warmer Schimmer über dem sonst kühlen Panel-Ton plus
+     eine kleine Sonnenscheibe, kein reines Weiß — das Board bleibt lesbar. */
+  body.is-sunny .nowbar{background:linear-gradient(160deg, rgba(217,164,65,.16), var(--panel) 55%)}
+  body.is-sunny .nowbar::before{content:"";position:absolute;top:-8px;right:8px;width:30px;height:30px;
+    border-radius:50%;background:radial-gradient(circle, #FFEFC2 0%, #D9A441 60%, rgba(217,164,65,0) 72%);
+    box-shadow:0 0 16px 5px rgba(217,164,65,.4);z-index:1;pointer-events:none;
+    animation:sunGlow 4s ease-in-out infinite}
+  @keyframes sunGlow{0%,100%{opacity:.8}50%{opacity:1}}
+
+  /* Regen als einzelne fallende Tropfen statt Flächenmuster — zwei
+     Gradient-Versuche vorher (gekachelte Diagonalbande, dann zwei
+     repeating-linear-gradient-Ebenen) lasen sich beide eher als Textur denn
+     als Regen. Gebaut wie das Konfetti bei den Kontrollpunkten: echte <i>-
+     Elemente, jedes mit eigenem `left`/Dauer/Verzögerung/Neigung, eine
+     gemeinsame Keyframe-Regel. `syncRainOverlay()` in app.js legt die Box nur
+     an, während `is-raining` aktiv ist, und respektiert reduced-motion selbst
+     (keine Box statt einer stillstehenden). Der leichte Blauton auf dem
+     Panel-Hintergrund bleibt deshalb auch ohne Bewegung als Hinweis stehen. */
+  body.is-raining .nowbar{background:linear-gradient(160deg, rgba(120,150,175,.14), var(--panel) 55%)}
+  .rainBox{position:absolute;inset:0;overflow:hidden;z-index:1;pointer-events:none}
+  /* Feste Pixelgröße statt Prozent: der Streifen ist mal einzeilig (~35px),
+     mal zweizeilig (~70–90px), je nachdem was Live-Zeile und Wetter gerade zu
+     sagen haben — ein prozentual hoher Tropfen war in der kurzen Variante nur
+     noch 4–5px und praktisch unsichtbar. Fest bleibt er immer gut lesbar,
+     `overflow:hidden` schneidet ihn im kurzen Streifen einfach früher ab. */
+  .rainBox i{position:absolute;top:-16px;width:1.5px;height:16px;border-radius:1px;
+    background:linear-gradient(rgba(188,215,222,0), rgba(188,215,222,.85));
+    animation:raindrop linear infinite}
+  @keyframes raindrop{0%{top:-16px}100%{top:calc(100% + 16px)}}
   /* Kleines Augenzwinkern in der Live-Zeile: der Fahrer radelt, wenn er
      fährt (🚴, sanft wippend), und das Rad ist abgestellt, wenn er steht
      (🚲). Bewusst KEIN Schlaf-Symbol für die Pause — die Spur zeigt nur,
      dass er steht, nie warum. */
   .rideAnim{display:inline-block;animation:ride .9s ease-in-out infinite}
   @keyframes ride{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
+  .live-pulse{display:inline-block;width:8px;height:8px;background:var(--good);border-radius:50%;margin-right:6px;animation:pulseLive 2s infinite}
+  @keyframes pulseLive{0%{box-shadow:0 0 0 0 rgba(134,176,140,0.6)}70%{box-shadow:0 0 0 5px rgba(134,176,140,0)}100%{box-shadow:0 0 0 0 rgba(134,176,140,0)}}
   /* Die Fähre schaukelt langsamer und breiter als das Rad wippt. */
   .ferryAnim{display:inline-block;animation:sail 2.6s ease-in-out infinite}
   @keyframes sail{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-1px) rotate(2deg)}}
-  @media (prefers-reduced-motion:reduce){.rideAnim,.ferryAnim{animation:none}}
+  @media (prefers-reduced-motion:reduce){.rideAnim,.ferryAnim,.live-pulse{animation:none}
+    body.is-night .nowbar::before,body.is-sunny .nowbar::before,.rainBox i{animation:none}}
 
   .cols{display:grid;grid-template-columns:225px 1fr;gap:30px;align-items:start}
   /* Ohne min-width:0 wächst diese Spalte (Grid-Track 1fr bzw. mobil Flex-Item)

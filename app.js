@@ -263,6 +263,27 @@ function compute(){
     const hit = cpHits.get(passedCp);
     if((now - new Date(hit.ts)) < 24*3.6e6) cpReached = {cp: passedCp, ts: hit.ts};
   }
+  /* Länderübertritt, dieselbe 24h-Feier-Regel wie bei Kontrollpunkten.
+     Grenze zwischen zwei EINTRÄGEN, nicht in der Spur: `cc` kommt aus der
+     Nominatim-Antwort beim Scrapen und steht nur an Log-Zeilen, `track.json`
+     kennt kein Land. Genommen wird der erste Eintrag mit dem neuen Länder-
+     code nach dem letzten mit einem anderen — die Feier ist also auf die
+     Auflösung des Logs genau (~25 min), nicht auf die der Spur (~5 min). */
+  let ccReached = null;
+  const ccList = list.filter(e => e.cc);
+  if (ccList.length > 0) {
+    const latestCc = ccList[ccList.length - 1].cc;
+    let transitionEntry = null;
+    for (let i = ccList.length - 2; i >= 0; i--) {
+      if (ccList[i].cc !== latestCc) {
+        transitionEntry = ccList[i+1];
+        break;
+      }
+    }
+    if (transitionEntry && (now - new Date(transitionEntry.ts)) < 24*3.6e6) {
+      ccReached = { cc: latestCc, ts: transitionEntry.ts, km: transitionEntry.km };
+    }
+  }
   /* Höhen: `ele` ist die Höhe an der Meldung, `climbUp`/`climbDown` sind die
      geschätzten Höhenmeter im Segment davor (siehe update-tracker.mjs). Beides
      optional — Meldungen ohne GPS haben nichts davon, und die Summen zählen
@@ -285,7 +306,7 @@ function compute(){
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
   const ferry = ferryCrossing();
-  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpHits,cpReached,state,
+  return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpHits,cpReached,ccReached,state,
           raceH,measuredH,staleH,ferry,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
@@ -1152,7 +1173,7 @@ let FER_SCEN = 1;   // gewähltes Szenario; Modulvariable, damit sie das 60s-Re-
 let FER_INFO = false;
 
 /* Abfahrten eines Hafens ab `ab`, nach Zeit sortiert. Seit die Einträge
-   datumsgenau sind (siehe oben), ist das ein Filter und keine Fahrplanlogik
+   datumsgenaue sind (siehe oben), ist das ein Filter und keine Fahrplanlogik
    mehr — das Wochentagsmuster, das hier stand, war genau die Erfindung, die
    der Gegencheck kassiert hat. Abfahrten ohne Radmitnahme kommen mit, sie
    werden nur nicht gewertet. */
@@ -1958,12 +1979,17 @@ const WX_CODES = {
   85:['🌨️','Schneeschauer'],86:['🌨️','Schneeschauer'],
   95:['⛈️','Gewitter'],96:['⛈️','Gewitter mit Hagel'],99:['⛈️','Gewitter mit Hagel']
 };
+// Codes, bei denen etwas vom Himmel kommt — trägt sowohl die Overlay-Stimmung
+// als auch (zusammen mit `precipitation`) die Regen-Erkennung. Schnee zählt
+// bewusst nicht mit: das Overlay kennt bisher nur Regenstreifen, kein Schnee-
+// Bild, und ein Regenlook bei Schneefall wäre eine falsche Behauptung.
+const WX_REGEN_CODES = new Set([51,53,55,56,57,61,63,65,66,67,80,81,82,95,96,99]);
 const windDir = deg => ['N','NO','O','SO','S','SW','W','NW'][Math.round(deg/45)%8];
 let WX = null, wxLat = null, wxLon = null, wxKey = null;
 async function loadWeather(lat, lon){
   try{
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-      `&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m` +
+      `&current=temperature_2m,apparent_temperature,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m` +
       `&wind_speed_unit=kmh&timezone=auto`;
     const res = await fetch(url);
     if(!res.ok) return;
@@ -1971,9 +1997,42 @@ async function loadWeather(lat, lon){
     renderWeather();
   }catch(e){ /* letzter bekannter Stand bleibt stehen, kein Fehler an die Nutzerin */ }
 }
+/* Regenbox: echte <i>-Tropfen statt Flächenmuster, siehe style.css. Wird nur
+   angelegt, während `is-raining` aktiv ist, und respektiert reduced-motion
+   selbst — keine Box ist ehrlicher als eine, die stillsteht. */
+function syncRainOverlay(active){
+  const bar = document.getElementById('nowbar');
+  if(!bar) return;
+  let box = bar.querySelector('.rainBox');
+  if(!active || matchMedia('(prefers-reduced-motion:reduce)').matches){
+    if(box) box.remove();
+    return;
+  }
+  if(box) return;
+  box = document.createElement('div');
+  box.className = 'rainBox';
+  let html = '';
+  for(let i=0;i<26;i++){
+    const left = (Math.random()*100).toFixed(1);
+    const dur = (0.5+Math.random()*0.45).toFixed(2);
+    const delay = (-Math.random()*dur).toFixed(2);
+    const rot = (6+Math.random()*8).toFixed(1);
+    const op = (0.35+Math.random()*0.45).toFixed(2);
+    html += `<i style="left:${left}%;animation-duration:${dur}s;animation-delay:${delay}s;` +
+      `transform:rotate(${rot}deg);opacity:${op}"></i>`;
+  }
+  box.innerHTML = html;
+  bar.appendChild(box);
+}
+let WX_SCENE_OVERRIDE = null;   // Debug-Hook tcr84Wetter(), siehe unten
 function renderWeather(){
   const el = document.getElementById('wxLine');
-  if(!el || !WX){ if(el){ el.style.display='none'; syncNowbar(); } return; }
+  if(!el || !WX){
+    if(el){ el.style.display='none'; syncNowbar(); }
+    document.body.classList.remove('is-raining','is-night','is-sunny');
+    syncRainOverlay(false);
+    return;
+  }
   const code = WX_CODES[WX.weather_code] || ['','—'];
   // Böen fließen weiter in die Warnfarbe ein (bei ≥45 wird die Windangabe rot),
   // werden aber nicht mehr als Zahl angezeigt: „Böen 20“ war ohne Kontext nicht
@@ -1986,6 +2045,18 @@ function renderWeather(){
     `<span class="wxval">${one(WX.temperature_2m)}° <span style="color:var(--muted)">(gefühlt ${one(WX.apparent_temperature)}°)</span></span>` +
     `<span class="${windy?'wxwarn':'wxval'}">💨 ${num(WX.wind_speed_10m)} km/h aus ${windDir(WX.wind_direction_10m)}</span>` +
     (WX.precipitation>0 ? `<span class="wxval">🌧️ ${one(WX.precipitation)} mm/h</span>` : '');
+  /* Dieselbe Wetterlage auch als Stimmung um die Jetzt-Zeile: Regen zieht als
+     Streifen darüber, Nacht bringt Sterne und Mond, klarer Tag einen warmen
+     Sonnenschimmer. `is_day` kommt direkt von Open-Meteo statt aus der
+     lokalen Uhrzeit — das trifft Polarnacht/Mitternachtssonne auf der
+     norwegischen Etappe richtig, eine reine Stunden-Heuristik hätte das nicht. */
+  const auto = { night: WX.is_day === 0, raining: WX_REGEN_CODES.has(WX.weather_code) || WX.precipitation > 0 };
+  auto.sunny = !auto.night && !auto.raining && (WX.weather_code === 0 || WX.weather_code === 1);
+  const scene = WX_SCENE_OVERRIDE || auto;
+  document.body.classList.toggle('is-raining', scene.raining);
+  document.body.classList.toggle('is-night', scene.night);
+  document.body.classList.toggle('is-sunny', scene.sunny);
+  syncRainOverlay(scene.raining);
   syncNowbar();
 }
 function maybeLoadWeather(c){
@@ -2468,11 +2539,14 @@ function renderSource(c){
    Belästigung. Gemerkt wird das in `localStorage`; `render()` läuft im
    60-Sekunden-Takt, ohne diese Sperre ginge das Konfetti minütlich wieder los.
 
-   Zwei Fälle bleiben bewusst ohne Feier: ein Kontrollpunkt, der länger als
-   24 h zurückliegt (`cpReached` ist dann null — niemand soll Tage später eine
-   schale Feier sehen), und ein Gerät, auf dem localStorage blockiert ist
-   (privates Fenster). Für den zweiten Fall gibt es `SEEN_MEM` als Notnagel:
-   dann hält die Sperre wenigstens, solange der Tab offen ist. */
+   Zwei Fälle bleiben bewusst ohne Feier: ein Kontrollpunkt (oder Land), der
+   länger als 24 h zurückliegt (`cpReached`/`ccReached` sind dann null —
+   niemand soll Tage später eine schale Feier sehen), und ein Gerät, auf dem
+   localStorage blockiert ist (privates Fenster). Für den zweiten Fall gibt es
+   `SEEN_MEM` als Notnagel: dann hält die Sperre wenigstens, solange der Tab
+   offen ist. Länder teilen sich denselben Speicher wie Kontrollpunkte, unter
+   dem Schlüssel `cc_<Ländercode>` — zwei getrennte Listen hätten hier nichts
+   gewonnen. */
 const SEEN_KEY = 'tcr84:cpSeen';
 const SEEN_MEM = new Set();
 function seenCps(){
@@ -2486,16 +2560,19 @@ function markCpSeen(nm){
 
 let celebrating = false;
 function maybeCelebrate(c){
-  if(celebrating || !c.cpReached) return;
-  const nm = c.cpReached.cp.nm;
-  if(SEEN_MEM.has(nm) || seenCps().has(nm)) return;
-  /* `celebrating` sperrt sofort (render() läuft im 60s-Takt weiter), die
-     Gesehen-Marke fällt aber erst, wenn der Kasten wirklich aufgeht — wer den
-     Tab in den 600 ms davor schließt, soll seine Feier nicht verloren haben. */
+  if(celebrating) return;
+  let ev = null, isCc = false, nm = null;
+  if(c.ccReached){
+    const ccNm = `cc_${c.ccReached.cc}`;
+    if(!SEEN_MEM.has(ccNm) && !seenCps().has(ccNm)){ ev = c.ccReached; isCc = true; nm = ccNm; }
+  }
+  if(!ev && c.cpReached){
+    const cpNm = c.cpReached.cp.nm;
+    if(!SEEN_MEM.has(cpNm) && !seenCps().has(cpNm)){ ev = c.cpReached; isCc = false; nm = cpNm; }
+  }
+  if(!ev) return;
   celebrating = true;
-  // Kurz warten, damit die Feier auf ein fertig gezeichnetes Board fällt
-  // statt gleichzeitig mit ihm aufzuploppen.
-  setTimeout(()=>{ markCpSeen(nm); showCelebration(c, c.cpReached); }, 600);
+  setTimeout(()=>{ markCpSeen(nm); showCelebration(c, ev, isCc); }, 600);
 }
 
 /* Konfetti aus ~80 winzigen <i>, jedes mit eigener Falldauer, Drift und
@@ -2521,47 +2598,49 @@ function confettiRain(){
   setTimeout(()=> box.remove(), 7000);
 }
 
-function showCelebration(c, r){
-  const ziel = Number(r.cp.km) >= c.total;
+function showCelebration(c, r, isCc){
+  const ziel = !isCc && Number(r.cp.km) >= c.total;
   const cum = cumClimbAt(new Date(r.ts).getTime()/1000);
-  /* Wo in der Kette steht dieser Kontrollpunkt? Gezählt wird über die Liste
-     aus den Einstellungen, nicht über den Namen — kommt später ein CP dazu
-     oder verschiebt sich einer, stimmt der Zähler weiterhin. Trondheim
-     (km 0) zählt nicht mit, das Ziel wird getrennt behandelt. */
   const cps = c.st.cps.filter(x=> Number(x.km) > 0 && Number(x.km) < c.total);
-  const idx = cps.findIndex(x=> Number(x.km) === Number(r.cp.km));
-  const naechster = c.st.cps.find(x=> Number(x.km) > Number(r.cp.km));
-  const punkte = [...cps.map(x=> ({fin:false, on: Number(x.km) <= Number(r.cp.km)})),
+  const idx = !isCc ? cps.findIndex(x=> Number(x.km) === Number(r.cp.km)) : -1;
+  const naechster = !isCc ? c.st.cps.find(x=> Number(x.km) > Number(r.cp.km)) : null;
+  const punkte = isCc ? '' : [...cps.map(x=> ({fin:false, on: Number(x.km) <= Number(r.cp.km)})),
                   {fin:true, on: ziel}]
     .map(p=> `<i class="${p.fin?'fin':''}${p.on?' on':''}"></i>`).join('');
+  // Länder-Feier greift dieselbe Liste wie das Verpflegungs-Panel, damit
+  // Flagge und Snack nirgends ein zweites Mal gepflegt werden müssen.
+  const land = isCc ? FUEL.laender.find(s => s.cc === r.cc) : null;
+  const titleNm = isCc ? (land ? land.nm : r.cc) : r.cp.nm;
   const ov = document.createElement('div');
   ov.className = 'celebrate';
   ov.setAttribute('role','dialog');
   ov.setAttribute('aria-modal','true');
-  ov.setAttribute('aria-label', (ziel ? 'Ziel erreicht: ' : 'Kontrollpunkt erreicht: ') + r.cp.nm);
+  ov.setAttribute('aria-label', isCc ? 'Ländergrenze passiert: ' + titleNm : (ziel ? 'Ziel erreicht: ' : 'Kontrollpunkt erreicht: ') + titleNm);
   ov.innerHTML = `
     <div class="celPanel">
       <svg class="celMark" viewBox="0 0 60 60" aria-hidden="true">
         <circle class="cm-c" cx="30" cy="30" r="27"/>
         <path class="cm-k" d="M18 31.5 L26.5 40 L43 21"/>
       </svg>
-      <div class="celEyebrow">${ziel ? 'Zieleinlauf'
-        : idx >= 0 ? `Kontrollpunkt ${idx+1} von ${cps.length}` : 'Kontrollpunkt erreicht'}</div>
-      <h3>${esc(r.cp.nm)}</h3>
+      <div class="celEyebrow">${isCc ? 'Ländergrenze passiert' : (ziel ? 'Zieleinlauf'
+        : idx >= 0 ? `Kontrollpunkt ${idx+1} von ${cps.length}` : 'Kontrollpunkt erreicht')}</div>
+      <h3>${isCc && land ? land.flag+' ' : ''}${esc(titleNm)}</h3>
       <div class="celSub">
-        ${ziel ? 'Manuel ist angekommen. 4.800 Kilometer quer durch Europa.'
-               : 'Manuel hat den Kontrollpunkt passiert.'}<br>
+        ${isCc ? `Manuel ist in ${esc(titleNm)} eingefahren.` : (ziel ? 'Manuel ist angekommen. 4.800 Kilometer quer durch Europa.'
+               : 'Manuel hat den Kontrollpunkt passiert.')}<br>
         ${fmt(r.ts)} · nach ${dur(new Date(r.ts)-c.start)} Rennzeit
       </div>
       <div class="celStats">
-        <div><b>${num(Number(r.cp.km))}</b>km gefahren</div>
+        <div><b>${num(Number(isCc ? r.km : r.cp.km))}</b>km gefahren</div>
         ${cum ? `<div><b>${num(Math.round(cum.up))}</b>hm bergauf</div>` : ''}
       </div>
       <div class="celPath" aria-hidden="true">${punkte}</div>
-      ${!ziel && naechster
-        ? `<div class="celNext">Als Nächstes: <b>${esc(naechster.nm)}</b> · ${num(Number(naechster.km)-Number(r.cp.km))} km</div>`
-        : ''}
-      <button class="celClose" id="celClose">${ziel ? 'Was für eine Fahrt!' : 'Weiter geht’s!'}</button>
+      ${isCc && land
+        ? `<div class="celNext">Ab jetzt auf der Karte: <b>${land.em} ${esc(land.snack)}</b></div>`
+        : (!ziel && naechster
+            ? `<div class="celNext">Als Nächstes: <b>${esc(naechster.nm)}</b> · ${num(Number(naechster.km)-Number(r.cp.km))} km</div>`
+            : '')}
+      <button class="celClose" id="celClose">${isCc ? 'Willkommen!' : (ziel ? 'Was für eine Fahrt!' : 'Weiter geht’s!')}</button>
     </div>`;
   document.body.appendChild(ov);
   confettiRain();
@@ -2594,6 +2673,19 @@ window.tcr84FeierReset = ()=>{
   SEEN_MEM.clear();
   try{ localStorage.removeItem(SEEN_KEY); }catch(e){}
   return 'zurückgesetzt — beim nächsten erreichten Kontrollpunkt feiert es wieder.';
+};
+/* Dieselbe Feier fürs Land, ohne auf die nächste echte Grenze zu warten:
+     tcr84Grenze('SE')   Feier so, als wäre er gerade nach Schweden eingefahren
+     tcr84Grenze()       zuletzt erreichtes Land nochmal */
+window.tcr84Grenze = cc=>{
+  const c = compute();
+  const code = cc ? String(cc).toUpperCase() : (c.ccReached || {}).cc;
+  const land = code ? FUEL.laender.find(x=> x.cc === code) : null;
+  if(!land) return 'unbekannt — ' + FUEL.laender.map(x=> x.cc).join(', ');
+  celebrating = true;
+  showCelebration(c, { cc: land.cc, ts: (c.ccReached && c.ccReached.ts) || (c.last||{}).ts || c.st.start,
+    km: (c.ccReached && c.ccReached.km) || c.km }, true);
+  return 'ok';
 };
 /* Die echte Überfahrt steht erst in ~1 Woche an — bis dahin lässt sich die
    Fähr-Anzeige nur über einen synthetischen Stand ausprobieren:
@@ -2665,6 +2757,29 @@ window.tcr84Wind = was=>{
   WIND_DEMO = true;
   render();
   return `Windlage erzwungen: ${was}`;
+};
+/* Die Overlay-Stimmung um die Jetzt-Zeile erzwingen, ohne aufs passende
+   Wetter zu warten:
+     tcr84Wetter('sonne')  klarer Tag, Sonnenschimmer
+     tcr84Wetter('regen')  Regenstreifen
+     tcr84Wetter('nacht')  Sterne + Mond
+     tcr84Wetter('klar')   weder noch (bewölkter Tag)
+     tcr84Wetter('off')    zurück auf den gemessenen Zustand
+   Setzt voraus, dass das Wetter schon einmal geladen hat — ohne WX gibt es
+   keine Zeile, an die sich die Stimmung hängen könnte. */
+window.tcr84Wetter = was=>{
+  if(!was || was === 'off'){ WX_SCENE_OVERRIDE = null; renderWeather(); return 'Wetter-Overlay: automatisch.'; }
+  const szenen = {
+    sonne:{night:false,raining:false,sunny:true},
+    regen:{night:false,raining:true,sunny:false},
+    nacht:{night:true,raining:false,sunny:false},
+    klar:{night:false,raining:false,sunny:false},
+  };
+  const s = szenen[was];
+  if(!s) return "unbekannt — 'sonne', 'regen', 'nacht', 'klar' oder 'off'";
+  WX_SCENE_OVERRIDE = s;
+  renderWeather();
+  return 'Wetter-Overlay erzwungen: ' + was;
 };
 
 function render(){
