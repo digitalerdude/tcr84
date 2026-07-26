@@ -576,7 +576,7 @@
       <h2>Positionslog</h2>
       <div id="log"></div>
 
-      <details id="mapDetails">
+      <details id="mapDetails" open>
         <summary>Karte</summary>
         <div class="setbody">
           <div id="mapWrap"></div>
@@ -3035,11 +3035,12 @@ function renderMap(c){
   // Das gekoppelte Höhenprofil darunter, gleiche Kilometer-Achse wie die Karte.
   renderMapProfile(c);
 }
-document.getElementById('mapDetails').addEventListener('toggle', async function(){
-  if(!this.open){ hideMapPosition(); return; }
+async function checkMapDetails(){
+  if(!document.getElementById('mapDetails').open){ hideMapPosition(); return; }
   await ensureTrack();
   ensureLeaflet(()=> renderMap(compute()));
-});
+}
+document.getElementById('mapDetails').addEventListener('toggle', checkMapDetails);
 
 function renderSource(c){
   const line = document.getElementById('sourceLine');
@@ -3403,6 +3404,7 @@ async function addEntry(){
     buildEditor();
   }
   render();
+  if(document.getElementById('mapDetails').open) checkMapDetails();
   setInterval(render, 60000);
   if(!EDIT){
     setInterval(async ()=>{ if(await loadRemote()) render(); }, 300000);
