@@ -2980,14 +2980,28 @@
       "speed": 27.1,
       "ele": 145,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785169150862",
+      "ts": "2026-07-27T18:08",
+      "tsSrc": "track",
+      "km": 2165.78,
+      "place": "Klein Lauden",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 50.82069,
+      "lon": 17.060222,
+      "speed": 26.2,
+      "ele": 153,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-27T15:54:00.911Z",
+  "updated": "2026-07-27T16:19:11.012Z",
   "live": {
-    "ts": "2026-07-27T17:54",
-    "km": 2156.77,
-    "fixMinsAgo": 6,
-    "speed": 27.1,
+    "ts": "2026-07-27T18:19",
+    "km": 2165.78,
+    "fixMinsAgo": 11,
+    "speed": 26.2,
     "rank": 276
   }
 }
