@@ -2756,14 +2756,28 @@
       "speed": 26.5,
       "ele": 105,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785144999022",
+      "ts": "2026-07-27T11:28",
+      "tsSrc": "track",
+      "km": 2019.34,
+      "place": "Ulbersdorf",
+      "note": "Platz 276",
+      "cc": "PL",
+      "lat": 51.790862,
+      "lon": 16.34867,
+      "speed": 35.6,
+      "ele": 89,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-27T09:11:30.018Z",
+  "updated": "2026-07-27T09:36:39.180Z",
   "live": {
-    "ts": "2026-07-27T11:11",
-    "km": 2010.71,
-    "fixMinsAgo": 2,
-    "speed": 26.5,
+    "ts": "2026-07-27T11:36",
+    "km": 2019.34,
+    "fixMinsAgo": 8,
+    "speed": 35.6,
     "rank": 276
   }
 }
