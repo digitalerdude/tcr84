@@ -916,14 +916,18 @@ function dayStrip(key){
   const p = TRACK.points;
   const t0 = new Date(key + 'T00:00').getTime()/1000, t1 = t0 + 86400;
   const letzterPunkt = p[p.length-1][3];
-  // Die laufende Pause reicht bis jetzt, nicht nur bis zum letzten Spurpunkt.
-  const spurEnde = Math.max(letzterPunkt, Date.now()/1000);
+  /* Die laufende Pause reicht bis jetzt, nicht nur bis zum letzten Spurpunkt —
+     ES SEI DENN, der frischere Live-Fix zeigt schon wieder Fahrt (Export
+     hinkt hinterher). Sonst malt der Streifen stundenlang Standzeit, obwohl
+     er längst fährt. Gleiche Korrektur wie im Positionslog. */
+  const widerlegt = liveWiderlegtStand(letzterPunkt);
+  const spurEnde = widerlegt ? letzterPunkt : Math.max(letzterPunkt, Date.now()/1000);
   const von = Math.max(t0, p[0][3]), bis = Math.min(t1, spurEnde);
   if(bis <= von) return '<div class="daystrip"></div>';
   const pct = sec => ((sec - t0)/864).toFixed(2);       // Sekunden → % von 24 h
   let segs = '', standMin = 0;
   for(const s of trackStops()){
-    const laeuft = s.to === letzterPunkt;
+    const laeuft = s.to === letzterPunkt && !widerlegt;
     const a = Math.max(s.from, von), b = Math.min(laeuft ? spurEnde : s.to, bis);
     if(b > a){ segs += `<i style="left:${pct(a)}%;width:${((b-a)/864).toFixed(2)}%"></i>`; standMin += (b-a)/60; }
   }
@@ -1811,6 +1815,28 @@ function trackStops(){
   return STOPS;
 }
 
+/* Eine im Track gefundene Stehphase, deren Ende der LETZTE Spurpunkt ist, gilt
+   als „läuft noch“ — aber nur, solange der frischere Live-Fix nicht
+   widerspricht. Hinkt der GPX-Export hinterher (siehe „Der Export arbeitet in
+   Stapeln“ in CLAUDE.md), endet die Spur mitten in einer alten Stehphase,
+   während `data.live` längst Fahrt meldet: am 28.07.2026 stand die Spur ab
+   21:51 Uhr in Ottmachau still, der Export lieferte die Nacht- und Frühfahrt
+   erst gegen 07:15 nach — bis dahin behaupteten Positionslog UND Tagesstreifen
+   eine laufende Pause, obwohl der Live-Fix seit 05:31 fuhr (18,8 km/h). Der
+   gemeldete Rückstand war real und lag beim Anbieter (generate.php sendet
+   `no-store`, wird also nicht bei uns gecacht; ein Cache-Buster verbietet sich,
+   er löst 403 aus). Also nutzen wir wie in renderLive() das frischere Tempo als
+   Korrektiv: ist der Live-Fix jünger als das Spurende und zeigt er Fahrt, ist
+   die Pause vorbei — ihr Ende kennen wir nur noch nicht aus der Spur. Fehlt der
+   Live-Fix oder ist er selbst alt, bleibt die Pause laufend (wir wissen es
+   dann nicht besser). */
+function liveWiderlegtStand(letzterPunkt){
+  const lv = S.live;
+  return !!(lv && lv.ts
+    && new Date(lv.ts).getTime()/1000 > letzterPunkt
+    && lv.speed != null && Number(lv.speed) > LIVE_STEHT_KMH);
+}
+
 /* Die tatsächliche Fährüberfahrt aus der Spur lesen. Gesucht ist der
    Nord→Süd-Übergang durch das Ostsee-Band (FERRY.seeband): der letzte Punkt
    auf der schwedischen Seite ist die Abfahrt, der erste danach auf der
@@ -1906,11 +1932,12 @@ function renderLog(c){
      überspannt oft eine Meldung (der Tracker meldet ja weiter, während er
      steht). Nach dem Beginn einsortiert landete die Nacht vom 20.07. unter
      der 19:05-Zeile — also gerade nicht in der Lücke, die sie erklärt. */
+  const widerlegt = liveWiderlegtStand(letzterPunkt);
   const pausen = (vonMs, bisMs) => trackStops()
     .filter(s => { const mitte = (s.from + s.to)/2*1000; return mitte > vonMs && mitte <= bisMs; })
     .sort((a,b) => b.from - a.from)
     .map(s => {
-      const laeuft = s.to === letzterPunkt;
+      const laeuft = s.to === letzterPunkt && !widerlegt;
       return `<tr class="logPause"><td colspan="${cols}">⏸ Pause
         <span class="pv">${dhm(laeuft ? (Date.now()/1000 - s.from)/60 : s.mins)}</span> ·
         ${hhmm(s.from)}–${laeuft ? 'läuft noch' : hhmm(s.to)+' Uhr'}</td></tr>`;
