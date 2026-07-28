@@ -20,7 +20,7 @@ const DEFAULTS = {
     { nm:'Trondheim', lat:'63.4°N', km:0, pos:[63.430, 10.395] },
     { nm:'CP1 Flåm', lat:'60.9°N', km:700, pos:[60.863, 7.113] },
     { nm:'CP2a Praděd', lat:'50.1°N', km:2320, pos:[50.0894, 17.2261] },
-    { nm:'CP2b Chopok', lat:'48.9°N', km:2620, pos:[48.944, 19.591], deadline:'2026-07-30T11:00' },
+    { nm:'CP2b Chopok', lat:'48.9°N', km:2621, pos:[48.944, 19.591], deadline:'2026-07-30T11:00' },
     { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450, pos:[43.856, 18.413], deadline:'2026-08-02T23:59' },
     { nm:'CP4 Leskovik', lat:'40.2°N', km:4200, pos:[40.152, 20.594], deadline:'2026-08-05T23:59' },
     { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.038, 22.113] }
