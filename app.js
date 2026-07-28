@@ -443,7 +443,15 @@ function renderLive(c){
   } else if(alterAbruf > 150){
     // Nicht der Fahrer hängt, sondern unsere Abfrage — das muss man auseinanderhalten.
     teile.push(`<span class="wxwarn">⚠ Abruf zuletzt ${fmt(lv.ts)}</span>`);
-  } else if(lv.stopSince){
+  } else if(lv.stopSince && !(lv.speed != null && Number(lv.speed) > LIVE_STEHT_KMH)){
+    /* `stopSince` kommt aus der Spur und kann veraltet sein, wenn der
+       GPX-Export gerade hinterherhinkt (siehe „Der Export arbeitet in
+       Stapeln“) — dann bleibt die letzte bestätigte Standphase stehen, obwohl
+       der frischere Live-Fix längst wieder Fahrt zeigt. Genau dieser
+       Widerspruch wird schon im Fährpanel abgefangen (`!(speed>0)`), hier
+       fehlte der Abgleich: ohne ihn behauptete die Kopfzeile „Pause seit …“,
+       während `lv.speed` gleichzeitig 18,8 km/h meldete. Das frischere Tempo
+       gewinnt, dieselbe Haltung wie beim Ø-Schnitt in compute(). */
     const dauer = (c.now - new Date(lv.stopSince)) / 6e4;
     teile.push(`<span>🚲 <span class="wxval">Pause seit ${new Date(lv.stopSince)
       .toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>` +
