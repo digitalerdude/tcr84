@@ -3440,14 +3440,28 @@
       "speed": 33.7,
       "ele": 385,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785250237813",
+      "ts": "2026-07-28T16:48",
+      "tsSrc": "track",
+      "km": 2387.94,
+      "place": "Troppau",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 49.9468,
+      "lon": 17.885829,
+      "speed": 0,
+      "ele": 256,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-28T14:25:22.312Z",
+  "updated": "2026-07-28T14:50:38.050Z",
   "live": {
-    "ts": "2026-07-28T16:25",
-    "km": 2376.93,
-    "fixMinsAgo": 7,
-    "speed": 33.7,
+    "ts": "2026-07-28T16:50",
+    "km": 2387.94,
+    "fixMinsAgo": 2,
+    "speed": 0,
     "rank": 276
   }
 }
