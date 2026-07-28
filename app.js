@@ -19,9 +19,9 @@ const DEFAULTS = {
   cps: [
     { nm:'Trondheim', lat:'63.4°N', km:0, pos:[63.430, 10.395] },
     { nm:'CP1 Flåm', lat:'60.9°N', km:700, pos:[60.863, 7.113] },
-    { nm:'CP2 Tatra / Chopok', lat:'48.9°N', km:2350, pos:[48.944, 19.591] },
-    { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450, pos:[43.856, 18.413] },
-    { nm:'CP4 Leskovik', lat:'40.2°N', km:4200, pos:[40.152, 20.594] },
+    { nm:'CP2 Tatra / Chopok', lat:'48.9°N', km:2350, pos:[48.944, 19.591], deadline:'2026-07-30T11:00' },
+    { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450, pos:[43.856, 18.413], deadline:'2026-08-02T23:59' },
+    { nm:'CP4 Leskovik', lat:'40.2°N', km:4200, pos:[40.152, 20.594], deadline:'2026-08-05T23:59' },
     { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.038, 22.113] }
   ]
 };
@@ -306,12 +306,72 @@ function compute(){
   else if(buffer !== null && buffer > 0) state = 'warn';
   else state = 'alert';
   const ferry = ferryCrossing();
+  /* Roadbook-Fristen einzelner Kontrollpunkte (CP2/CP3/CP4, von Manuel
+     genannt) bekommen denselben Puffer wie das Gesamtlimit — dieselbe Formel,
+     nur mit CP-Kilometer statt Gesamtstrecke und CP-Frist statt Renn-Deadline.
+     Ist der CP schon erreicht, ist der Puffer keine Prognose mehr, sondern die
+     tatsächliche Ankunftszeit gegen die Frist — gemessen, nicht geschätzt
+     (dieselbe Unterscheidung wie bei tsSrc/eleSrc). Nur Kontrollpunkte mit
+     eigener `deadline` bekommen eine Kachel; CP1 hat (Stand jetzt) keine
+     genannte Frist und bleibt außen vor, statt eine zu erfinden. */
+  const cpTiles = st.cps.filter(cp=> cp.deadline).map(cp=>{
+    const cpDl = new Date(cp.deadline);
+    const hit = cpHits.get(cp);
+    const reached = !!hit;
+    const arrival = reached ? new Date(hit.ts) : null;
+    const restCp = Math.max(Number(cp.km) - km, 0);
+    const etaCp = !reached && avg > 0 && restCp > 0 ? new Date(now.getTime() + restCp/avg*3.6e6)
+                : (!reached && restCp === 0 ? now : null);
+    const bufferCp = reached ? (cpDl - arrival) : (etaCp ? (cpDl - etaCp) : null);
+    const stateCp = bufferCp === null ? '' : bufferCp > 24*3.6e6 ? 'good' : bufferCp > 0 ? 'warn' : 'alert';
+    return {nm: cp.nm, short: cp.nm.split(' ')[0], dl: cpDl, reached, arrival, eta: etaCp, buffer: bufferCp, state: stateCp};
+  });
+  const pufferTiles = [
+    {nm:'Kalamata', short:'Ziel', dl, reached: rest===0, arrival: rest===0 && last ? new Date(last.ts) : null,
+     eta, buffer, state},
+    ...cpTiles
+  ];
   return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpHits,cpReached,ccReached,state,
-          raceH,measuredH,staleH,ferry,
+          raceH,measuredH,staleH,ferry,pufferTiles,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
 
 /* ---------- Ansicht ---------- */
+/* Gewählte Puffer-Kachel (Ziel oder ein Kontrollpunkt); Modulvariable, damit
+   sie das 60s-Re-Render überlebt — dasselbe Muster wie FER_SCEN beim
+   Fährpanel. Ein Klick auf den Pfeil verändert nur diese Zahl und ruft
+   renderMetrics() erneut auf, statt das Raster um eine Kachel je CP zu
+   erweitern (siehe Anlass: Roadbook nennt Fristen für CP2–CP4, die sollen
+   sichtbar sein, ohne das Board zu überfrachten). */
+let PUFFER_IDX = 0;
+
+function pufferCellHtml(c){
+  const tiles = c.pufferTiles;
+  const idx = ((PUFFER_IDX % tiles.length) + tiles.length) % tiles.length;
+  const t = tiles[idx];
+  const k = idx===0 ? 'Puffer auf das Limit' : 'Puffer auf '+esc(t.short);
+  const v = t.buffer!=null ? dur(t.buffer) : '–';
+  /* Ziel-Kachel bleibt wortgleich zum bisherigen Verhalten. CP-Kacheln
+     unterscheiden GEMESSEN (erreicht, echte Ankunftszeit) von PROGNOSE
+     (noch unterwegs) — dieselbe Zurückhaltung wie bei tsSrc/eleSrc, keine
+     Zahl als sicherer ausgeben, als sie ist. */
+  const n = idx===0
+    ? (c.rest===0 ? 'im Ziel' : c.eta ? 'Prognose Ankunft '+fmt(c.eta) : 'ab zwei Meldungen')
+    : (t.reached ? 'erreicht '+fmt(t.arrival)+' · Frist '+fmt(t.dl)
+       : t.eta ? 'Prognose Ankunft '+fmt(t.eta)+' · Frist '+fmt(t.dl)
+       : 'ab zwei Meldungen · Frist '+fmt(t.dl));
+  const nav = tiles.length > 1 ? `
+    <div class="pnav">
+      <button type="button" data-pufdir="-1" aria-label="voriger Puffer">‹</button>
+      <div class="pdots">${tiles.map((_,i)=> `<i class="${i===idx?'on':''}"></i>`).join('')}</div>
+      <button type="button" data-pufdir="1" aria-label="nächster Puffer">›</button>
+    </div>` : '';
+  return `<div class="cell puffercell"><div class="k">${k}</div>
+    <div class="v ${t.state||''}">${v}</div>
+    ${n?`<div class="n">${n}</div>`:''}
+    ${nav}</div>`;
+}
+
 function renderMetrics(c){
   const cells = [
     /* „Zuletzt gesehen“ statt „letzte Meldung“: gemeint ist, wie alt unser
@@ -332,14 +392,17 @@ function renderMetrics(c){
              + (c.staleH >= 1 ? ' · gemessen bis '+dur(c.staleH*3.6e6)+' zurück' : '') : '', ''],
     ['Soll-Schnitt ab jetzt', isFinite(c.need)&&c.rest>0? one(c.need):'–', 'km/h',
       c.rest===0? 'Ziel erreicht' : isFinite(c.need)? num(c.need*24)+' km/Tag · '+dur(c.dl-c.now)+' übrig':'Zeitlimit vorbei',
-      c.rest===0?'good':(c.state==='alert'?'alert':(c.avg && c.need<=c.avg?'good':'warn'))],
-    ['Puffer auf das Limit', c.buffer!==null? dur(c.buffer):'–', '',
-      c.rest===0? 'im Ziel' : c.eta? 'Prognose Ankunft '+fmt(c.eta):'ab zwei Meldungen', c.state]
+      c.rest===0?'good':(c.state==='alert'?'alert':(c.avg && c.need<=c.avg?'good':'warn'))]
   ];
   document.getElementById('metrics').innerHTML = cells.map(([k,v,u,n,cl])=>
     `<div class="cell"><div class="k">${k}</div>
      <div class="v ${cl||''}">${v}${u?` <span class="u">${u}</span>`:''}</div>
-     ${n?`<div class="n">${n}</div>`:''}</div>`).join('');
+     ${n?`<div class="n">${n}</div>`:''}</div>`).join('') + pufferCellHtml(c);
+
+  document.querySelectorAll('#metrics .pnav button').forEach(b=> b.onclick = ()=>{
+    PUFFER_IDX += Number(b.dataset.pufdir);
+    renderMetrics(c);
+  });
 
   const pill = document.getElementById('statusPill');
   pill.textContent = !c.last ? 'keine Daten' : c.rest===0 ? 'im Ziel'
