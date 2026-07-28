@@ -3333,14 +3333,28 @@
       "speed": 1.6,
       "ele": 1292,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785239660665",
+      "ts": "2026-07-28T13:47",
+      "tsSrc": "fix",
+      "km": 2321.94,
+      "place": "Klein Mohrau",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 50.082964,
+      "lon": 17.232116,
+      "speed": 0,
+      "ele": 1491,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-28T11:29:13.077Z",
+  "updated": "2026-07-28T11:54:20.796Z",
   "live": {
-    "ts": "2026-07-28T13:29",
-    "km": 2317.46,
-    "fixMinsAgo": 22,
-    "speed": 1.6,
+    "ts": "2026-07-28T13:54",
+    "km": 2321.94,
+    "fixMinsAgo": 7,
+    "speed": 0,
     "rank": 276
   }
 }
