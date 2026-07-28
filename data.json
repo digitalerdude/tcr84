@@ -3412,14 +3412,28 @@
       "speed": 15,
       "ele": 613,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785247214188",
+      "ts": "2026-07-28T15:53",
+      "tsSrc": "track",
+      "km": 2366.44,
+      "place": "Seitendorf",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 49.963555,
+      "lon": 17.645812,
+      "speed": 35.3,
+      "ele": 459,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-28T13:35:06.260Z",
+  "updated": "2026-07-28T14:00:14.310Z",
   "live": {
-    "ts": "2026-07-28T15:35",
-    "km": 2356.92,
-    "fixMinsAgo": 6,
-    "speed": 15,
+    "ts": "2026-07-28T16:00",
+    "km": 2366.44,
+    "fixMinsAgo": 7,
+    "speed": 35.3,
     "rank": 276
   }
 }
