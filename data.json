@@ -3221,14 +3221,28 @@
       "speed": 14.4,
       "ele": 495,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785227590885",
+      "ts": "2026-07-28T10:27",
+      "tsSrc": "track",
+      "km": 2294.29,
+      "place": "Winkelsdorf",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 50.071335,
+      "lon": 17.120155,
+      "speed": 9.4,
+      "ele": 749,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-28T08:07:50.125Z",
+  "updated": "2026-07-28T08:33:11.001Z",
   "live": {
-    "ts": "2026-07-28T10:07",
-    "km": 2291.08,
-    "fixMinsAgo": 5,
-    "speed": 14.4,
+    "ts": "2026-07-28T10:33",
+    "km": 2294.29,
+    "fixMinsAgo": 6,
+    "speed": 9.4,
     "rank": 276
   }
 }
