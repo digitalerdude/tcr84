@@ -3291,14 +3291,28 @@
       "speed": 3.2,
       "ele": 755,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785235133695",
+      "ts": "2026-07-28T12:32",
+      "tsSrc": "fix",
+      "km": 2313.8,
+      "place": "Wiesenberg",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 50.101984,
+      "lon": 17.174229,
+      "speed": 3.7,
+      "ele": 996,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-28T10:13:45.603Z",
+  "updated": "2026-07-28T10:38:53.830Z",
   "live": {
-    "ts": "2026-07-28T12:13",
-    "km": 2311.95,
-    "fixMinsAgo": 1,
-    "speed": 3.2,
+    "ts": "2026-07-28T12:38",
+    "km": 2313.8,
+    "fixMinsAgo": 6,
+    "speed": 3.7,
     "rank": 276
   }
 }
