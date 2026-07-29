@@ -3902,14 +3902,28 @@
       "speed": 49.3,
       "ele": 598,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785338964253",
+      "ts": "2026-07-29T17:26",
+      "tsSrc": "track",
+      "km": 2699.91,
+      "place": "Liptau-Nikolaus",
+      "note": "Platz 278",
+      "cc": "SK",
+      "lat": 49.098642,
+      "lon": 19.589176,
+      "speed": 0,
+      "ele": 574,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T15:04:14.630Z",
+  "updated": "2026-07-29T15:29:24.343Z",
   "live": {
-    "ts": "2026-07-29T17:04",
-    "km": 2692.18,
-    "fixMinsAgo": 2,
-    "speed": 49.3,
-    "rank": 276
+    "ts": "2026-07-29T17:29",
+    "km": 2699.91,
+    "fixMinsAgo": 3,
+    "speed": 0,
+    "rank": 278
   }
 }
