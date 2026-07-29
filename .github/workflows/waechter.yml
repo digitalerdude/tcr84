@@ -11,6 +11,20 @@
 # ist, und legt bei Überschreitung ein Issue an — GitHub schickt die Mail. Er
 # schweigt außerhalb des Rennens und nachts (ein zugeklappter Mac ist kein
 # Defekt), und er schließt das Issue wieder, sobald Daten nachkommen.
+#
+# Zweiter Job (export-pruefen, 29.07.2026): deckt einen ANDEREN Fehlermodus.
+# `pruefen` oben sieht nur, ob der Scraper überhaupt noch lebt (`live.ts`
+# gegen JETZT) — das bleibt blind für einen hängenden GPX-Export, bei dem der
+# Scraper einwandfrei läuft und `live.ts` frisch bleibt, während der separate
+# GPX-Unterabruf (track.json) stundenlang dieselben alten Punkte liefert.
+# Genau das passierte am 27./28.07.2026 über 500+ Minuten, unbemerkt bis zum
+# manuellen `check.mjs`-Lauf. `export-pruefen` rechnet denselben Abstand wie
+# check.mjs' „Pause oder Funkloch"-Prüfung (`stilleMin − fixAltMin`, TOL in
+# tools/check.mjs), bewusst dupliziert statt importiert — ein Actions-Job hat
+# keinen Node-Kontext für einen Import, und close-genug-Kopie mit Verweis auf
+# die Quelle ist hier ehrlicher als eine Bausatz-Abhängigkeit zwischen einem
+# Cloud-Job und einem lokalen Skript. Ändert sich TOL.exportRueckstandMin in
+# check.mjs, hier mitziehen.
 name: Wächter
 
 on:
@@ -120,6 +134,112 @@ jobs:
                 'Sofort aufholen: `cd tools && node update-tracker.mjs --commit --push`',
                 '',
                 '_Dieses Issue schließt sich von selbst, sobald wieder Daten ankommen._',
+              ].filter(Boolean).join('\n'),
+            });
+            core.info('Issue angelegt.');
+
+  export-pruefen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Deckungsgleich mit TOL.exportRueckstandMin in tools/check.mjs:
+            // der Export arbeitet nachweislich in Stapeln und holt Rückstände
+            // bis 149 min von allein auf (siehe dort) — erst darüber ist es
+            // kein normaler Betrieb mehr.
+            const SCHWELLE_MIN = 180;
+            const RUHE_AB = 23, RUHE_BIS = 7;
+            const TITEL = 'GPX-Export hängt';
+
+            const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+            const st = data.settings || {};
+            let track = null;
+            try { track = JSON.parse(fs.readFileSync('track.json', 'utf8')); } catch { /* noch keine Spur, z.B. vor Rennbeginn */ }
+
+            const alsLokal = s => new Date(s + '+02:00');
+
+            const jetzt = new Date();
+            const start = alsLokal(st.start);
+            const ende = new Date(alsLokal(st.deadline).getTime() + 24 * 3600 * 1000);
+
+            const liste = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', per_page: 100,
+            });
+            const offen = liste.data.find(i => !i.pull_request && i.title === TITEL);
+
+            if (jetzt < start || jetzt > ende) {
+              core.info('Außerhalb des Rennfensters — nichts zu tun.');
+              return;
+            }
+
+            const pts = track && Array.isArray(track.points) ? track.points : null;
+            const lv = data.live || null;
+
+            /* Derselbe Abstand wie in check.mjs: nicht das Alter der Spur für
+               sich (schweigt der Tracker, altern Live-Fix UND Spur im
+               Gleichschritt, und daran ist der Export unschuldig), sondern
+               wie weit der Live-Fix der Spur inzwischen VORAUS ist. */
+            let rueckstandMin = null;
+            if (pts && pts.length > 1 && lv && lv.ts && lv.fixMinsAgo != null) {
+              const letzterPkt = pts[pts.length - 1];
+              const stilleMin = (jetzt.getTime()/1000 - letzterPkt[3]) / 60;
+              const fixAltMin = lv.fixMinsAgo + (jetzt - alsLokal(lv.ts)) / 60000;
+              rueckstandMin = stilleMin - fixAltMin;
+            }
+            core.info(`Export-Rückstand ist ${rueckstandMin === null ? 'unbekannt' : Math.round(rueckstandMin) + ' min'}.`);
+
+            if (rueckstandMin === null || rueckstandMin < SCHWELLE_MIN) {
+              if (offen) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: offen.number,
+                  body: rueckstandMin === null
+                    ? 'Kein Rückstand mehr messbar (Spur oder Live-Stand fehlt gerade). Automatisch geschlossen.'
+                    : `Export ist wieder dran — Rückstand nur noch ${Math.round(rueckstandMin)} min. Automatisch geschlossen.`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: offen.number, state: 'closed',
+                });
+                core.info('Wieder in Ordnung, Issue geschlossen.');
+              }
+              return;
+            }
+
+            const stunde = Number(jetzt.toLocaleString('en-GB', {
+              timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false,
+            }));
+            if (stunde >= RUHE_AB || stunde < RUHE_BIS) {
+              core.info(`Nachtruhe (${stunde} Uhr lokal) — Meldung wartet bis ${RUHE_BIS} Uhr.`);
+              return;
+            }
+
+            if (offen) {
+              core.info(`Issue #${offen.number} ist schon offen — keine zweite Meldung.`);
+              return;
+            }
+
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: TITEL,
+              body: [
+                `Der GPX-Export hinkt dem Live-Fix seit **${Math.round(rueckstandMin)} min** hinterher (Schwelle: ${SCHWELLE_MIN} min) — weiter, als er es je von allein aufgeholt hat.`,
+                lv ? `Live-Stand: ${lv.km} km, Platz ${lv.rank}, \`live.ts\` = ${lv.ts} — der Scraper selbst läuft also, nur die Spur hängt.` : '',
+                '',
+                'Der Export arbeitet normalerweise in Stapeln (Rückstände bis 149 min beobachtet, dann am Stück nachgeliefert).',
+                'Dass er diese Schwelle reißt, ist neu — mögliche Ursachen:',
+                '',
+                '- der Tracker-Anbieter hat einen dauerhaften Defekt am Export (nicht am Live-Feed, der bleibt ja frisch)',
+                '- `tail -60 tools/update-tracker.log | grep -i "spur\\|export"` — was meldet check.mjs zuletzt?',
+                '- manueller Nachstoß: `cd tools && node update-tracker.mjs --commit --push` (holt nichts nach, was der Anbieter nicht hat, zeigt aber den aktuellen Stand)',
+                '',
+                'Betrifft nur die aus der Spur abgeleiteten Werte (Höhenprofil, Tagesbalken, CP-Nähe-Erkennung) — Kilometerstand, Tempo und Platz in der Kopfzeile bleiben davon unberührt, die kommen aus dem separaten Live-Feed.',
+                '',
+                '_Dieses Issue schließt sich von selbst, sobald der Export wieder aufgeholt hat._',
               ].filter(Boolean).join('\n'),
             });
             core.info('Issue angelegt.');

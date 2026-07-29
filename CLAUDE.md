@@ -673,11 +673,17 @@ läuft — die steht ohnehin immer zwischen zwei gestempelten Zeilen.
 ## .github/workflows/waechter.yml — der Wächter
 
 Läuft in **GitHubs Cloud, nicht auf dem Mac** — das ist der ganze Punkt: er
-merkt auch dann etwas, wenn der Mac das Problem *ist*. Stündlich (`cron`,
-zusätzlich von Hand über `workflow_dispatch` auslösbar) prüft er, wie alt
-`live.ts` in `data.json` ist, und legt ab `SCHWELLE_MIN` (180) ein Issue an;
-GitHub verschickt die Mail. Kommen wieder Daten, kommentiert und schließt er
-es von selbst.
+merkt auch dann etwas, wenn der Mac das Problem *ist*. Zwei unabhängige Jobs,
+gleicher Cron-Takt, gleiche Grundform (Rennfenster, Nachtruhe, ein Issue statt
+stündlich neuer), aber verschiedene Signale — der eine sieht nicht, was der
+andere sieht.
+
+### Job `pruefen` — lebt der Scraper überhaupt?
+
+Stündlich (`cron`, zusätzlich von Hand über `workflow_dispatch` auslösbar)
+prüft er, wie alt `live.ts` in `data.json` ist, und legt ab `SCHWELLE_MIN`
+(180) ein Issue an ("Tracker-Abruf hängt"); GitHub verschickt die Mail.
+Kommen wieder Daten, kommentiert und schließt er es von selbst.
 
 Drei Regeln, damit er nicht zum Nörgler wird:
 
@@ -701,6 +707,44 @@ bevor jemand behelligt wird. Getestet wurde die eingebettete Logik vor dem
 ersten Scharfschalten gegen ein nachgebautes GitHub-API mit eingefrorener Uhr
 (10 Zweige: frisch/alt, Tag/Nacht, vor/im/nach dem Rennen, Issue schon offen,
 `live` fehlt, Grenzfälle 179 und 181 Minuten).
+
+### Job `export-pruefen` — lebt der GPX-Export? (29.07.2026)
+
+`pruefen` ist blind für einen zweiten Fehlermodus: der Scraper läuft
+einwandfrei, `live.ts` bleibt frisch, aber der separate GPX-Unterabruf
+(`track.json`) liefert stundenlang dieselben alten Punkte — genau das
+passierte am 27./28.07.2026 über 500+ Minuten, bemerkt erst durch einen
+manuellen `check.mjs`-Lauf, nicht durch den Wächter. `live.ts`-Alter allein
+kann das nicht sehen, weil `live.ts` ja frisch bleibt.
+
+`export-pruefen` rechnet deshalb denselben Abstand wie check.mjs' „Pause oder
+Funkloch"-Prüfung: nicht das Alter der Spur für sich (schweigt der Tracker,
+altern Live-Fix *und* Spur im Gleichschritt — Pause oder Funkloch, den Export
+trifft daran keine Schuld), sondern wie weit der Live-Fix der Spur inzwischen
+voraus ist (`stilleMin − fixAltMin`). Bleibt dieser Abstand unter
+`SCHWELLE_MIN` (180, deckungsgleich mit `TOL.exportRueckstandMin` in
+`tools/check.mjs`), ist es normaler Stapelbetrieb. Legt ein zweites,
+eigenständiges Issue an ("GPX-Export hängt") — eigener Titel, eigener
+Schließen-Zyklus, kollidiert nicht mit `pruefen`.
+
+**Bewusst dupliziert statt importiert:** ein Actions-Job hat keinen
+Node-Kontext, um `check.mjs` einzubinden, und eine Bausatz-Abhängigkeit
+zwischen einem Cloud-Job und einem lokalen Skript wäre brüchiger als eine
+knappe, referenzierte Kopie der Formel. Ändert sich `TOL.exportRueckstandMin`
+in `check.mjs`, muss das hier von Hand nachgezogen werden — das ist der Preis
+der Unabhängigkeit.
+
+Die Formel braucht `track.json` zusätzlich zu `data.json` (per `actions/
+checkout` beide ohnehin im Job vorhanden) und schweigt sauber, wenn `track.
+json` fehlt (vor dem ersten Lauf) oder weniger als zwei Punkte hat — kein
+Crash, einfach kein Rückstand messbar.
+
+Getestet gegen ein nachgebautes GitHub-API mit eingefrorener Uhr, 9 Fälle:
+echter Stau (~524 min, sowohl tagsüber als auch in der Nachtruhe) · echtes
+Funkloch (Live-Fix altert im Gleichschritt mit der Spur, Rückstand bleibt
+bei 0 statt fälschlich zu warnen) · gesunder Betrieb mit offenem Issue, das
+sich schließt · außerhalb des Rennfensters · `track.json` fehlt noch ·
+Grenzfälle 179 und 181 Minuten.
 
 ## index.html — UI-Konventionen
 
