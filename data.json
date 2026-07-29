@@ -3888,14 +3888,28 @@
       "speed": 8.1,
       "ele": 799,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785337454519",
+      "ts": "2026-07-29T17:01",
+      "tsSrc": "track",
+      "km": 2692.18,
+      "place": "Liptovský Trnovec",
+      "note": "Platz 276",
+      "cc": "SK",
+      "lat": 49.128852,
+      "lon": 19.561106,
+      "speed": 49.3,
+      "ele": 598,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T14:39:03.060Z",
+  "updated": "2026-07-29T15:04:14.630Z",
   "live": {
-    "ts": "2026-07-29T16:39",
-    "km": 2682.66,
-    "fixMinsAgo": 12,
-    "speed": 8.1,
+    "ts": "2026-07-29T17:04",
+    "km": 2692.18,
+    "fixMinsAgo": 2,
+    "speed": 49.3,
     "rank": 276
   }
 }
