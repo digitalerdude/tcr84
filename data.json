@@ -3580,14 +3580,28 @@
       "speed": 9.6,
       "ele": 299,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785298506137",
+      "ts": "2026-07-29T06:15",
+      "tsSrc": "scrape",
+      "km": 2527.19,
+      "place": "Soběšovice",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 49.726835,
+      "lon": 18.456413,
+      "speed": 0,
+      "ele": 306,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T03:49:58.769Z",
+  "updated": "2026-07-29T04:15:06.229Z",
   "live": {
-    "ts": "2026-07-29T05:49",
-    "km": 2490.09,
-    "fixMinsAgo": 3,
-    "speed": 9.6,
+    "ts": "2026-07-29T06:15",
+    "km": 2527.19,
+    "fixMinsAgo": 5,
+    "speed": 0,
     "rank": 276,
     "stopSince": "2026-07-28T20:20"
   }
