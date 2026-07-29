@@ -3636,14 +3636,28 @@
       "speed": 19.5,
       "ele": 320,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785304544309",
+      "ts": "2026-07-29T07:53",
+      "tsSrc": "track",
+      "km": 2553.6,
+      "place": "Bistrzitz",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 49.633592,
+      "lon": 18.725536,
+      "speed": 0,
+      "ele": 353,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T05:30:34.383Z",
+  "updated": "2026-07-29T05:55:44.418Z",
   "live": {
-    "ts": "2026-07-29T07:30",
-    "km": 2549.66,
-    "fixMinsAgo": 5,
-    "speed": 19.5,
+    "ts": "2026-07-29T07:55",
+    "km": 2553.6,
+    "fixMinsAgo": 3,
+    "speed": 0,
     "rank": 276
   }
 }
