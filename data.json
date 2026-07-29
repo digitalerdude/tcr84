@@ -3706,14 +3706,28 @@
       "speed": 0,
       "ele": 414,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785312094062",
+      "ts": "2026-07-29T09:58",
+      "tsSrc": "track",
+      "km": 2593.67,
+      "place": "Zborov nad Bystricou",
+      "note": "Platz 276",
+      "cc": "SK",
+      "lat": 49.386793,
+      "lon": 18.875583,
+      "speed": 22.5,
+      "ele": 414,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T07:36:24.690Z",
+  "updated": "2026-07-29T08:01:34.157Z",
   "live": {
-    "ts": "2026-07-29T09:36",
-    "km": 2583.19,
+    "ts": "2026-07-29T10:01",
+    "km": 2593.67,
     "fixMinsAgo": 3,
-    "speed": 0,
+    "speed": 22.5,
     "rank": 276
   }
 }
