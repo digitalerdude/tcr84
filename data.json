@@ -3720,14 +3720,28 @@
       "speed": 22.5,
       "ele": 414,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785313603691",
+      "ts": "2026-07-29T10:18",
+      "tsSrc": "track",
+      "km": 2601.61,
+      "place": "Stará Bystrica",
+      "note": "Platz 276",
+      "cc": "SK",
+      "lat": 49.340077,
+      "lon": 18.932022,
+      "speed": 18.9,
+      "ele": 472,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T08:01:34.157Z",
+  "updated": "2026-07-29T08:26:43.777Z",
   "live": {
-    "ts": "2026-07-29T10:01",
-    "km": 2593.67,
-    "fixMinsAgo": 3,
-    "speed": 22.5,
+    "ts": "2026-07-29T10:26",
+    "km": 2601.61,
+    "fixMinsAgo": 9,
+    "speed": 18.9,
     "rank": 276
   }
 }
