@@ -43,6 +43,15 @@ const DEFAULTS = {
    vorher, aber nie falsch. */
 const CP_RADIUS_KM = 4;
 const CP_KM_MIN_FRAC = 0.9;
+/* Obergrenze für den Kilometerstand-Fallback in cpHit(), wenn die Spur da ist
+   aber nie in CP_RADIUS_KM herankommt. Bewusst großzügiger als CP_RADIUS_KM:
+   sie deckt weiterhin den harmlosen Fall ab, dass der Posten am Ortsrand statt
+   in der Ortsmitte sitzt (siehe CP_RADIUS_KM-Kommentar) — nur eine Spur, die
+   den Kontrollpunkt um ein Vielfaches verfehlt, gilt als Widerlegung. Am
+   29.07.2026 lag CP2b Chopok schon 51 km entfernt, weit über jedem plausiblen
+   Ortsrand-Versatz, als der reine Kilometerstand ihn trotzdem für erreicht
+   erklärte. */
+const CP_FALLBACK_MAX_KM = 15;
 /* Lokale Zeit ohne Zeitzonen-Suffix — dieselbe Konvention wie `ts` in
    data.json (siehe CLAUDE.md). Ein nacktes toISOString() verschöbe die
    Anzeige um die Zeitzonendifferenz. */
@@ -209,6 +218,7 @@ function compute(){
     const soll = Number(cp.km);
     const drueber = list.find(e=> Number(e.km) >= soll) || null;
     let nah = null;
+    let spurGeprueft = false, naechsteSpurM = Infinity;
     if(cp.pos){
       /* Die Nähe zählt erst, wenn er auch nach Kilometern in der Gegend ist.
          Die Meldung, ab der das gilt, ist zugleich die früheste Zeit, die ein
@@ -231,10 +241,14 @@ function compute(){
            die Ankunft heran und steht still, sobald er den Ort verlässt. */
         const abSec = new Date(ab.ts).getTime()/1000;
         let best = null, bestM = Infinity;
-        if(TRACK) for(const q of TRACK.points){
-          if(q[3] < abSec) continue;
-          const m = metersBetween([q[0],q[1]], cp.pos);
-          if(m <= CP_RADIUS_KM*1000 && m < bestM){ bestM = m; best = q; }
+        if(TRACK){
+          spurGeprueft = true;
+          for(const q of TRACK.points){
+            if(q[3] < abSec) continue;
+            const m = metersBetween([q[0],q[1]], cp.pos);
+            if(m < naechsteSpurM) naechsteSpurM = m;
+            if(m <= CP_RADIUS_KM*1000 && m < bestM){ bestM = m; best = q; }
+          }
         }
         if(best) nah = {ts: localIso(new Date(best[3]*1000))};
         else nah = list.find(e=> e.lat!=null && e.lon!=null
@@ -245,7 +259,17 @@ function compute(){
     // Der frühere der beiden gilt — gefeiert wird die Ankunft, nicht ihre
     // Bestätigung durch den Zähler.
     if(nah && drueber) return new Date(nah.ts) <= new Date(drueber.ts) ? nah : drueber;
-    return nah || drueber || null;
+    if(nah) return nah;
+    /* Der Kilometerstand allein darf nur greifen, wenn die Spur ihn nicht
+       widerlegt hat — sonst wäre „spät, aber nie falsch" (siehe CP_RADIUS_KM
+       oben) nicht mehr wahr. Am 29.07.2026 lag CP2b Chopok schon 51 km
+       entfernt, als der Kilometerstand allein CP2b für erreicht erklärte:
+       Manu war laut Spur weder am Kontrollpunkt noch überhaupt im Umkreis
+       der Passstraße. CP_FALLBACK_MAX_KM lässt den harmlosen Fall stehen
+       (Posten am Ortsrand statt in der Mitte, siehe oben), verwirft aber
+       einen Kilometerstand, den die Spur über viele Kilometer widerlegt. */
+    if(drueber && (!spurGeprueft || naechsteSpurM <= CP_FALLBACK_MAX_KM*1000)) return drueber;
+    return null;
   };
   const cpHits = new Map();   // Kontrollpunkt → Meldung, mit der er erreicht wurde
   st.cps.forEach(cp=>{ const h = cpHit(cp); if(h) cpHits.set(cp, h); });
