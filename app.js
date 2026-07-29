@@ -11,7 +11,26 @@ const KEY = 'tcr84:state';
    jeweiligen Kontrollpunkt-Postens — mehr braucht die Erkennung auch nicht,
    sie fragt nur „war er da?". `lat` daneben bleibt was es war: der Text für
    die Leiter. Kontrollpunkte ohne `pos` funktionieren weiter, sie werden dann
-   allein über den Kilometerstand erkannt (siehe cpHit() in compute()). */
+   allein über den Kilometerstand erkannt (siehe cpHit() in compute()).
+
+   Quelle für CP2b/CP3/CP4: die offiziellen Lost-Dot-Parcours-Routen auf
+   ridewithgps.com (Sammlung „Transcontinental Race No12 // #TCRNo12“,
+   8094883) — `pos` ist dort jeweils das ENDE der benannten Parcours-Route
+   (`last_lat`/`last_lng`), also der echte Kontrollpunkt, nicht eine
+   Luftlinien-Schätzung. Grund für den Umbau am 29./30.07.2026: CP2b Chopok
+   stand ursprünglich auf einer geratenen Position, die 215 km neben der
+   echten lag (siehe Praděd/Chopok-Vorfall) — seitdem gilt hier nur noch
+   „offizielle Route nachschlagen, nicht schätzen".
+
+   `km` ist davon UNABHÄNGIG und bleibt eine Schätzung, bis Manuel wirklich
+   in der Nähe ist (dann wie bei CP2b anhand seiner eigenen Kilometerangabe
+   oder der Spur nachgezogen) — CP3/CP4 tragen vorerst die redaktionellen
+   Werte aus dotwatcher.substack.com/p/inside-tcrno12-route (~3.520 / ~4.250
+   km), nicht Bodenwahrheit. Für die Erkennung selbst ist das unkritisch:
+   `pos` + der 4-km-Nahradius entscheiden, `km` steuert nur, AB WANN
+   (CP_KM_MIN_FRAC) und BIS WANN OHNE Spur-Bestätigung (CP_FALLBACK_MAX_KM)
+   danach gesucht wird — ein ungenauer Wert verschiebt also nur das Zeitfenster
+   der Suche, erfindet aber keine Ankunft. */
 const DEFAULTS = {
   totalKm: 4800,
   start: '2026-07-19T20:00',
@@ -21,8 +40,8 @@ const DEFAULTS = {
     { nm:'CP1 Flåm', lat:'60.9°N', km:700, pos:[60.863, 7.113] },
     { nm:'CP2a Praděd', lat:'50.1°N', km:2320, pos:[50.0894, 17.2261] },
     { nm:'CP2b Chopok', lat:'48.9°N', km:2719, pos:[48.96395, 19.58613], deadline:'2026-07-30T11:00' },
-    { nm:'CP3 Sarajevo', lat:'43.9°N', km:3450, pos:[43.856, 18.413], deadline:'2026-08-02T23:59' },
-    { nm:'CP4 Leskovik', lat:'40.2°N', km:4200, pos:[40.152, 20.594], deadline:'2026-08-05T23:59' },
+    { nm:'CP3 Sarajevo', lat:'43.8°N', km:3520, pos:[43.83074, 18.470769], deadline:'2026-08-02T23:59' },
+    { nm:'CP4 Leskovik', lat:'41.7°N', km:4250, pos:[41.68589, 20.42493], deadline:'2026-08-05T23:59' },
     { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.038, 22.113] }
   ]
 };
