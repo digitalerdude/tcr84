@@ -3664,14 +3664,28 @@
       "speed": 20.2,
       "ele": 376,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785307564714",
+      "ts": "2026-07-29T08:43",
+      "tsSrc": "track",
+      "km": 2570.23,
+      "place": "Mosty in den Beskiden",
+      "note": "Platz 276",
+      "cc": "CZ",
+      "lat": 49.522594,
+      "lon": 18.751307,
+      "speed": 14,
+      "ele": 511,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-29T06:20:53.880Z",
+  "updated": "2026-07-29T06:46:04.822Z",
   "live": {
-    "ts": "2026-07-29T08:20",
-    "km": 2559.96,
-    "fixMinsAgo": 8,
-    "speed": 20.2,
+    "ts": "2026-07-29T08:46",
+    "km": 2570.23,
+    "fixMinsAgo": 3,
+    "speed": 14,
     "rank": 276
   }
 }
