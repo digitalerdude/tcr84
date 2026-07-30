@@ -4292,14 +4292,28 @@
       "speed": 19.9,
       "ele": 533,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785417505427",
+      "ts": "2026-07-30T15:11",
+      "tsSrc": "track",
+      "km": 2869.27,
+      "place": "Senohrad",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.390952,
+      "lon": 19.172815,
+      "speed": 0,
+      "ele": 587,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T12:53:16.447Z",
+  "updated": "2026-07-30T13:18:25.587Z",
   "live": {
-    "ts": "2026-07-30T14:53",
-    "km": 2862.43,
-    "fixMinsAgo": 6,
-    "speed": 19.9,
+    "ts": "2026-07-30T15:18",
+    "km": 2869.27,
+    "fixMinsAgo": 7,
+    "speed": 0,
     "rank": 192
   }
 }
