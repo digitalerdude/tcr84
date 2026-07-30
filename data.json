@@ -4194,14 +4194,28 @@
       "speed": 5,
       "ele": 500,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785405301773",
+      "ts": "2026-07-30T11:52",
+      "tsSrc": "track",
+      "km": 2814.58,
+      "place": "Neusohl",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.737737,
+      "lon": 19.15445,
+      "speed": 0,
+      "ele": 349,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T09:29:53.932Z",
+  "updated": "2026-07-30T09:55:01.866Z",
   "live": {
-    "ts": "2026-07-30T11:29",
-    "km": 2807.03,
-    "fixMinsAgo": 7,
-    "speed": 5,
+    "ts": "2026-07-30T11:55",
+    "km": 2814.58,
+    "fixMinsAgo": 3,
+    "speed": 0,
     "rank": 192
   }
 }
