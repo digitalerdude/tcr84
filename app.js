@@ -353,22 +353,25 @@ function compute(){
   /* Roadbook-Fristen einzelner Kontrollpunkte (CP2/CP3/CP4, von Manuel
      genannt) bekommen denselben Puffer wie das Gesamtlimit — dieselbe Formel,
      nur mit CP-Kilometer statt Gesamtstrecke und CP-Frist statt Renn-Deadline.
-     Ist der CP schon erreicht, ist der Puffer keine Prognose mehr, sondern die
-     tatsächliche Ankunftszeit gegen die Frist — gemessen, nicht geschätzt
-     (dieselbe Unterscheidung wie bei tsSrc/eleSrc). Nur Kontrollpunkte mit
-     eigener `deadline` bekommen eine Kachel; CP1 hat (Stand jetzt) keine
-     genannte Frist und bleibt außen vor, statt eine zu erfinden. */
-  const cpTiles = st.cps.filter(cp=> cp.deadline).map(cp=>{
+     Nur Kontrollpunkte mit eigener `deadline` bekommen eine Kachel; CP1 hat
+     (Stand jetzt) keine genannte Frist und bleibt außen vor, statt eine zu
+     erfinden.
+     Ein erreichter CP fällt aus der Rotation (30.07.2026) — die Frist ist
+     dann Geschichte, keine Kennzahl mehr, auf die noch irgendjemand
+     hinarbeitet. Geprüft wird über `cpHits`, dieselbe Landkarte, die auch
+     `cpReached` und damit die Konfetti-Feier speist — keine zweite,
+     eigene "ist er da"-Prüfung, die der Feier widersprechen könnte. Bewusst
+     NICHT an das 24-h-Fenster von `cpReached` gekoppelt: das Fenster steuert
+     nur, wie lange gefeiert wird, nicht ob der CP erreicht ist. Sonst käme
+     die Kachel nach 24 h wieder — von "geschafft" zurück zu "läuft noch". */
+  const cpTiles = st.cps.filter(cp=> cp.deadline && !cpHits.has(cp)).map(cp=>{
     const cpDl = new Date(cp.deadline);
-    const hit = cpHits.get(cp);
-    const reached = !!hit;
-    const arrival = reached ? new Date(hit.ts) : null;
     const restCp = Math.max(Number(cp.km) - km, 0);
-    const etaCp = !reached && avg > 0 && restCp > 0 ? new Date(now.getTime() + restCp/avg*3.6e6)
-                : (!reached && restCp === 0 ? now : null);
-    const bufferCp = reached ? (cpDl - arrival) : (etaCp ? (cpDl - etaCp) : null);
+    const etaCp = avg > 0 && restCp > 0 ? new Date(now.getTime() + restCp/avg*3.6e6)
+                : (restCp === 0 ? now : null);
+    const bufferCp = etaCp ? (cpDl - etaCp) : null;
     const stateCp = bufferCp === null ? '' : bufferCp > 24*3.6e6 ? 'good' : bufferCp > 0 ? 'warn' : 'alert';
-    return {nm: cp.nm, short: cp.nm.split(' ')[0], dl: cpDl, reached, arrival, eta: etaCp, buffer: bufferCp, state: stateCp};
+    return {nm: cp.nm, short: cp.nm.split(' ')[0], dl: cpDl, reached: false, arrival: null, eta: etaCp, buffer: bufferCp, state: stateCp};
   });
   const pufferTiles = [
     {nm:'Kalamata', short:'Ziel', dl, reached: rest===0, arrival: rest===0 && last ? new Date(last.ts) : null,
@@ -396,13 +399,12 @@ function pufferCellHtml(c){
   const k = idx===0 ? 'Puffer auf das Limit' : 'Puffer auf '+esc(t.short);
   const v = t.buffer!=null ? dur(t.buffer) : '–';
   /* Ziel-Kachel bleibt wortgleich zum bisherigen Verhalten. CP-Kacheln
-     unterscheiden GEMESSEN (erreicht, echte Ankunftszeit) von PROGNOSE
-     (noch unterwegs) — dieselbe Zurückhaltung wie bei tsSrc/eleSrc, keine
-     Zahl als sicherer ausgeben, als sie ist. */
+     zeigen nur noch PROGNOSE — ein erreichter CP fällt aus `pufferTiles`
+     heraus (siehe compute()), bevor er hier ankommt, GEMESSEN gibt es an
+     dieser Stelle also nicht mehr zu unterscheiden. */
   const n = idx===0
     ? (c.rest===0 ? 'im Ziel' : c.eta ? 'Prognose Ankunft '+fmt(c.eta) : 'ab zwei Meldungen')
-    : (t.reached ? 'erreicht '+fmt(t.arrival)+' · Frist '+fmt(t.dl)
-       : t.eta ? 'Prognose Ankunft '+fmt(t.eta)+' · Frist '+fmt(t.dl)
+    : (t.eta ? 'Prognose Ankunft '+fmt(t.eta)+' · Frist '+fmt(t.dl)
        : 'ab zwei Meldungen · Frist '+fmt(t.dl));
   const nav = tiles.length > 1 ? `
     <div class="pnav">
