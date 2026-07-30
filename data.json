@@ -4180,14 +4180,28 @@
       "speed": 13.9,
       "ele": 633,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785403793775",
+      "ts": "2026-07-30T11:23",
+      "tsSrc": "track",
+      "km": 2807.03,
+      "place": "Priechod",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.777273,
+      "lon": 19.220565,
+      "speed": 5,
+      "ele": 500,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T09:04:45.327Z",
+  "updated": "2026-07-30T09:29:53.932Z",
   "live": {
-    "ts": "2026-07-30T11:04",
-    "km": 2799,
-    "fixMinsAgo": 1,
-    "speed": 13.9,
+    "ts": "2026-07-30T11:29",
+    "km": 2807.03,
+    "fixMinsAgo": 7,
+    "speed": 5,
     "rank": 192
   }
 }
