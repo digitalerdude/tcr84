@@ -4068,14 +4068,28 @@
       "speed": 4,
       "ele": 1007,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785391726363",
+      "ts": "2026-07-30T08:01",
+      "tsSrc": "track",
+      "km": 2770.82,
+      "place": "Liptovská Lúžna",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.941862,
+      "lon": 19.31713,
+      "speed": 0,
+      "ele": 703,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T05:43:36.476Z",
+  "updated": "2026-07-30T06:08:46.494Z",
   "live": {
-    "ts": "2026-07-30T07:43",
-    "km": 2763.08,
-    "fixMinsAgo": 2,
-    "speed": 4,
+    "ts": "2026-07-30T08:08",
+    "km": 2770.82,
+    "fixMinsAgo": 7,
+    "speed": 0,
     "rank": 192
   }
 }
