@@ -4138,14 +4138,28 @@
       "speed": 4,
       "ele": 992,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785399268365",
+      "ts": "2026-07-30T10:03",
+      "tsSrc": "track",
+      "km": 2791.49,
+      "place": "Donovaly",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.868524,
+      "lon": 19.22006,
+      "speed": 0,
+      "ele": 1042,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T07:49:20.802Z",
+  "updated": "2026-07-30T08:14:28.500Z",
   "live": {
-    "ts": "2026-07-30T09:49",
-    "km": 2788.73,
-    "fixMinsAgo": 6,
-    "speed": 4,
+    "ts": "2026-07-30T10:14",
+    "km": 2791.49,
+    "fixMinsAgo": 11,
+    "speed": 0,
     "rank": 192
   }
 }
