@@ -4082,14 +4082,28 @@
       "speed": 0,
       "ele": 703,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785393234630",
+      "ts": "2026-07-30T08:28",
+      "tsSrc": "track",
+      "km": 2774.72,
+      "place": "Liptovská Osada",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.949888,
+      "lon": 19.273285,
+      "speed": 35.1,
+      "ele": 619,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T06:08:46.494Z",
+  "updated": "2026-07-30T06:33:54.771Z",
   "live": {
-    "ts": "2026-07-30T08:08",
-    "km": 2770.82,
-    "fixMinsAgo": 7,
-    "speed": 0,
+    "ts": "2026-07-30T08:33",
+    "km": 2774.72,
+    "fixMinsAgo": 5,
+    "speed": 35.1,
     "rank": 192
   }
 }
