@@ -4054,14 +4054,28 @@
       "speed": 14.1,
       "ele": 752,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785390216349",
+      "ts": "2026-07-30T07:41",
+      "tsSrc": "fix",
+      "km": 2763.08,
+      "place": "Partizánska Ľupča",
+      "note": "Platz 192",
+      "cc": "SK",
+      "lat": 48.953047,
+      "lon": 19.397273,
+      "speed": 4,
+      "ele": 1007,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-30T05:18:29.477Z",
+  "updated": "2026-07-30T05:43:36.476Z",
   "live": {
-    "ts": "2026-07-30T07:18",
-    "km": 2758.47,
-    "fixMinsAgo": 7,
-    "speed": 14.1,
+    "ts": "2026-07-30T07:43",
+    "km": 2763.08,
+    "fixMinsAgo": 2,
+    "speed": 4,
     "rank": 192
   }
 }
