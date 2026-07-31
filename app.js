@@ -442,6 +442,16 @@ function pufferCellHtml(c){
 }
 
 function renderMetrics(c){
+  /* Der bindende Termin und das physisch nächste CP müssen nicht derselbe
+     sein — CP3s eigene Frist kann entspannt sein, während CP4s Frist eng
+     ist (siehe compute()). Ohne diesen Zusatz liest sich „bis CP4 Leskovik“
+     hier wie ein Widerspruch zum „Bis CP3 …“-Satz im Kasten weiter unten,
+     der ja den nächsten physischen Kontrollpunkt nennt. Nur wenn der
+     nächste CP überhaupt eine eigene Frist trägt (`nextCpTile` gefunden)
+     und nicht selbst der bindende ist, lohnt der Hinweis. */
+  const nextCpTile = c.nextCp ? c.pufferTiles.find(t=> t.nm===c.nextCp.nm) : null;
+  const bindingNote = (c.bindingNm!=='Kalamata' && nextCpTile && nextCpTile.nm!==c.bindingNm)
+    ? ' ('+esc(nextCpTile.short)+' selbst entspannt)' : '';
   const cells = [
     /* „Zuletzt gesehen“ statt „letzte Meldung“: gemeint ist, wie alt unser
        Wissen über seine Position ist, nicht wann zuletzt eine Log-Zeile
@@ -465,7 +475,7 @@ function renderMetrics(c){
        sonst läse sich die Zahl wie gehabt als Zielschnitt. */
     ['Soll-Schnitt ab jetzt', isFinite(c.bindingNeed)&&c.rest>0? one(c.bindingNeed):'–', 'km/h',
       c.rest===0? 'Ziel erreicht' : isFinite(c.bindingNeed)
-        ? num(c.bindingNeed*24)+' km/Tag'+(c.bindingNm!=='Kalamata'? ' · bis '+esc(c.bindingNm):'')+' · '+dur(c.bindingDl-c.now)+' übrig'
+        ? num(c.bindingNeed*24)+' km/Tag'+(c.bindingNm!=='Kalamata'? ' · bis '+esc(c.bindingNm):'')+bindingNote+' · '+dur(c.bindingDl-c.now)+' übrig'
         : (c.bindingNm!=='Kalamata'? 'Frist für '+esc(c.bindingNm)+' vorbei' : 'Zeitlimit vorbei'),
       c.rest===0?'good':(c.bindingState==='alert'?'alert':(c.avg && c.bindingNeed<=c.avg?'good':'warn'))]
   ];
