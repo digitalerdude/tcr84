@@ -437,6 +437,22 @@
   .fmnote{font-size:12.5px;color:var(--prose);margin-top:11px;line-height:1.55}
   .fmnote b{color:var(--ice);font-weight:500}
 
+  /* Werkstatt-Logbuch: Icon · km-Stempel · Text. Zwei Gruppen (Defekte, Wartung),
+     Bilanz oben in der summary und unten als Härte-Abzeichen. */
+  .wknote{font-size:12.5px;color:var(--prose);margin:2px 0 4px;line-height:1.55}
+  .wkgrp{margin-top:14px}
+  .wkhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+          text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .wkrow{display:grid;grid-template-columns:22px 66px 1fr;align-items:baseline;
+         gap:10px;padding:7px 0}
+  .wkrow + .wkrow{border-top:1px solid var(--line)}
+  .wkem{font-size:15px;line-height:1}
+  .wkkm{font-family:var(--mono);font-size:12px;color:var(--brass);text-align:right;
+        white-space:nowrap}
+  .wktxt{color:var(--bone);font-size:13.5px}
+  .wkbilanz{font-family:var(--mono);font-size:11px;color:var(--muted);
+            margin-top:14px;line-height:1.5}
+
   /* Die kommenden Länder: eine Reihe Häppchen, kein Block. Sie sind Ausblick,
      nicht Information — deshalb klein, einzeilig und ohne Kalorienangabe. */
   .fuelnext{margin-top:12px}

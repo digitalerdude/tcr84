@@ -1769,6 +1769,73 @@ function fuelLand(c){
    ist. Der zweite Weg ist nötig, weil mitten auf der Ostsee kein Netz ist:
    die Spur bestätigt die Überfahrt erst Stunden später, und bis dahin stünde
    sonst weder Fähre noch Verpflegung da. */
+/* Werkstatt-Logbuch: was unterwegs kaputtging, verlorenging und gerichtet wurde.
+   Von Hand gemeldet, nicht gemessen — deshalb Frontend-Konstante wie FERRY/FUEL/
+   WIND, nicht data.json. `grp` steuert die Anzeige-Gruppe, `kat` nur die Bilanz-
+   Zählung. Neue Meldung: Zeile anhängen, km ist der Tracker-Stand bei Eintritt. */
+const WERKSTATT = {
+  intro: 'Was unterwegs kaputtging, verlorenging — und wieder gerichtet wurde.',
+  eintraege: [
+    {km:10,   ic:'🔔', txt:'Klingel verloren',                    grp:'defekt',  kat:'verlust'},
+    {km:40,   ic:'🔧', txt:'Reifenpanne hinten',                  grp:'defekt',  kat:'reifen'},
+    {km:250,  ic:'🔧', txt:'Reifenpanne hinten',                  grp:'defekt',  kat:'reifen'},
+    {km:670,  ic:'🍌', txt:'Banane verloren',                     grp:'defekt',  kat:'verlust'},
+    {km:680,  ic:'🔧', txt:'Reifenpanne hinten',                  grp:'defekt',  kat:'reifen'},
+    {km:1300, ic:'🔧', txt:'Reifenpanne vorn',                    grp:'defekt',  kat:'reifen'},
+    {km:2100, ic:'⛓️', txt:'Kette geölt',                         grp:'wartung', kat:'kette'},
+    {km:3000, ic:'🔧', txt:'Reifenpanne vorn',                    grp:'defekt',  kat:'reifen'},
+    {km:3150, ic:'⛓️', txt:'Kette geölt',                         grp:'wartung', kat:'kette'},
+    {km:3150, ic:'🔩', txt:'Bowdenzug Schaltung hinten gerissen', grp:'defekt',  kat:'defekt'},
+  ]
+};
+
+/* Bilanz-Fragmente für die Kopfzeile — nur nicht-leere Kategorien, in fester
+   Reihenfolge, Singular/Plural von Hand (eine Regel gäbe es nicht, nur eine
+   Reihe falscher Formen — siehe FUEL.pl). Reifenpannen zuerst, sie sind die
+   Geschichte. */
+function werkstattBilanz(z){
+  const n = k => z.filter(e=> e.kat === k).length;
+  const teile = [];
+  const r = n('reifen'), v = n('verlust'), ke = n('kette'), d = n('defekt');
+  if(r)  teile.push(`${r} ${r===1?'Reifenpanne':'Reifenpannen'}`);
+  if(v)  teile.push(`${v}× verloren`);
+  if(ke) teile.push(`${ke}× Kette geölt`);
+  if(d)  teile.push(`${d} ${d===1?'Defekt':'Defekte'}`);
+  return teile;
+}
+
+function renderWerkstatt(c){
+  const det = document.getElementById('werkstattDetails');
+  // km-Guard: nie ein Missgeschick „vor" dem Fahrer. Die Liste ist ohnehin
+  // rückblickend, aber so kann keine vorab getippte Zeile zu früh auftauchen.
+  const z = WERKSTATT.eintraege.filter(e=> e.km <= (c.km||0) + 1)
+    .slice().sort((a,b)=> a.km - b.km);
+  if(!z.length){ det.hidden = true; return; }
+  det.hidden = false;
+
+  const bilanz = werkstattBilanz(z);
+  document.getElementById('werkstattSum').innerHTML =
+    'Werkstatt · <b>' + esc(bilanz[0]) + '</b>' +
+    (bilanz.length > 1 ? ' · ' + bilanz.slice(1).map(esc).join(' · ') : '');
+
+  const gruppe = (key, titel)=>{
+    const rows = z.filter(e=> e.grp === key);
+    if(!rows.length) return '';
+    return `<div class="wkgrp"><div class="wkhead">${titel}</div>` +
+      rows.map(e=>
+        `<div class="wkrow"><span class="wkem">${e.ic}</span>` +
+        `<span class="wkkm">${num(e.km)} km</span>` +
+        `<span class="wktxt">${esc(e.txt)}</span></div>`).join('') +
+      `</div>`;
+  };
+
+  document.getElementById('werkstattWrap').innerHTML =
+    `<div class="wknote">${esc(WERKSTATT.intro)}</div>` +
+    gruppe('defekt', 'Defekte &amp; Verluste') +
+    gruppe('wartung', 'Wartung') +
+    `<div class="wkbilanz">${bilanz.map(esc).join(' · ')} — und trotzdem dabei.</div>`;
+}
+
 function fuelSichtbar(c){
   if(c.ferry && (c.ferry.state === 'onboard' || c.ferry.state === 'done')) return true;
   const dep = bookedDeparture();
@@ -2943,7 +3010,7 @@ window.tcr84Wetter = was=>{
 function render(){
   const c = compute();
   renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c);
-  renderFerry(c); renderFuel(c); renderWind(); renderLog(c); renderSource(c);
+  renderFerry(c); renderFuel(c); renderWerkstatt(c); renderWind(); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   maybeCelebrate(c);
   if(EDIT) renderDirty();
