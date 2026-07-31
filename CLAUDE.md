@@ -8,13 +8,16 @@ GitHub Pages direkt von `main` (`https://digitalerdude.github.io/tcr84/`).
 
 | Datei | Zweck |
 |---|---|
-| `index.html` | Die ganze App: Vanilla-JS, kein Build-Step. CSS-Variablen in `:root` sind das Design-System (`--night`, `--panel`, `--brass`, `--mono` etc.) — neue UI hält sich daran, keine Hardcoded-Farben. |
+| `index.html` | Das Gerüst: Kopfbereich und leere Panel-Container, die `app.js` füllt. Kein Build-Step. Die `?v=`-Nummern an `style.css` und `app.js` sind Cache-Busting — **bei jeder UI-Änderung hochzählen**, sonst sehen wiederkehrende Besucher den alten Stand. |
+| `app.js` | Die ganze Logik: Vanilla-JS, kein Framework, kein Build. `compute()` rechnet, die `render*()`-Funktionen zeichnen, `render()` ruft sie im 60-Sekunden-Takt. |
+| `style.css` | Das Design-System. CSS-Variablen in `:root` (`--night`, `--panel`, `--brass`, `--prose`, `--mono` etc.) — neue UI hält sich daran, keine Hardcoded-Farben. |
 | `data.json` | Der Datenspeicher. Wird von GitHub Pages ausgeliefert, `index.html` lädt ihn per `fetch('data.json?t=...')`. Schreibrechte nur über Git-Commit ins Repo (kein Server, kein Backend). |
 | `track.json` | Archiv der **echten gefahrenen Spur** aus dem GPX-Export des Trackers, siehe unten. Wird bei jedem Lauf komplett neu geschrieben. Rohdaten, vom Frontend nicht gelesen. |
 | `profile.json` | Das daraus gerechnete Höhenprofil (Stützpunkte + kumulierte Höhenmeter je Block). **Einzige Quelle für alle Höhenangaben im Board.** Eigener Ladetakt im Frontend (15 Min), weil es die größte Datei ist. |
 | `tools/update-tracker.mjs` | Automatisierter Scraper, siehe unten. |
 | `tools/check.mjs` | Invarianten-Prüfung der drei JSON-Dateien gegeneinander, siehe unten. |
-| `tools/wind-worker.js` | Cloudflare Worker für den Rückenwind-Zähler — die einzige Stelle außerhalb von GitHub Pages. Einrichtung im Kopfkommentar der Datei, siehe unten. |
+| `tools/wind-worker.js` | Cloudflare Worker für den Rückenwind-Zähler — eine der beiden Stellen außerhalb von GitHub Pages. Einrichtung im Kopfkommentar der Datei, siehe unten. |
+| `tools/zuruf-worker.js` | Cloudflare Worker für die Grußwand (ein KV-Schlüssel je Zuruf, 48 h TTL, token-geschütztes Löschen). Eigener Namespace und eigenes Secret, bewusst getrennt vom Rückenwind-Zähler. Einrichtung im Kopfkommentar, siehe unten. |
 | `tools/com.digitalerdude.tcr84-tracker-updater.plist` | Abschrift der launchd-Konfiguration. Getickt wird nach der Kopie in `~/Library/LaunchAgents/`; `check.mjs` schlägt an, wenn beide auseinanderlaufen. |
 | `tools/package.json` | Playwright-Dependency für den Scraper. `cd tools && npm install`. |
 
@@ -818,6 +821,13 @@ Grenzfälle 179 und 181 Minuten.
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
   Attributwerten trägt. Wer eine neue Render-Stelle baut: erst escapen.
+  **Seit den Zurufen (31.07.2026) gibt es eine schärfere Kategorie**: Text, den
+  ein Fremder mit voller Absicht in ein Feld getippt hat, das dafür da ist.
+  Alles andere kommt von einem Kartendienst oder aus einem Link, den man
+  verschicken muss; die Grußwand nimmt Fremdeingaben als ihren Zweck entgegen.
+  Dort gilt zusätzlich: **`esc()` ersetzt kein `'`** — jeder Attributwert in
+  `zurufKarte()` steht deshalb in doppelten Anführungszeichen, und
+  `tcr84Zurufe('boese')` prüft die ganze Kette in einer Zeile nach.
 - **Kein `?t=`-Cache-Busting mehr** (21.07.2026): alle drei JSON-fetches laufen
   mit `{cache:'no-cache'}` — der Browser revalidiert per ETag und bekommt von
   GitHub Pages ein 304 statt eines Volldownloads, wenn nichts neu ist. Mit
@@ -861,6 +871,11 @@ Grenzfälle 179 und 181 Minuten.
   Dasselbe gilt für das **Verpflegungs-Panel**, das ab dem Ablegen an seine
   Stelle tritt: auch das ist keine Detail-Ebene, sondern das, was an dieser
   Stelle gelesen werden soll. Ein Gimmick hinter einem Klick ist keins.
+  Und für die **Grußwand** (31.07.2026), aus dem gleichen Grund in seiner
+  schärfsten Form: *eine Wand hinter einem Klick ist eine leere Wand.* Wer
+  nicht sieht, dass andere schon geschrieben haben, schreibt selbst nichts.
+  Eingeklappt ist dort das **Formular** — das ist eine Detail-Ebene im
+  ursprünglichen Sinn, und es wächst beim Öffnen um ~180 px.
 - **Fließtext bekommt `--prose`, nicht `--muted`.** `--muted` ist für Etiketten und
   kurze Wortgruppen, wo das Zurücktreten die Aufgabe ist (Kennzahlen-Untertitel,
   Achsen, Spaltenköpfe). Über einen ganzen Absatz getragen wird daraus schlechte
@@ -1272,6 +1287,200 @@ die Ankunftszeiten rücken von selbst nach hinten. Das ist gewollt — dieselbe
 Haltung wie beim Ø-Schnitt in `compute()`: lieber eine Prognose, die mit dem
 Stillstand altert, als eine, die ihn wegrechnet. Läuft eine Pause, sagt das
 Panel es dazu, sonst sieht es nach einer wackeligen Zahl aus.
+
+### Zurufe (Grußwand, `renderZurufe()`, 31.07.2026)
+
+Das Geschwister des Rückenwind-Knopfs und die zweite Sache, die ein Zuschauer
+**tun** kann — aber die erste, die bei Manuel wirklich ankommt. Der Wind ist
+eine Zahl, ein Satz mit Namen ist ein Mensch. Bis zu 180 Zeichen, ein rotierender
+Kasten, darunter die vollständige Liste, und **jeder Zuruf verfällt nach 48
+Stunden**.
+
+Die Vergänglichkeit ist der Zweck, nicht der Preis: Manuel liest im Rennen
+Frisches, kein Gästebuch, das mit jedem Tag länger wird — und was schiefgeht,
+räumt sich von selbst weg. **Die Wand ist absichtlich kein Archiv**, und
+niemand soll später eins daraus bauen.
+
+**Warum ein zweiter Worker** (`tools/zuruf-worker.js`, eigener KV-Namespace,
+eigenes Secret): zwei Datenformen, zwei TTLs, zwei Rate-Limits — ein Deploy
+soll nicht beides riskieren, und das Löschtoken erreicht den Rückenwind-Zähler
+physisch nicht. Der IP-Hash benutzt ein **anderes Salz**; mit demselben ließen
+sich die Hashes beider Namespaces gegeneinander abgleichen und derselbe
+Besucher über zwei Funktionen hinweg wiedererkennen.
+
+**Ein KV-Schlüssel je Zuruf, niemals eine JSON-Liste.** KV kennt kein atomares
+„lies, ändere, schreib“; `wind-worker.js` dokumentiert das im eigenen Kopf und
+nimmt es hin, weil eine verlorene Böe niemand vermisst. Hier wäre der Preis ein
+anderer: schreiben zwei Leute in derselben Sekunde, verschwände der **komplette
+Zuruf eines Fremden** — still, während beide Absender ein „Geschickt!“ gesehen
+haben. Getrennte Schlüssel haben das Problem nicht, und die 48 Stunden kommen
+dadurch je Zuruf gratis (`expirationTtl`). *Kein Aufräumjob ist ein Feature:
+man kann nichts vergessen laufen zu lassen.* **Nie zu einer Liste umbauen.**
+Die Zufallsendung hinter der Millisekunde im Schlüssel gehört dazu — ohne sie
+teilen sich zwei gleichzeitige Zurufe einen Schlüssel, derselbe Fehler eine
+Größenordnung tiefer.
+
+**Der Text steht in den KV-Metadaten, nicht im Wert.** `list()` liefert sie
+mit, ein Aufruf bedient damit den ganzen Abruf; im Wert wären es bei 40 Zurufen
+40 zusätzliche `get()` je Seitenaufruf. Preis: Metadaten sind bei **1024 Bytes**
+hart gedeckelt (Worst Case hier ~640). Das ist der *physische* Grund, warum
+180 Zeichen später nicht auf 500 gehen können, ohne die Nutzlast zu verlegen
+und die N Extraaufrufe zurückzuholen.
+
+**Moderation: kein Vorfilter, ein Löschweg, 48 Stunden.** Die TTL *ist* die
+Moderation — nichts bleibt stehen. Der Löschweg (`#zuruf=<Token>` im Hash,
+Secret `ZURUF_TOKEN` im Worker) ist der Notausgang des Besitzers, keine
+Prüfschlange: Vormoderation hätte die Spontaneität getötet und ihn nachts zum
+Flaschenhals gemacht. **Kein Wortfilter**, und das ist eine bewusste Absage:
+eine deutsche Wortliste ist entweder zu kurz, um zu greifen, oder lang genug,
+um „Scheiß Gegenwind heute, halt durch!“ wegzufiltern — und genau solche Sätze
+gehören dorthin.
+
+**Zwei Bremsen gegen Spam, zwei Ebenen** (31.07.2026, auf Nachfrage ergänzt).
+Der Worker lässt maximal 5 POSTs je IP-Hash und Stunde durch — die harte
+Grenze gegen eine Schleife im Terminal, siehe oben. Client-seitig kommt eine
+zweite dazu, genau nach dem Muster des Rückenwind-Knopfs: der Knopf
+„Etwas dazuschreiben“ sperrt sich nach dem Absenden für **sechs Stunden**
+sichtbar selbst (`ZURUF_SPERRE_KEY` in `localStorage`, eigener Schlüssel,
+eigenes Salz — nicht derselbe wie beim Rückenwind, aus demselben Grund wie
+beim Worker-Salz: sonst ließen sich beide Sperren über denselben Zeitstempel
+gegeneinander abgleichen). Der gesperrte Zustand bekommt **denselben
+eigenständigen Satz** wie der Rückenwind-Knopf statt einer nackten
+Zeitangabe direkt am Knopf („Du kannst in 5 h 42 min wieder schreiben.“,
+`#zurufSperre`) — das war beim Wind ein echter Fehler (25.07.2026, siehe
+dort), hier von Anfang an vermieden. Sechs Stunden statt der drei beim Wind,
+weil ein Zuruf mehr Aufmerksamkeit von allen anderen bindet als ein Klick.
+Wie beim Wind ist das **kosmetisch, nicht die scharfe Grenze** — `localStorage`
+ist umgehbar (privates Fenster, anderes Gerät), das ist in Ordnung, weil der
+Worker die eigentliche Bremse zieht. `tcr84Zurufe('frei')` hebt sie zum Testen
+auf, gleiches Muster wie `tcr84Wind('frei')`.
+
+**Warum 180 Zeichen und 20 für den Namen.** Aus dem Kasten gerechnet, nicht
+gewählt: bei 360 px Fensterbreite und 17 px Schrift passen ~35 Zeichen je
+Zeile, sechs Zeilen liest man bequem. Es ist eine **Layoutkonstante in der
+Verkleidung eines Textlimits**. Die drei `min-height`-Werte in `style.css`
+(258 / 234 / 156 px bei <360 / ≥360 / ≥641 px) sind an einem echten
+180-Zeichen-Zuruf **gemessen**, an der jeweils schmalsten Stelle ihres Bereichs.
+Die erste Fassung hatte 200/130 geraten; das reichte an allen drei Stellen
+nicht, und genau das Zittern, das die feste Höhe verhindern soll, war wieder da.
+Wer Schrift, Polsterung oder das Limit ändert, misst mit `tcr84Zurufe('lang')`
+bei 320, 360 und 641 px neu — **und verkleinert nicht die Schrift, damit es
+passt**.
+
+**Bei `prefers-reduced-motion` wird nicht angehalten, sondern die Darstellung
+getauscht.** Alle anderen Stellen im Board schalten dabei *Schmuck* ab —
+Konfetti, Böen, das wippende Rad, den Regen. Eine Rotation ist kein Schmuck,
+sie **trägt Inhalt**; sie einzufrieren hieße, siebzehn Zurufe auf einen zu
+reduzieren. Also: kein Kasten, keine Punktreihe, kein Timer, die Liste steht
+direkt da. Als Regel für später — *trägt eine Animation Inhalt, ist ihr
+reduced-motion-Ersatz ein anderes Layout, kein Standbild.*
+
+**Die Verweildauer hängt am Inhalt** (`zurufTakt()`, Kette aus `setTimeout`,
+nicht `setInterval`): 3 s + 45 ms je Zeichen, geklemmt auf 4,5–12 s. Ein fester
+Takt könnte nur eins von beidem — lang genug für 180 Zeichen (dann klebt ein
+Fünfwort-Zuruf zwölf Sekunden) oder angenehm für kurze (dann wird der längste
+abgeschnitten). Das Panel existiert dafür, dass die Sätze *gelesen* werden.
+Angehalten wird bei Zeiger über dem Kasten, Fokus im Panel, offenem Formular
+und verstecktem Tab — und **dauerhaft, sobald jemand selbst blättert**
+(`ZURUF_HAND`): wer steuert, dem nimmt die Maschine das Steuer nicht wieder weg.
+
+**Das Formular steht als statisches Markup in `index.html`** und wird von
+`renderZurufe()` nie angefasst. `render()` läuft alle 60 Sekunden; ein per
+`innerHTML` gebautes Formular löschte einmal pro Minute einen halb getippten
+Satz. Der zuklappende GPS-Detail-Toggle im Log ist als Rough Edge geduldet,
+weil er nichts kostet — dieser hätte jemanden seine **Worte** gekostet. Regel:
+*was der Besucher tippt, lebt außerhalb des Renderpfads.*
+
+**Inline statt Modal**, aus vier Gründen: `.celebrate` ist im Board das Idiom
+für etwas, das einem *zustößt* und das man wegklickt; `position:fixed` plus
+Textarea plus iOS-Tastatur ist das schlechteste Mobilformular, das es gibt (und
+das Board hat null solchen Code); inline bleibt die Wand beim Schreiben
+sichtbar, was die beste Moderation ist, die eine Seite ohne Vorprüfung hat; und
+die vorhandene Formular-CSS trägt im normalen Fluss schon. Die **16 px** an
+Textarea und Input sind nicht verhandelbar — darunter zoomt iOS beim
+Fokussieren die ganze Seite.
+
+**Kein optimistisches Einfügen, anders als beim Rückenwind.** Die Böe zählt
+sofort hoch, weil ein Klick sich augenblicklich anfühlen soll und ein Verlust
+unsichtbar bliebe. Ein Zuruf wird **wieder gelesen** — ihn zu zeigen, bevor der
+Server ihn angenommen hat, hieße riskieren, jemandem etwas anzuzeigen, das nie
+gespeichert wurde. Bei einem Fehler bleibt der Text im Feld stehen; die eine
+Sekunde Warten ist nichts gegen die dreißig Sekunden Tippen davor.
+
+**KVs `list()` ist eventual consistent (~60 s).** Deshalb hält das Board eigene
+Zurufe bis zu 90 s fest, die der Server noch nicht listet (`nachhallSek`). Ohne
+das verschwände der eigene Zuruf für eine Minute und käme dann von selbst
+zurück — was aussieht, als wäre er verlorengegangen. Kein später zu behebender
+Fehler, das ist KV.
+
+**Neueste zuerst**, und beim Abgleich wird auf denselben *Zuruf* gezeigt, nicht
+auf denselben Index: kommt oben einer dazu, rutschte der gerade gelesene sonst
+weiter und die Rotation spränge bei jedem Abgleich vor. Wer bei Nummer sieben
+liest, wird auch nicht auf Null zurückgerissen, nur weil jemand geschrieben hat
+— der neue kommt beim nächsten Umlauf und trägt bis dahin die „neu“-Marke
+(30 Minuten). Die **einzige** Stelle, die springen darf, ist der eigene Zuruf:
+das ist die Bestätigung, die eine Erfolgsmeldung sonst nur behaupten würde.
+
+**Der Name ist optional**, leer wird zu „anonym“. Ein Pflichtfeld wäre eine
+Hürde in der falschen Sekunde und wäre ohnehin ungeprüft — das Feld ist ein
+Textkasten, keine Identität. Das Formular bittet trotzdem darum, weil genau
+darin der Unterschied zum Windzähler liegt.
+
+**Es gibt keine zweite, dauerhaft aufgeklappte Liste unter dem Kasten** — die
+erste Fassung hatte eine (Kopf offen, Rest hinter „▾ N weitere Zurufe“, exakt
+das Muster aus dem Positionslog). Verworfen noch am selben Tag (31.07.2026):
+die Pfeile springen bereits sofort und ohne Wartezeit zu jedem Zuruf, und die
+Liste zeigte darunter nur noch einmal, was ein Klick ohnehin zeigt — bei einem
+einzelnen Zuruf sogar wörtlich denselben Satz zweimal auf dem Bildschirm. Die
+ursprüngliche Begründung (Manuel soll an der Tankstelle überfliegen können,
+statt sich durchzuklicken) trägt nicht: Überfliegen einer Liste ist gegenüber
+Klicken durch bis zu zwölf Punkte kein Zeitgewinn, der die Dopplung wert wäre.
+**Ausnahme bleibt `prefers-reduced-motion`** (siehe oben) — dort zeigt der
+Kasten alle Zurufe als ruhige Liste anstelle der Rotation, weil dort niemand
+Pfeile klicken soll, um in Ruhe zu lesen. Das ist keine zweite Liste neben dem
+Kasten, sondern der Kasteninhalt selbst im reduced-motion-Zustand.
+
+**Verworfen:** eine „3 neu seit deinem letzten Besuch“-Plakette (bräuchte
+Zustand je Besucher im `localStorage` und beantwortet eine Frage, die niemand
+gestellt hat — wer auf ein Board schaut, verfolgt keinen Feed) · automatisches
+Weiterrotieren nach manuellem Blättern · ein Wortfilter (oben).
+
+**Was das Panel bewusst nicht kann:** keine Antworten, keine Likes, keine
+Threads, kein Bearbeiten, **keine anklickbaren Links** (URLs bleiben reiner
+Text — anklickbar wäre die Seite ein Spamziel und gäbe einem Fremden ein
+Klickziel direkt vor Manuels Augen), keine Bilder, keine Paginierung über 200,
+keine Benachrichtigung an Manuel (er öffnet das Board wie alle anderen).
+
+**Zum Token:** URL-Fragmente gehen **nie** an einen Server — deshalb der Hash
+und keine Query. Sie stehen dafür in der Browser-History und auf jedem
+geteilten Bildschirm: Schutz gegen Fremde, nicht gegen Schulterblicke. Wechseln
+heißt Secret im Dashboard ändern, alte Lesezeichen sterben, das ist die ganze
+Prozedur. **Bewusst getrennt von `#edit`**: das ist ein *lokaler* Modus
+(data.json gegen localStorage, ein Formular, das nirgendwo hinschreibt), obendrein
+ratbar und hier dokumentiert. Löschen ist eine *entfernte, endgültige* Handlung
+an der Nachricht eines Fremden; ein Flag, das beides bedeutet, wäre eine Falle.
+Beide zusammen gehen trotzdem: `#zuruf=abc&edit`. `zurufeLaden()` steht in
+`init()` deshalb **außerhalb** von `if(!EDIT)` — der Besitzer löscht von
+derselben Seite, auf der er bearbeitet.
+
+**Der Kommentar in `style.css` bei `.windbar` wurde mitgeändert**, nicht
+vergammeln gelassen: er behauptete „der einzige Knopf im ganzen Board“, und das
+stimmt seit diesem Panel nicht mehr. Verallgemeinert: *behauptet ein Kommentar
+eine Prämisse, gehört er der Änderung, die sie bricht.* Der Rückenwind bleibt
+der auffälligere der beiden Knöpfe (Messingpille), weil er zu etwas einlädt,
+das nichts kostet; der Zuruf-Knopf ist die Tür zu einem Formular und deshalb
+leiser. Zwei Messingpillen hießen, dass keine von beiden die Aufforderung ist.
+
+Zum Vorführen/Testen in der Konsole: `tcr84Zurufe('demo')` (Wand ohne Worker) ·
+`tcr84Zurufe('leer')` · `tcr84Zurufe('lang')` (voller 180-Zeichen-Zuruf, für die
+`min-height`) · `tcr84Zurufe('boese')` · `tcr84Zurufe('loeschen')` ·
+`tcr84Zurufe('halt')` · `tcr84Zurufe('frei')` (Sechs-Stunden-Sperre aufheben) ·
+`tcr84Zurufe('off')`.
+**`'boese'` ist der wichtigste und hat im Board kein Vorbild**: ein Hook, der
+eine Sicherheitseigenschaft in einer Zeile nachprüfbar macht (Skript-Versuche,
+Anführungszeichen, Apostroph, RTL-Override). Erwartet wird, dass alles als
+sichtbarer **Text** dasteht — kein Alert, kein zerrissenes Layout, `data-k`
+intakt. Nach jeder Änderung an `zurufKarte()` einmal laufen lassen.
 
 ## Sonstiges
 

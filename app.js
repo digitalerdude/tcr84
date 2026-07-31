@@ -2528,6 +2528,377 @@ document.addEventListener('click', e=>{
 setInterval(renderWind, 30000);
 setInterval(windLaden, 120000);
 
+/* ---------- Zurufe (Grußwand) ----------
+   Das Geschwister des Rückenwind-Knopfs, und deshalb steht es hier daneben:
+   beide sind Dinge, die ein Besucher TUN kann, und beide haben dieselbe
+   Bauform „externer Worker oder gar nicht da“. Der Unterschied ist, was
+   ankommt — der Wind ist eine Zahl, ein Satz mit Namen ist ein Mensch.
+
+   Jeder Zuruf verfällt nach 48 Stunden. Das ist der Zweck, nicht der Preis:
+   Manuel liest im Rennen Frisches, kein Gästebuch, und was schiefgeht, räumt
+   sich selbst weg. Die Wand ist absichtlich kein Archiv.
+
+   WARUM EIN SCHLÜSSEL JE ZURUF: siehe den Kopf von tools/zuruf-worker.js. Die
+   Kurzfassung: KV kennt kein atomares „lies, ändere, schreib“. Beim
+   Rückenwind kostet das eine Böe, die niemand vermisst; bei einer Liste unter
+   einem Schlüssel kostete es den ganzen Zuruf eines Fremden, still, während
+   beide Absender ein „Geschickt!“ gesehen haben. Nie zu einer Liste umbauen.
+
+   ESC() IST HIER DIE SCHÄRFSTE KANTE IM BOARD. Alles andere, was durch esc()
+   geht, kommt von Nominatim oder aus einem Teil-Link; das hier hat ein Fremder
+   getippt, mit voller Absicht und in ein Feld, das dafür da ist.
+   `tcr84Zurufe('boese')` prüft das nach jeder Änderung in einer Zeile.
+
+   PREFERS-REDUCED-MOTION, die eine neue Entscheidung: alle anderen Stellen im
+   Board schalten dabei Schmuck ab — Konfetti, Böen, das wippende Rad, den
+   Regen. Eine Rotation ist kein Schmuck, sie trägt Inhalt; sie einfach
+   anzuhalten hieße, siebzehn Zurufe auf einen zu reduzieren. Also wird nicht
+   die Bewegung abgeschaltet, sondern die Darstellung getauscht: kein Kasten,
+   keine Punkte, kein Timer, die Liste steht direkt da. Als Regel für später —
+   trägt eine Animation Inhalt, ist ihr reduced-motion-Ersatz ein anderes
+   Layout, kein Standbild. */
+const ZURUF = {
+  /* Worker-URL aus tools/zuruf-worker.js — ohne sie bleibt das Panel samt
+     Überschrift verborgen. Dieselbe Haltung wie beim Rückenwind: lieber keine
+     Wand als eine, an die man nichts hängen kann. */
+  api: 'https://tcr84-zurufe.schaedlich-max.workers.dev',
+  maxText: 180,       // muss zu MAX_TEXT im Worker passen
+  maxName: 20,        // dito MAX_NAME
+  ladenSek: 120,      // Abgleich mit dem Worker
+  frischMin: 30,      // so lange trägt ein Zuruf die „neu“-Marke
+  nachhallSek: 90,    // so lange halten wir eigene Zurufe, die list() noch nicht kennt
+  cooldownStd: 6,     // so lange, bis dieselbe Person wieder schreiben darf
+};
+/* Das Löschrecht. Bewusst ein eigener Hash-Parameter und NICHT an `#edit`
+   gehängt: `#edit` ist ein lokaler Modus (data.json gegen localStorage, ein
+   Formular, das nirgendwo hinschreibt) und obendrein ratbar und dokumentiert —
+   jeder kann ihn einschalten. Löschen ist eine entfernte, endgültige Handlung
+   an der Nachricht eines Fremden. Ein Flag, das beides bedeutet, wäre eine
+   Falle. Beide zusammen gehen trotzdem: `#zuruf=abc&edit`. */
+const ZURUF_TOKEN = hashParam('zuruf');
+/* Zwei Bremsen, zwei Ebenen: der Worker lässt maximal 5 POSTs je IP-Hash und
+   Stunde durch (tools/zuruf-worker.js) — das ist die harte Grenze gegen eine
+   Schleife im Terminal. Diese hier ist die Spielregel fürs Board, genau wie
+   WIND_KEY beim Rückenwind: nach dem Absenden sperrt der Knopf sich selbst
+   sichtbar für sechs Stunden, damit gar nicht erst der Eindruck entsteht, man
+   könnte im Minutentakt schreiben. localStorage, also umgehbar (privates
+   Fenster, anderes Gerät) — das ist in Ordnung, die scharfe Grenze zieht der
+   Worker. */
+const ZURUF_SPERRE_KEY = 'tcr84:zurufSperre';
+const zurufSperreRest = () => {
+  try{
+    const t = Number(localStorage.getItem(ZURUF_SPERRE_KEY)) || 0;
+    return Math.max(t + ZURUF.cooldownStd*3.6e6 - Date.now(), 0);
+  }catch(e){ return 0; }
+};
+let ZURUF_N = { list: [], da: false };
+/* Modulvariablen, alle aus demselben Grund: render() läuft im 60-Sekunden-Takt
+   und baut das Panel jedes Mal neu. Läge der Zustand lokal, schnappte die
+   Rotation jede Minute auf Null zurück und das Formular fiele beim Tippen zu.
+   Gleiches Muster wie LOG_ALL, FER_SCEN und PUFFER_IDX — dort steht die
+   Begründung ausführlich. */
+let ZURUF_IDX = 0;
+let ZURUF_HAND = false;    // selbst geblättert? dann bleibt der Automat aus
+let ZURUF_OFFEN = false;   // Formular offen
+let ZURUF_SENDET = false;
+let ZURUF_DEMO = false;    // Debug-Hook tcr84Zurufe(), siehe unten
+let ZURUF_ZEIG_DEL = false;// dito
+let ZURUF_TIMER = null;
+const zurufRuhe = () => matchMedia('(prefers-reduced-motion:reduce)').matches;
+const zurufDarfLoeschen = () => Boolean(ZURUF_TOKEN) || ZURUF_ZEIG_DEL;
+const zurufIdx = () => {
+  const n = ZURUF_N.list.length;
+  return n ? ((ZURUF_IDX % n) + n) % n : 0;
+};
+
+async function zurufeLaden(){
+  if(ZURUF_DEMO || !ZURUF.api) return;
+  try{
+    const r = await fetch(ZURUF.api, { cache:'no-store' });
+    if(!r.ok) return;
+    const j = await r.json();
+    zurufeUebernehmen(Array.isArray(j.zurufe) ? j.zurufe : []);
+    renderZurufe();
+  }catch(e){ /* die Wand bleibt auf dem letzten Stand, der Knopf funktioniert weiter */ }
+}
+
+function zurufeUebernehmen(vomServer){
+  /* Eigene, gerade geschriebene Zurufe behalten, die der Server noch nicht
+     listet: KVs list() ist eventual consistent und hinkt bis zu einer Minute
+     nach. Ohne das verschwände der eigene Zuruf für eine Minute wieder und
+     käme dann von selbst zurück — was aussieht, als wäre er verlorengegangen.
+     Älter als nachhallSek und immer noch nicht gelistet heißt dagegen wirklich
+     weg (gelöscht oder abgelaufen), dann fällt er raus. */
+  const kennt = new Set(vomServer.map(z=> z.k));
+  const eigene = ZURUF_N.list.filter(z=>
+    z.mein && !kennt.has(z.k) && Date.now() - z.ts < ZURUF.nachhallSek*1000);
+
+  /* Auf denselben ZURUF zeigen, nicht auf denselben Index. Kommt ein fremder
+     Zuruf oben dazu, rutscht der gerade gelesene sonst eine Stelle weiter und
+     die Rotation springt bei jedem Abgleich unmerklich vor. Und wer bei
+     Nummer sieben liest, wird nicht auf Null zurückgerissen, nur weil jemand
+     etwas geschrieben hat — der neue kommt beim nächsten Umlauf und trägt bis
+     dahin die „neu“-Marke. */
+  const stand = ZURUF_N.list[zurufIdx()];
+  ZURUF_N = { list: [...eigene, ...vomServer], da: true };
+  if(stand){
+    const i = ZURUF_N.list.findIndex(z=> z.k === stand.k);
+    if(i >= 0) ZURUF_IDX = i;
+  }
+}
+
+/* Bewusst NICHT optimistisch, anders als windSenden() ein paar Zeilen weiter
+   oben. Die Böe darf sofort hochzählen, weil ein Klick sich augenblicklich
+   anfühlen soll und eine verlorene Böe unsichtbar bleibt. Ein Zuruf wird
+   wieder gelesen — ihn zu zeigen, bevor der Server ihn angenommen hat, hieße
+   riskieren, jemandem etwas anzuzeigen, das nie gespeichert wurde. Und wenn
+   der Text bei einem Fehler im Feld stehen bleibt, ist die eine Sekunde
+   Wartezeit nichts gegen die dreißig Sekunden Tippen davor. */
+async function zurufSenden(){
+  if(ZURUF_SENDET) return;
+  const feldT = document.getElementById('zurufText');
+  const feldN = document.getElementById('zurufName');
+  const msg = document.getElementById('zurufMsg');
+  const t = (feldT.value || '').trim().slice(0, ZURUF.maxText);
+  const n = (feldN.value || '').trim().slice(0, ZURUF.maxName);
+  if(!t){ msg.className = 'msg err'; msg.textContent = 'Da steht noch nichts.'; feldT.focus(); return; }
+
+  ZURUF_SENDET = true;
+  const knopf = document.getElementById('zurufSenden');
+  knopf.disabled = true; knopf.textContent = 'wird geschickt…';
+  msg.className = 'msg'; msg.textContent = '';
+
+  if(ZURUF_DEMO || !ZURUF.api){
+    ZURUF_N.list.unshift({ k:'k:'+Date.now()+'-demo00', t, n, ts:Date.now(), mein:true });
+    ZURUF_IDX = 0; zurufFertig(true, 'Angekommen. Danke!'); return;
+  }
+  try{
+    const r = await fetch(ZURUF.api, {
+      method:'POST', cache:'no-store',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ t, n }),
+    });
+    const j = await r.json().catch(()=> null);
+    if(r.ok && j && j.zuruf){
+      // Die einzige Stelle, an der die Rotation springen darf: das ist die
+      // Bestätigung, die eine Erfolgsmeldung sonst nur behaupten würde.
+      ZURUF_N.list.unshift({ ...j.zuruf, mein:true });
+      ZURUF_N.da = true; ZURUF_IDX = 0;
+      zurufFertig(true, 'Angekommen. Danke!');
+    }else if(r.status === 429){
+      zurufFertig(false, (j && j.error) || 'Gerade schon mehrere von hier — bitte später nochmal.');
+    }else{
+      zurufFertig(false, (j && j.error) || 'Hat nicht geklappt. Nochmal versuchen?');
+    }
+  }catch(e){
+    zurufFertig(false, 'Keine Verbindung. Der Text bleibt stehen — nochmal versuchen?');
+  }
+}
+
+function zurufFertig(ok, satz){
+  ZURUF_SENDET = false;
+  const knopf = document.getElementById('zurufSenden');
+  knopf.disabled = false; knopf.textContent = 'Abschicken';
+  const msg = document.getElementById('zurufMsg');
+  msg.className = ok ? 'msg' : 'msg err';
+  msg.textContent = satz;
+  if(ok){
+    try{ localStorage.setItem(ZURUF_SPERRE_KEY, String(Date.now())); }catch(e){}
+    document.getElementById('zurufText').value = '';
+    document.getElementById('zurufName').value = '';
+    zurufFormular(false);
+    setTimeout(()=>{ const m = document.getElementById('zurufMsg'); if(m) m.textContent = ''; }, 4000);
+  }
+  renderZurufe();
+}
+
+async function zurufLoeschen(k){
+  if(!zurufDarfLoeschen()) return;
+  if(!confirm('Diesen Zuruf löschen? Das ist endgültig.')) return;
+  ZURUF_N.list = ZURUF_N.list.filter(z=> z.k !== k);
+  if(ZURUF_IDX >= ZURUF_N.list.length) ZURUF_IDX = 0;
+  renderZurufe();
+  if(ZURUF_DEMO || !ZURUF.api || !ZURUF_TOKEN) return;
+  try{
+    await fetch(ZURUF.api, {
+      method:'DELETE', cache:'no-store',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ k, token: ZURUF_TOKEN }),
+    });
+  }catch(e){ /* lokal ist er weg; der nächste Abgleich holt ihn zurück, falls es nicht durchkam */ }
+}
+
+/* Eine Karte. Der Kommentar, der hier am meisten trägt: z.t und z.n hat ein
+   Fremder getippt. esc() (ganz oben) ersetzt < > & und ", ABER KEIN
+   Apostroph — deshalb steht jeder Attributwert hier in doppelten
+   Anführungszeichen. z.k kommt vom Worker und ist harmlos, geht trotzdem
+   durch esc(): „der Worker erzeugt das“ ist ein Versprechen aus einer anderen
+   Datei, und Versprechen sind kein Escaping. */
+function zurufKarte(z){
+  const alterMin = (Date.now() - z.ts) / 6e4;
+  const frisch = alterMin < ZURUF.frischMin;
+  return `<blockquote class="zurufcard">
+    <p class="zuruftxt">${esc(z.t)}</p>
+    <footer class="zurufwer">${z.n ? '— <b>'+esc(z.n)+'</b>' : '— <span class="zurufanon">anonym</span>'}
+      <span class="zurufzeit">· vor ${dhm(alterMin)}</span>${frisch ? ' <span class="zurufneu">· neu</span>' : ''}</footer>
+    ${zurufDarfLoeschen() ? `<button class="zurufdel" type="button" data-k="${esc(z.k)}" aria-label="Diesen Zuruf löschen">×</button>` : ''}
+  </blockquote>`;
+}
+
+/* Der gesperrte Knopf braucht einen eigenständigen Satz, keinen Fragment-Text
+   — dieselbe Lektion wie beim Rückenwind (siehe dort, 25.07.2026): eine nackte
+   Zeitangabe direkt am Knopf liest sich wie eine Fortsetzung von irgendwas
+   danebenstehendem, kein Button-Zustand. Deshalb ein eigenes Element mit einem
+   vollständigen, personalisierten Satz statt einer Zahl im Knopftext.
+   Eigene Funktion statt Teil von renderZurufe(): die Sperre zählt in Stunden
+   herunter und braucht ihren eigenen, langsameren Takt (siehe der Aufruf bei
+   setInterval weiter unten) — ihn an die volle Rotation/Formular-Neuzeichnung
+   zu hängen wäre unnötig teuer. */
+function zurufSperreAnzeige(){
+  const btn = document.getElementById('zurufOeffnen');
+  const info = document.getElementById('zurufSperre');
+  if(!btn || !info) return;
+  const rest = zurufSperreRest();
+  btn.disabled = rest > 0;
+  if(!ZURUF_OFFEN) btn.textContent = rest > 0 ? '✅ Schon geschrieben' : 'Etwas dazuschreiben';
+  info.hidden = rest <= 0;
+  info.textContent = rest > 0 ? `Du kannst in ${dhm(rest/6e4)} wieder schreiben.` : '';
+}
+
+function renderZurufe(){
+  const wrap = document.getElementById('zurufWrap');
+  if(!wrap) return;
+  if(!ZURUF.api && !ZURUF_DEMO){ wrap.hidden = true; return; }
+  wrap.hidden = false;
+  zurufSperreAnzeige();
+
+  const box = document.getElementById('zurufBox');
+  const nav = document.getElementById('zurufNav');
+  const n = ZURUF_N.list.length;
+  const ruhe = zurufRuhe();
+
+  /* Ein Kasten ohne Text sieht aus wie ein Ladefehler — der leere Zustand ist
+     deshalb immer ein Satz, in derselben Stimme wie beim Rückenwind
+     („Noch kein Rückenwind geschickt — sei der Erste.“). */
+  if(!n){
+    box.hidden = false;
+    box.innerHTML = ZURUF_N.da || ZURUF_DEMO
+      ? '<div class="empty">Noch nichts an der Wand. Der erste Zuruf ist deiner.</div>'
+      : '<div class="empty">Zurufe werden geladen…</div>';
+    nav.innerHTML = '';
+    document.getElementById('zurufMeta').textContent = '';
+    zurufTakt();
+    return;
+  }
+
+  /* Bei reduced motion tritt eine ruhige, vollständige Liste an die Stelle des
+     einzelnen rotierenden Kastens — nicht der Kasten selbst gefriert auf einem
+     Zuruf (siehe der Kopfkommentar oben zu prefers-reduced-motion). Keine
+     zweite Liste daneben: die Pfeile decken das Durchsehen der übrigen Zurufe
+     bereits ab, ein zusätzlicher Ausklapp-Block darunter zeigte nur, was der
+     Kasten (bzw. bei Ruhe die Liste) ohnehin schon zeigt oder einen Klick
+     entfernt ist. */
+  box.hidden = false;
+  box.innerHTML = ruhe
+    ? `<div class="zurufliste">${ZURUF_N.list.map(zurufKarte).join('')}</div>`
+    : zurufKarte(ZURUF_N.list[zurufIdx()]);
+
+  /* Pfeile und Punktreihe sind dieselben wie an der Puffer-Kachel (.pnav /
+     .pdots) — das ist schon das Karussell-Idiom dieses Boards. Auf Touch gibt
+     es kein Hover und damit keine Pause, die Pfeile sind dort also nicht
+     Zierde, sondern der einzige Weg, einen Zuruf sofort und ohne Warten
+     anzusehen — das deckt auch das Durchsehen aller Zurufe ab, eine
+     zusätzliche Liste darunter wäre reine Dopplung. */
+  nav.innerHTML = (ruhe || n < 2) ? '' :
+    `<button type="button" data-zdir="-1" aria-label="Vorheriger Zuruf">‹</button>
+     <div class="pdots">${ZURUF_N.list.slice(0, 12).map((_,i)=>
+       `<i class="${i === zurufIdx() ? 'on' : ''}"></i>`).join('')}</div>
+     <button type="button" data-zdir="1" aria-label="Nächster Zuruf">›</button>`;
+
+  /* Kein „3 neu seit deinem letzten Besuch“: das bräuchte Zustand je Besucher
+     im localStorage und beantwortet eine Frage, die niemand gestellt hat — wer
+     auf ein Board schaut, verfolgt keinen Feed. Frische trägt stattdessen die
+     Marke an der Karte. */
+  const frischN = ZURUF_N.list.filter(z=> Date.now() - z.ts < 3.6e6).length;
+  document.getElementById('zurufMeta').innerHTML =
+    [`${num(n)} ${n === 1 ? 'Zuruf' : 'Zurufe'}`,
+     frischN ? `${num(frischN)} aus der letzten Stunde` : '',
+     zurufDarfLoeschen() ? 'Löschmodus' : ''].filter(Boolean).join(' · ');
+
+  zurufTakt();
+}
+
+/* Kette statt setInterval, weil die Verweildauer am Inhalt hängt. Ein fester
+   Takt kann nur eins von beidem: lang genug für 180 Zeichen (dann klebt ein
+   Fünfwort-Zuruf zwölf Sekunden auf dem Schirm) oder angenehm für kurze (dann
+   wird der längste abgeschnitten). Das Panel existiert dafür, dass die Sätze
+   GELESEN werden — 180 Zeichen bekommen 11,1 s, 40 Zeichen 4,8 s.
+   Immer erst clearTimeout: sonst stapeln der 60-Sekunden-render() und ein
+   Klick auf den Pfeil drei laufende Ketten übereinander und der Kasten
+   flackert. ZURUF_HAND wird nie von selbst zurückgesetzt — wer steuert, dem
+   nimmt die Maschine das Steuer nicht wieder weg. */
+function zurufTakt(){
+  clearTimeout(ZURUF_TIMER); ZURUF_TIMER = null;
+  if(zurufRuhe() || ZURUF_HAND || ZURUF_OFFEN || document.hidden) return;
+  if(ZURUF_N.list.length < 2) return;
+  const len = ZURUF_N.list[zurufIdx()].t.length;
+  ZURUF_TIMER = setTimeout(()=>{ ZURUF_IDX = zurufIdx() + 1; renderZurufe(); },
+                           Math.min(12000, Math.max(4500, 3000 + len*45)));
+}
+
+function zurufFormular(auf){
+  ZURUF_OFFEN = auf;
+  const form = document.getElementById('zurufForm');
+  form.hidden = !auf;
+  document.getElementById('zurufOeffnen').textContent = auf ? 'Doch nicht' : 'Etwas dazuschreiben';
+  if(auf){ zurufRest(); document.getElementById('zurufText').focus(); }
+  zurufTakt();
+}
+
+function zurufRest(){
+  const feld = document.getElementById('zurufText');
+  const el = document.getElementById('zurufRest');
+  if(!feld || !el) return;
+  const rest = ZURUF.maxText - feld.value.length;
+  el.textContent = `noch ${rest} Zeichen`;
+  el.className = 'zurufrest' + (rest <= 20 ? ' knapp' : '');
+}
+
+/* Delegiert wie beim Rückenwind, damit die Bindungen die innerHTML-Neubauten
+   überleben. Das Formular ist statisches Markup und wird von renderZurufe()
+   nie angefasst — ein per innerHTML gebautes Formular löschte im
+   60-Sekunden-Takt einen halb getippten Satz. Was der Besucher tippt, lebt
+   außerhalb des Renderpfads. */
+document.addEventListener('click', e=>{
+  const t = e.target;
+  if(!t.closest) return;
+  if(t.closest('#zurufOeffnen')){ if(zurufSperreRest() <= 0) zurufFormular(!ZURUF_OFFEN); return; }
+  if(t.closest('#zurufAbbruch')){ zurufFormular(false); return; }
+  if(t.closest('#zurufSenden')){ zurufSenden(); return; }
+  const del = t.closest('.zurufdel');
+  if(del){ zurufLoeschen(del.dataset.k); return; }
+  const pfeil = t.closest('#zurufNav button');
+  if(pfeil){
+    ZURUF_HAND = true;
+    ZURUF_IDX = zurufIdx() + Number(pfeil.dataset.zdir);
+    renderZurufe();
+  }
+});
+document.addEventListener('input', e=>{ if(e.target.id === 'zurufText') zurufRest(); });
+/* Anhalten, solange jemand liest oder tippt. Der versteckte Tab ist der
+   wichtigste der drei: ohne ihn läuft die Kette im Hintergrund weiter und der
+   Kasten steht beim Zurückkommen irgendwo mitten im Umlauf. */
+document.addEventListener('visibilitychange', zurufTakt);
+document.addEventListener('mouseover', e=>{ if(e.target.closest && e.target.closest('#zurufBox')) { clearTimeout(ZURUF_TIMER); ZURUF_TIMER = null; } });
+document.addEventListener('mouseout', e=>{ if(e.target.closest && e.target.closest('#zurufBox')) zurufTakt(); });
+document.addEventListener('focusin', e=>{ if(e.target.closest && e.target.closest('#zurufWrap')) { clearTimeout(ZURUF_TIMER); ZURUF_TIMER = null; } });
+document.addEventListener('focusout', e=>{ if(e.target.closest && e.target.closest('#zurufWrap')) zurufTakt(); });
+setInterval(zurufeLaden, ZURUF.ladenSek * 1000);
+// Die Sperre zählt ihre Restzeit herunter; ohne eigenen Takt stünde bis zum
+// nächsten render() (60s) eine veraltete Angabe da — dieselbe Begründung wie
+// beim Rückenwind-Knopf.
+setInterval(zurufSperreAnzeige, 30000);
+
 /* ---------- Karte (Leaflet, wird erst beim Öffnen nachgeladen) ---------- */
 let mapObj = null, mapLayer = null, mapFitted = false;
 
@@ -3032,6 +3403,83 @@ window.tcr84Wind = was=>{
   render();
   return `Windlage erzwungen: ${was}`;
 };
+/* Die Grußwand zum Ausprobieren, solange kein Worker eingerichtet ist:
+     tcr84Zurufe('demo')      Wand mit erfundenen Zurufen
+     tcr84Zurufe('leer')      den Leer-Zustand ansehen
+     tcr84Zurufe('lang')      ein Zuruf über die vollen 180 Zeichen — passt er?
+     tcr84Zurufe('boese')     Skript-Versuche, Anführungszeichen, Apostroph
+     tcr84Zurufe('loeschen')  Löschknöpfe einblenden, ohne Token im Hash
+     tcr84Zurufe('halt')      Rotation an/aus
+     tcr84Zurufe('frei')      die Sechs-Stunden-Sperre zum Schreiben aufheben
+     tcr84Zurufe('off')       alles zurück
+   'boese' ist der wichtigste davon und hat im Board kein Vorbild: ein Hook,
+   der eine Sicherheitseigenschaft in einer Zeile nachprüfbar macht. Erwartet
+   wird, dass alles als sichtbarer TEXT dasteht — kein Alert, kein zerrissenes
+   Layout, und das data-k des Löschknopfs unbeschädigt. Nach jeder Änderung an
+   zurufKarte() einmal laufen lassen.
+   Die erfundenen Zurufe bleiben ausdrücklich im Testmodus: sobald ZURUF.api
+   steht, kommen sie vom Worker, und niemand sieht je eine Fantasiewand. */
+const ZURUF_DEMOS = [
+  { t:'Zieh durch, Manuel! Wir schauen jeden Morgen als Erstes hier rein.', n:'Familie Kaufer' },
+  { t:'Die Auffahrt gestern war brutal. Respekt.', n:'Jonas' },
+  { t:'Rückenwind aus Leipzig! 💪', n:'Steffi' },
+  { t:'Denk an die Pausen. Der Puffer ist da, damit du ihn benutzt.', n:'Doc' },
+  { t:'Bin 2024 dieselbe Ecke gefahren — nach dem Pass wird es endlich flach. Halte durch, das Schlimmste liegt hinter dir und der Rest ist Genuss.', n:'Andi' },
+  { t:'Kaffee und Kuchen stehen bereit, wenn du zurück bist.', n:'' },
+  { t:'Cap 84 forever.', n:'ein Dotwatcher' },
+  { t:'Meine Klasse verfolgt dich auf der Karte. Die Kinder fragen jeden Tag, wo du jetzt bist.', n:'Frau Berger' },
+];
+window.tcr84Zurufe = was=>{
+  const setzen = (liste)=>{
+    const jetzt = Date.now();
+    ZURUF_N = { list: liste.map((z,i)=> ({ ...z, k:`k:${jetzt-i*900000}-demo${String(i).padStart(2,'0')}`,
+                                           ts: jetzt - i*900000 })), da:true };
+    ZURUF_IDX = 0; ZURUF_DEMO = true; render();
+  };
+  if(!was || was === 'off'){
+    ZURUF_DEMO = false; ZURUF_ZEIG_DEL = false; ZURUF_HAND = false;
+    ZURUF_N = { list: [], da: false }; ZURUF_IDX = 0;
+    zurufFormular(false); render(); zurufeLaden();
+    return 'Zuruf-Demo aus.';
+  }
+  if(was === 'demo'){ setzen(ZURUF_DEMOS); return `Zuruf-Demo an (${ZURUF_DEMOS.length} erfundene Zurufe).`; }
+  if(was === 'leer'){ setzen([]); return 'Leer-Zustand. So sieht die Wand aus, bevor jemand schreibt.'; }
+  if(was === 'lang'){
+    // Auf exakt maxText aufgefüllt, nicht „ungefähr lang“: die min-height im
+    // CSS ist auf genau diese Länge gerechnet, ein 140-Zeichen-Test würde sie
+    // bestehen und die eigentliche Frage offenlassen.
+    let t = 'Wir denken jeden Tag an dich und verfolgen jede Etappe. Der Berg gestern war der schwerste, ab hier wird es leichter — halte durch, du schaffst das, und wir warten hier auf dich';
+    t = (t + ' ' + 'x'.repeat(ZURUF.maxText)).slice(0, ZURUF.maxText);
+    setzen([{ t, n:'Maximallänge' }]);
+    return `Ein Zuruf mit ${t.length} Zeichen (das Maximum). Bei 360 px Breite prüfen: passt er in die min-height, ohne dass der Kasten wächst?`;
+  }
+  if(was === 'boese'){
+    setzen([
+      { t:'<img src=x onerror=alert(1)>', n:'<b>fett?</b>' },
+      { t:'"><script>alert(1)</script>', n:'" onmouseover="alert(1)' },
+      { t:"' onclick='alert(1)", n:"O'Brien" },
+      { t:'Anführungszeichen: " " " und & und < >', n:'&amp;' },
+      { t:'‮reversed text‬', n:'RTL' },
+    ]);
+    return 'Fünf Angriffsversuche als Zurufe. Erwartet: alles als Text sichtbar, kein Alert, Layout heil, data-k intakt.';
+  }
+  if(was === 'loeschen'){
+    ZURUF_ZEIG_DEL = !ZURUF_ZEIG_DEL; render();
+    return ZURUF_ZEIG_DEL
+      ? 'Löschknöpfe an (nur zur Ansicht — ohne echtes Token löscht der Worker nichts).'
+      : 'Löschknöpfe aus.';
+  }
+  if(was === 'halt'){
+    ZURUF_HAND = !ZURUF_HAND; renderZurufe();
+    return ZURUF_HAND ? 'Rotation angehalten.' : 'Rotation läuft wieder.';
+  }
+  if(was === 'frei'){
+    try{ localStorage.removeItem(ZURUF_SPERRE_KEY); }catch(e){}
+    zurufSperreAnzeige();
+    return 'Sperre aufgehoben — der Knopf geht wieder.';
+  }
+  return "unbekannt — 'demo', 'leer', 'lang', 'boese', 'loeschen', 'halt', 'frei' oder 'off'";
+};
 /* Die Overlay-Stimmung um die Jetzt-Zeile erzwingen, ohne aufs passende
    Wetter zu warten:
      tcr84Wetter('sonne')  klarer Tag, Sonnenschimmer
@@ -3059,6 +3507,7 @@ window.tcr84Wetter = was=>{
 function render(){
   const c = compute();
   renderMetrics(c); renderLive(c); renderLadder(c); renderProfile(c); renderDays(c);
+  renderZurufe();   // ohne c — die Zurufe haben mit dem Rennstand nichts zu tun
   renderFerry(c); renderFuel(c); renderWerkstatt(c); renderWind(); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   maybeCelebrate(c);
@@ -3198,6 +3647,11 @@ async function addEntry(){
   render();
   if(document.getElementById('mapDetails').open) checkMapDetails();
   setInterval(render, 60000);
+  /* Anders als windLaden() bewusst AUSSERHALB von if(!EDIT): der Besitzer
+     löscht von derselben Seite, auf der er bearbeitet. Die Wand im
+     Bearbeiten-Modus abzuschalten hieße, das Löschtoken ausgerechnet dort
+     wirkungslos zu machen, wo er sitzt. */
+  zurufeLaden();
   if(!EDIT){
     setInterval(async ()=>{ if(await loadRemote()) render(); }, 300000);
     // Profil in eigenem, langsamerem Takt — es ist die größte Datei und

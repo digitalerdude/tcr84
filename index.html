@@ -11,7 +11,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=2">
+  <link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <div class="wrap">
@@ -59,6 +59,43 @@
       <h2>Kilometer pro Tag</h2>
       <div id="daysWrap"></div>
 
+      <!-- Zurufe. Zwei Dinge daran sind Absicht:
+           Die Überschrift steht INNERHALB der Sektion, anders als bei
+           Höhenprofil und Kilometer pro Tag darüber. Das Panel versteckt sich
+           vollständig, wenn keine Worker-URL eingetragen ist, und eine
+           Überschrift über einer leeren Stelle wäre schlimmer als beides weg —
+           ein Flag, nicht zwei.
+           Das Formular ist statisches Markup und wird von renderZurufe() nie
+           angefasst. render() läuft alle 60 Sekunden; ein per innerHTML
+           gebautes Formular löschte einmal pro Minute einen halb getippten
+           Satz. Kein aria-live auf #zurufBox: eine rotierende Region sagt einem
+           Screenreader alle paar Sekunden einen neuen Satz an — der Zugangsweg
+           ist die Liste darunter. -->
+      <section id="zurufWrap" hidden aria-labelledby="zurufH">
+        <h2 id="zurufH">Zurufe</h2>
+        <div class="zurufbox" id="zurufBox"></div>
+        <div class="zurufbar">
+          <div class="pnav" id="zurufNav"></div>
+          <div class="zurufmeta" id="zurufMeta"></div>
+          <button class="zurufbtn" id="zurufOeffnen" type="button">Etwas dazuschreiben</button>
+        </div>
+        <!-- Eigener Satz statt Fragment-Text, wenn die Sechs-Stunden-Sperre
+             läuft — dieselbe Lektion wie beim Rückenwind-Knopf. -->
+        <div class="zurufsperre" id="zurufSperre" hidden></div>
+        <div class="zurufform" id="zurufForm" hidden>
+          <label for="zurufText">Dein Zuruf</label>
+          <textarea id="zurufText" maxlength="180" rows="3" placeholder="Manuel liest mit."></textarea>
+          <div class="zurufrest" id="zurufRest"></div>
+          <label for="zurufName">Von</label>
+          <input id="zurufName" type="text" maxlength="20" placeholder="Dein Name (darf auch fehlen)">
+          <div class="btnrow">
+            <button id="zurufSenden" type="button">Abschicken</button>
+            <button class="ghost" id="zurufAbbruch" type="button">Abbrechen</button>
+          </div>
+          <div class="msg" id="zurufMsg" aria-live="polite"></div>
+        </div>
+      </section>
+
       <details id="ferryDetails" open hidden>
         <summary id="ferrySum">Fährplanung Südschweden</summary>
         <div class="setbody" id="ferryWrap"></div>
@@ -95,6 +132,6 @@
   <footer id="foot"></footer>
 </div>
 
-<script src="app.js?v=2"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

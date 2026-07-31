@@ -34,7 +34,11 @@
   .pill.alert{color:var(--alert);border-color:var(--alert)}
 
   /* ---------- Rückenwind ----------
-     Der einzige Knopf im ganzen Board — er darf deshalb aussehen wie einer.
+     Der auffälligere der beiden Besucher-Knöpfe, und das ist Absicht: er lädt
+     zu etwas ein, das nichts kostet — einmal drücken, fertig. Der Knopf an der
+     Grußwand (.zurufbtn, weiter unten) ist die Tür zu einem Formular, über das
+     man erst nachdenkt, und deshalb bewusst leiser gehalten. Zwei Messingpillen
+     auf einer Seite hießen, dass keine von beiden die Aufforderung ist.
      Messing-Rand statt Messing-Fläche: auffällig genug, um gefunden zu werden,
      aber nicht so laut, dass er den Kilometerstand darunter überstrahlt.
      Der Streifen sitzt direkt unter Live und Wetter, weil dort der echte Wind
@@ -507,6 +511,85 @@
   .profnote + .profnote{margin-top:10px}
   /* Erklärkasten sitzt bündig unter dem Diagramm statt frei zu schweben */
   #profileWrap details{margin-top:-1px}
+
+  /* ---------- Zurufe (Grußwand) ----------
+     Rahmen und Fläche sind vom Höhenprofil geerbt (.profbox, direkt darüber):
+     1px --line auf --panel, kein Radius, keine eigene Marge. Es gibt in diesem
+     Board keine gemeinsame .panel-Klasse — jedes Panel wiederholt die drei
+     Angaben, und das ist billiger als eine Abstraktion über sieben Sonderfälle.
+
+     Die Mindesthöhe hält den Kasten ruhig: ohne sie wächst und schrumpft er bei
+     jedem Wechsel und schiebt Fährplanung, Log und Karte darunter alle paar
+     Sekunden hoch und runter. Ein kurzer Zuruf steht dafür mittig in seinem
+     Rahmen statt oben in einer Leere.
+
+     Die drei Zahlen sind GEMESSEN, nicht geschätzt — je am schmalsten Punkt
+     ihres Bereichs, mit einem Zuruf über die vollen 180 Zeichen
+     (`tcr84Zurufe('lang')`), Karte plus 26 px Polsterung plus 2 px Rahmen:
+       320 px Fenster → 227 + 28 = 255   ·  360 px → 202 + 28 = 230
+       641 px         → 125 + 28 = 153
+     Aufgerundet mit ein paar Pixeln Luft. Erste Fassung hatte 200/130 geraten;
+     das reichte an allen drei Stellen nicht, und genau das Zittern, das die
+     Regel verhindern soll, war wieder da.
+
+     WER SCHRIFT, POLSTERUNG ODER DAS TEXTLIMIT ÄNDERT, MUSS HIER NEU MESSEN —
+     mit `tcr84Zurufe('lang')` bei 320, 360 und 641 px. Nicht die Schrift
+     verkleinern, damit es passt: diese drei Zahlen sind die Stellschraube. */
+  .zurufbox{border:1px solid var(--line);background:var(--panel);padding:14px 14px 12px;
+            min-height:258px;display:flex;flex-direction:column;justify-content:center}
+  @media (min-width:360px){.zurufbox{min-height:234px}}
+  @media (min-width:641px){.zurufbox{min-height:156px}}
+  .zurufcard{margin:0;position:relative;animation:zurufIn .28s ease}
+  @keyframes zurufIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .zuruftxt{margin:0;font-size:17px;line-height:1.5;color:var(--prose)}
+  .zurufwer{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px}
+  .zurufwer b{color:var(--ice);font-weight:500}
+  .zurufanon{font-style:italic}
+  .zurufneu{color:var(--brass)}
+  /* 40px sind Trefferfläche, nicht Optik — das × selbst ist 17px groß. */
+  .zurufdel{position:absolute;top:-6px;right:-6px;width:40px;height:40px;
+            background:none;border:none;color:#5D7382;cursor:pointer;font-size:17px;padding:0;line-height:1}
+  .zurufdel:hover{color:var(--alert)}
+
+  .zurufbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px;margin-top:10px}
+  .zurufmeta{font-family:var(--mono);font-size:11px;color:var(--muted);flex:1;min-width:140px}
+  /* Leiser als .windbtn — begründet oben im Rückenwind-Block. */
+  .zurufbtn{font-family:var(--display);font-size:13px;font-weight:500;color:var(--ice);
+            background:transparent;border:1px solid var(--line);border-radius:999px;
+            padding:7px 15px;cursor:pointer;transition:background .16s,border-color .16s}
+  @media (hover:hover){.zurufbtn:hover{border-color:var(--muted);background:var(--panel2)}}
+  .zurufbtn:disabled{cursor:default;color:var(--muted);border-color:var(--line)}
+  .zurufsperre{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:8px}
+
+  .zurufform{border:1px solid var(--line);background:var(--panel2);padding:13px 13px 15px;margin-top:9px}
+  /* Die globale textarea-Regel ist auf den JSON-Auszug im Bearbeiten-Modus
+     getrimmt (150px hoch, 11,5px Schrift, harter #0A131B-Grund) und dort
+     readonly — ein echtes Eingabefeld ist auf diesem Weg ein ungetesteter Pfad.
+     Hier wird sie komplett überschrieben. Die 16px sind NICHT verhandelbar:
+     darunter zoomt iOS beim Fokussieren die ganze Seite, aus genau dem Grund
+     steht dieselbe Größe auch an der globalen input-Regel. Der Fokusring kommt
+     vom globalen :focus-visible — hier keinen zweiten bauen. */
+  .zurufform textarea{height:88px;font-size:16px;line-height:1.45;background:var(--night);
+                      color:var(--bone);resize:vertical;margin-top:0}
+  .zurufform label{margin-top:11px}
+  .zurufform label:first-child{margin-top:0}
+  .zurufrest{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin:5px 0 2px;text-align:right}
+  .zurufrest.knapp{color:var(--warn)}
+
+  /* Es gibt bewusst KEINE zweite, dauerhafte Liste unter dem Kasten mehr
+     (25.07.2026 → 31.07.2026 wieder entfernt): die Pfeile springen sofort und
+     ohne Wartezeit zu jedem Zuruf, eine zusätzliche Liste zeigte dann nur, was
+     ein Klick ohnehin zeigt. Einzige Ausnahme ist `prefers-reduced-motion`
+     weiter unten — dort ersetzt eine echte Liste die Rotation, weil dort
+     niemand Pfeile klicken soll, um still zu lesen. */
+  .zurufbox .zurufliste{display:flex;flex-direction:column}
+  .zurufbox .zurufliste .zurufcard + .zurufcard{margin-top:16px;padding-top:14px;
+                                                border-top:1px solid #1C2C39}
+
+  /* Die Rotation selbst wird in zurufTakt() abgeschaltet, nicht hier: CSS kann
+     keinen Timer anhalten, und ein eingefrorener Kasten zeigte einen von
+     siebzehn Zurufen. Hier fällt nur die Einblendung weg. */
+  @media (prefers-reduced-motion:reduce){.zurufcard{animation:none}}
 
   /* Feiermoment beim Erreichen eines Kontrollpunkts. Vollflächig, weil der
      Moment im Rennen selten ist (fünfmal in drei Wochen) — er darf den Blick
