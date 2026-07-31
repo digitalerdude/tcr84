@@ -4586,14 +4586,28 @@
       "speed": 29.4,
       "ele": 97,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785476965550",
+      "ts": "2026-07-31T07:47",
+      "tsSrc": "fix",
+      "km": 3068.53,
+      "place": "Kiskunlacháza",
+      "note": "Platz 192",
+      "cc": "HU",
+      "lat": 47.154792,
+      "lon": 19.070273,
+      "speed": 25.9,
+      "ele": 97,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-31T05:24:18.817Z",
+  "updated": "2026-07-31T05:49:25.676Z",
   "live": {
-    "ts": "2026-07-31T07:24",
-    "km": 3053.92,
-    "fixMinsAgo": 7,
-    "speed": 29.4,
+    "ts": "2026-07-31T07:49",
+    "km": 3068.53,
+    "fixMinsAgo": 2,
+    "speed": 25.9,
     "rank": 192
   }
 }
