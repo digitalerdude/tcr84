@@ -4628,14 +4628,28 @@
       "speed": 0,
       "ele": 99,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785481490271",
+      "ts": "2026-07-31T08:57",
+      "tsSrc": "track",
+      "km": 3094.17,
+      "place": "Kunszentmiklós",
+      "note": "Platz 192",
+      "cc": "HU",
+      "lat": 46.950991,
+      "lon": 19.166033,
+      "speed": 27.5,
+      "ele": 96,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-31T06:39:41.392Z",
+  "updated": "2026-07-31T07:04:50.397Z",
   "live": {
-    "ts": "2026-07-31T08:39",
-    "km": 3083.54,
-    "fixMinsAgo": 12,
-    "speed": 0,
+    "ts": "2026-07-31T09:04",
+    "km": 3094.17,
+    "fixMinsAgo": 7,
+    "speed": 27.5,
     "rank": 192
   }
 }
