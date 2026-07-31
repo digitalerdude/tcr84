@@ -367,18 +367,41 @@ function compute(){
   const cpTiles = st.cps.filter(cp=> cp.deadline && !cpHits.has(cp)).map(cp=>{
     const cpDl = new Date(cp.deadline);
     const restCp = Math.max(Number(cp.km) - km, 0);
+    const leftToCpDl = (cpDl-now)/3.6e6;
+    const needCp = leftToCpDl > 0 ? restCp/leftToCpDl : Infinity;
     const etaCp = avg > 0 && restCp > 0 ? new Date(now.getTime() + restCp/avg*3.6e6)
                 : (restCp === 0 ? now : null);
     const bufferCp = etaCp ? (cpDl - etaCp) : null;
     const stateCp = bufferCp === null ? '' : bufferCp > 24*3.6e6 ? 'good' : bufferCp > 0 ? 'warn' : 'alert';
-    return {nm: cp.nm, short: cp.nm.split(' ')[0], dl: cpDl, reached: false, arrival: null, eta: etaCp, buffer: bufferCp, state: stateCp};
+    return {nm: cp.nm, short: cp.nm.split(' ')[0], dl: cpDl, need: needCp, reached: false, arrival: null, eta: etaCp, buffer: bufferCp, state: stateCp};
   });
   const pufferTiles = [
     {nm:'Kalamata', short:'Ziel', dl, reached: rest===0, arrival: rest===0 && last ? new Date(last.ts) : null,
      eta, buffer, state},
     ...cpTiles
   ];
+  /* Der bindende Termin ist nicht immer Kalamata. `need`/`state` oben rechnen
+     nur gegen das Gesamtlimit — ein Fahrer, der auf CP3 (eigene Roadbook-
+     Frist) zusteuert, ist bei verpasstem Cutoff außer Wertung, ganz
+     unabhängig davon, ob Kalamata rechnerisch noch drin wäre. Ohne diesen
+     Schritt hätte „Soll-Schnitt ab jetzt“ und die Gesamteinschätzung (Pille,
+     Kasten) genau das ausgeblendet: grün fürs Ziel, während die Uhr für einen
+     näheren CP längst abgelaufen ist.
+     Gewählt wird der Termin mit dem schlechtesten Ampel-Stand (alert schlägt
+     warn schlägt good); bei Gleichstand entscheidet der höhere nötige
+     Schnitt — die unmittelbarere Zwangslage. Nur unerreichte CPs mit eigener
+     Frist stehen zur Wahl (`cpTiles`, s.o.), dieselbe Quelle wie die
+     Puffer-Kacheln — keine zweite Landkarte, die etwas anderes behauptet. */
+  const stateRank = {alert:3, warn:2, good:1, '':0};
+  const bindingCandidates = [{nm:'Kalamata', dl, need, state}, ...cpTiles];
+  let binding = bindingCandidates[0];
+  for(const t of bindingCandidates.slice(1)){
+    const tr = stateRank[t.state]||0, br = stateRank[binding.state]||0;
+    const tn = isFinite(t.need) ? t.need : 1e9, bn = isFinite(binding.need) ? binding.need : 1e9;
+    if(tr > br || (tr === br && tn > bn)) binding = t;
+  }
   return {st,start,dl,now,total,list,last,km,rest,leftToDl,avg,need,eta,buffer,roll,nextCp,cpHits,cpReached,ccReached,state,
+          bindingNeed:binding.need,bindingState:binding.state,bindingNm:binding.nm,bindingDl:binding.dl,
           raceH,measuredH,staleH,ferry,pufferTiles,
           ele,eleMax,climbUp,climbDown,climbKm,kmScale};
 }
@@ -436,9 +459,15 @@ function renderMetrics(c){
     ['Ø-Schnitt gesamt', c.avg? one(c.avg):'–', 'km/h',
       c.avg? num(c.avg*24)+' km/Tag inkl. Pausen'
              + (c.staleH >= 1 ? ' · gemessen bis '+dur(c.staleH*3.6e6)+' zurück' : '') : '', ''],
-    ['Soll-Schnitt ab jetzt', isFinite(c.need)&&c.rest>0? one(c.need):'–', 'km/h',
-      c.rest===0? 'Ziel erreicht' : isFinite(c.need)? num(c.need*24)+' km/Tag · '+dur(c.dl-c.now)+' übrig':'Zeitlimit vorbei',
-      c.rest===0?'good':(c.state==='alert'?'alert':(c.avg && c.need<=c.avg?'good':'warn'))]
+    /* Rechnet gegen den bindenden Termin (`compute()`), nicht stur gegen
+       Kalamata — ein näherer CP-Cutoff sticht das Gesamtlimit, wenn er
+       enger ist. Bei Bindung an einen CP wird das im Zusatztext benannt,
+       sonst läse sich die Zahl wie gehabt als Zielschnitt. */
+    ['Soll-Schnitt ab jetzt', isFinite(c.bindingNeed)&&c.rest>0? one(c.bindingNeed):'–', 'km/h',
+      c.rest===0? 'Ziel erreicht' : isFinite(c.bindingNeed)
+        ? num(c.bindingNeed*24)+' km/Tag'+(c.bindingNm!=='Kalamata'? ' · bis '+esc(c.bindingNm):'')+' · '+dur(c.bindingDl-c.now)+' übrig'
+        : (c.bindingNm!=='Kalamata'? 'Frist für '+esc(c.bindingNm)+' vorbei' : 'Zeitlimit vorbei'),
+      c.rest===0?'good':(c.bindingState==='alert'?'alert':(c.avg && c.bindingNeed<=c.avg?'good':'warn'))]
   ];
   document.getElementById('metrics').innerHTML = cells.map(([k,v,u,n,cl])=>
     `<div class="cell"><div class="k">${k}</div>
@@ -450,13 +479,16 @@ function renderMetrics(c){
     renderMetrics(c);
   });
 
+  /* Pille und Kasten urteilen über den bindenden Termin, nicht stur über
+     Kalamata — siehe `bindingState` in compute(). Sonst bliebe die
+     Gesamteinschätzung grün, während ein näherer CP-Cutoff längst reißt. */
   const pill = document.getElementById('statusPill');
   pill.textContent = !c.last ? 'keine Daten' : c.rest===0 ? 'im Ziel'
-    : c.state==='good' ? 'im Zeitplan' : c.state==='warn' ? 'knapp' : 'hinter dem Limit';
-  pill.className = 'pill ' + c.state;
+    : c.bindingState==='good' ? 'im Zeitplan' : c.bindingState==='warn' ? 'knapp' : 'hinter dem Limit';
+  pill.className = 'pill ' + c.bindingState;
 
   const v = document.getElementById('verdict');
-  v.className = 'verdict ' + c.state;
+  v.className = 'verdict ' + c.bindingState;
   if(!c.last){
     v.textContent = EDIT
       ? 'Trag die erste Position ein: Kilometerstand aus dem Live-Tracker ablesen, Zeitpunkt dazu. Ab der zweiten Meldung rechnet das Board Tempo, Prognose und Puffer.'
@@ -466,8 +498,10 @@ function renderMetrics(c){
     if(c.cpReached) p.push(`🎉 <strong>${esc(c.cpReached.cp.nm)} erreicht</strong> — ${fmt(c.cpReached.ts)}, nach ${dur(new Date(c.cpReached.ts)-c.start)} Rennzeit.`);
     p.push(`Bei <strong>${one(c.avg)} km/h</strong> im Mittel seit dem Start reicht es ${
       c.rest===0 ? 'nicht mehr zu diskutieren, das Ding ist durch.' :
-      c.state==='alert' ? 'nicht bis zum Zeitlimit.' :
-      c.state==='warn' ? 'gerade so, ohne Reserve.' : 'mit Reserve.'}`);
+      c.bindingState==='alert' ? (c.bindingNm==='Kalamata' ? 'nicht bis zum Zeitlimit.'
+        : `nicht bis zur Frist für ${esc(c.bindingNm)} — außer Wertung, bevor das Zeitlimit überhaupt zur Frage wird.`) :
+      c.bindingState==='warn' ? (c.bindingNm==='Kalamata' ? 'gerade so, ohne Reserve.'
+        : `gerade so für ${esc(c.bindingNm)}, ohne Reserve.`) : 'mit Reserve.'}`);
     if(c.roll) p.push(`Zwischen den letzten beiden Meldungen: <strong>${one(c.roll)} km/h</strong> ${
       c.roll > c.avg ? '— über dem Gesamtschnitt, also ein Fahrblock ohne längere Pause.'
                      : '— unter dem Gesamtschnitt, da lag also eine längere Pause drin.'}`);
@@ -1735,6 +1769,11 @@ const FUEL = {
       ['🌽','Cicvara','Maisgrieß mit Kajmak, Bergküche',600],
       ['🧀','Njeguški sir','Bergkäse vom Lovćen',300],
     ]},
+    {cc:'XK', nm:'Kosovo', flag:'🇽🇰', em:'🍌', snack:'Krem Banana', pl:'Krem Banana', kcal:220, karte:[
+      ['🍌','Krem Banana','Bananencreme in Schokolade, an jedem Kiosk',220],
+      ['🥧','Flija','geschichtete Palatschinken-Torte mit Kajmak',600],
+      ['🥬','Pite me spinaq','Spinat im Blätterteig, wie Byrek nebenan',450],
+    ], notiz:'Kurzer Grenzzipfel zwischen Montenegro und Albanien auf dem Weg nach CP4 Leskovik.'},
     {cc:'AL', nm:'Albanien', flag:'🇦🇱', em:'🥟', snack:'Byrek', pl:'Byrek', kcal:400, karte:[
       ['🥟','Byrek me spinaq','Spinatblätterteig, überall und billig',400],
       ['🍯','Petulla','frittierter Teig mit Honig',350],
