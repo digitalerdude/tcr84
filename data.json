@@ -4880,14 +4880,28 @@
       "speed": 20.9,
       "ele": 90,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785510162184",
+      "ts": "2026-07-31T16:50",
+      "tsSrc": "track",
+      "km": 3238.71,
+      "place": "Mohatsch",
+      "note": "Platz 192",
+      "cc": "HU",
+      "lat": 45.995931,
+      "lon": 18.698004,
+      "speed": 0,
+      "ele": 92,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-31T14:37:33.870Z",
+  "updated": "2026-07-31T15:02:42.323Z",
   "live": {
-    "ts": "2026-07-31T16:37",
-    "km": 3236.25,
-    "fixMinsAgo": 7,
-    "speed": 20.9,
+    "ts": "2026-07-31T17:02",
+    "km": 3238.71,
+    "fixMinsAgo": 12,
+    "speed": 0,
     "rank": 192
   }
 }
