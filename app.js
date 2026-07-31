@@ -2486,7 +2486,21 @@ function findStops(points, minMinutes = 40, radiusM = 150){
   let i = 0;
   while(i < points.length){
     let j = i + 1;
-    while(j < points.length && metersBetween(points[i], points[j]) < radiusM) j++;
+    while(j < points.length){
+      if(metersBetween(points[i], points[j]) < radiusM){ j++; continue; }
+      /* Ein einzelner Ausreißer (schlechter GPS-Fix) darf eine durchgehende
+         Pause nicht beenden: reicht der übernächste Punkt wieder in den
+         Radius, wird der eine schlechte Fix übersprungen statt die Pause zu
+         zerreißen. Nacht 30./31.07.2026: ein 162-m-Ausreißer riss eine
+         433-Minuten-Pause in zwei Stücke (122 + 239 min) mit 71 Minuten
+         dazwischen, die in keiner Pause mehr auftauchten. Zwei echte
+         Bestandsfälle (27.07. 157,7 m / 29.07. 30-km-Sprung) zeigten
+         dieselbe Ursache in milderer Form. Echte Aufbrüche erzeugen mehrere
+         aufeinanderfolgende Punkte weit weg, nicht nur einen — die bleiben
+         weiterhin ein Cluster-Ende. */
+      if(j+1 < points.length && metersBetween(points[i], points[j+1]) < radiusM){ j += 2; continue; }
+      break;
+    }
     const mins = (points[j-1][3] - points[i][3]) / 60;
     if(j > i+1 && mins >= minMinutes){
       stops.push({lat:points[i][0], lon:points[i][1], from:points[i][3], to:points[j-1][3], mins});
