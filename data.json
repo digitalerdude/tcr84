@@ -4740,14 +4740,28 @@
       "speed": 26.8,
       "ele": 92,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785493546789",
+      "ts": "2026-07-31T12:24",
+      "tsSrc": "track",
+      "km": 3156.8,
+      "place": "Kalocsa",
+      "note": "Platz 192",
+      "cc": "HU",
+      "lat": 46.526037,
+      "lon": 18.985752,
+      "speed": 0,
+      "ele": 93,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-07-31T10:00:39.092Z",
+  "updated": "2026-07-31T10:25:46.943Z",
   "live": {
-    "ts": "2026-07-31T12:00",
-    "km": 3154.71,
-    "fixMinsAgo": 7,
-    "speed": 26.8,
+    "ts": "2026-07-31T12:25",
+    "km": 3156.8,
+    "fixMinsAgo": 2,
+    "speed": 0,
     "rank": 192
   }
 }
