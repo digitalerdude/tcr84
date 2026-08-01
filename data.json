@@ -5090,14 +5090,28 @@
       "speed": 27,
       "ele": 83,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785563427493",
+      "ts": "2026-08-01T07:42",
+      "tsSrc": "track",
+      "km": 3364.93,
+      "place": "Općina Cerna",
+      "note": "Platz 192",
+      "cc": "HR",
+      "lat": 45.189973,
+      "lon": 18.687915,
+      "speed": 0,
+      "ele": 85,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T05:25:17.122Z",
+  "updated": "2026-08-01T05:50:27.661Z",
   "live": {
-    "ts": "2026-08-01T07:25",
-    "km": 3357.86,
-    "fixMinsAgo": 3,
-    "speed": 27,
+    "ts": "2026-08-01T07:50",
+    "km": 3364.93,
+    "fixMinsAgo": 4,
+    "speed": 0,
     "rank": 192
   }
 }
