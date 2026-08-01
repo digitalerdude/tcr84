@@ -41,7 +41,7 @@ const DEFAULTS = {
     { nm:'CP2a Praděd', lat:'50.1°N', km:2320, pos:[50.0894, 17.2261] },
     { nm:'CP2b Chopok', lat:'48.9°N', km:2719, pos:[48.96395, 19.58613], deadline:'2026-07-30T11:00' },
     { nm:'CP3 Sarajevo', lat:'43.8°N', km:3520, pos:[43.83074, 18.470769], deadline:'2026-08-02T23:59' },
-    { nm:'CP4 Leskovik', lat:'41.7°N', km:4250, pos:[41.68589, 20.42493], deadline:'2026-08-05T23:59' },
+    { nm:'CP4 Leskovik', lat:'40.2°N', km:4250, pos:[40.152629, 20.599462], deadline:'2026-08-05T23:59' },
     { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.038, 22.113] }
   ]
 };
@@ -51,16 +51,24 @@ const DEFAULTS = {
    außer der Reihe, falls die Strecke einen späteren Kontrollpunkt zufällig
    streift; 10 % vor dem Soll ist immer noch früh genug.
 
-   Die 4 km sind an dem einen echten Fall geeicht, den es gibt. Am 22.07.2026
-   lag die Meldung aus Flåm 0,8 km vom Ortsmittelpunkt; die nächstgelegene
-   davor stand mit 5,6 km in Aurlandsvangen, dem Nachbarort über dem Fjord —
-   und der ist NICHT CP1. Die Grenze muss also zwischen 0,8 und 5,6 liegen und
-   hält so zu beiden Seiten Abstand. Ein erster Versuch mit 10 km hätte CP1
-   in Aurlandsvangen ausgelöst, eine gute Stunde zu früh. Enger als nötig darf
-   sie nicht sein: sitzt der Posten am Ortsrand statt in der Mitte, fällt die
-   Erkennung auf den Kilometerstand zurück — dann ist es wieder so spät wie
-   vorher, aber nie falsch. */
-const CP_RADIUS_KM = 4;
+   Ursprünglich an einem Fall geeicht: Am 22.07.2026 lag die Meldung aus Flåm
+   0,8 km vom Ortsmittelpunkt; die nächstgelegene davor stand mit 5,6 km in
+   Aurlandsvangen, dem Nachbarort über dem Fjord — und der ist NICHT CP1. Ein
+   erster Versuch mit 10 km hätte CP1 in Aurlandsvangen ausgelöst, eine gute
+   Stunde zu früh; 4 km hielt zu beiden Seiten Abstand (zwischen 0,8 und 5,6).
+
+   Auf 1,5 km verengt (01.08.2026): CP3 Sarajevo feierte bei 4 km schon auf
+   der Anfahrt aus Boguševac, 2,8–3,1 km vom Kontrollpunkt entfernt — dort
+   noch nicht angekommen, nur in dessen Nähe. Anders als das kleine Flåm ist
+   Sarajevo eine Großstadt mit Bergrand-Anfahrt; die Zufahrtsstraße streift
+   den 4-km-Radius, lange bevor die letzten Kilometer zum eigentlichen Posten
+   gefahren sind. 1,5 km bleibt oberhalb der Flåm-Ortsmitte (0,8 km) — der
+   ursprüngliche Fall löst also weiterhin korrekt aus — und deutlich unter
+   Aurlandsvangen (5,6 km) sowie dem neuen Sarajevo-Vorfall (2,8 km). Enger
+   als nötig darf sie nicht sein: sitzt der Posten am Ortsrand statt in der
+   Mitte, fällt die Erkennung auf den Kilometerstand zurück — dann ist es
+   wieder so spät wie vorher, aber nie falsch. */
+const CP_RADIUS_KM = 1.5;
 const CP_KM_MIN_FRAC = 0.9;
 /* Obergrenze für den Kilometerstand-Fallback in cpHit(), wenn die Spur da ist
    aber nie in CP_RADIUS_KM herankommt. Bewusst großzügiger als CP_RADIUS_KM:

@@ -800,10 +800,19 @@ Grenzfälle 179 und 181 Minuten.
   `CP_KM_MIN_FRAC` (90 %) des Solls. Es gilt der **frühere** der beiden Wege,
   gefeiert wird die Ankunft, nicht ihre Bestätigung durch den Zähler.
   Drei Dinge daran sind erfahren, nicht ausgedacht:
-  · **4 km, nicht 10.** Die Meldung aus Flåm lag 0,8 km vom Ortsmittelpunkt,
-  die davor mit 5,6 km in **Aurlandsvangen** — dem Nachbarort über dem Fjord,
-  und der ist nicht CP1. Ein erster Versuch mit 10 km hätte dort ausgelöst,
-  eine gute Stunde zu früh. Die Grenze muss zwischen 0,8 und 5,6 liegen.
+  · **1,5 km, nicht 10, nicht 4.** Die Meldung aus Flåm lag 0,8 km vom
+  Ortsmittelpunkt, die davor mit 5,6 km in **Aurlandsvangen** — dem
+  Nachbarort über dem Fjord, und der ist nicht CP1. Ein erster Versuch mit
+  10 km hätte dort ausgelöst, eine gute Stunde zu früh; 4 km hielt zu beiden
+  Seiten Abstand. Auf 1,5 km verengt (01.08.2026): CP3 Sarajevo feierte bei
+  4 km schon auf der Anfahrt aus Boguševac, 2,8–3,1 km vom Kontrollpunkt
+  entfernt — dort noch nicht angekommen, nur in dessen Nähe. Anders als das
+  kleine Flåm ist Sarajevo eine Großstadt mit Bergrand-Anfahrt: die
+  Zufahrtsstraße streift den 4-km-Radius, lange bevor die letzten Kilometer
+  zum eigentlichen Posten gefahren sind. 1,5 km bleibt oberhalb der
+  Flåm-Ortsmitte (0,8 km, der ursprüngliche Fall löst also weiterhin
+  korrekt aus) und deutlich unter Aurlandsvangen (5,6 km) sowie dem neuen
+  Sarajevo-Vorfall (2,8 km) — die Grenze muss zwischen 0,8 und 2,8 liegen.
   · **Gesucht wird in `track.json`, nicht in den Meldungen.** Die Spur hat alle
   ~5 min einen Punkt, die Meldungen nur alle ~25 — im Umkreis von Flåm lag
   genau *eine* Meldung, ein Treffer wäre also Glückssache gewesen. Ohne Spur
@@ -814,9 +823,10 @@ Grenzfälle 179 und 181 Minuten.
   unterwegs ist, und steht still, sobald er den Ort verlässt.
   `nextCp` und die Leiter (`renderLadder`) lesen dieselbe Wahrheit aus `cpHits`
   — nicht noch einmal Kilometer vergleichen, sonst behaupten Kasten und Leiter
-  Verschiedenes. Sitzt ein Posten weiter als 4 km vom Ortsmittelpunkt, fällt
-  die Erkennung auf den Kilometerstand zurück: dann ist es wieder so spät wie
-  vorher, aber nie falsch.
+  Verschiedenes. Sitzt ein Posten weiter als `CP_RADIUS_KM` (siehe unten,
+  aktuell 1,5 km) vom Ortsmittelpunkt, fällt die Erkennung auf den
+  Kilometerstand zurück: dann ist es wieder so spät wie vorher, aber nie
+  falsch.
   · **Der Kilometerstand-Fallback wartet auf die Spur** (01.08.2026). Beim
   Chopok-Fall (29.07.) lief das Tracker-Lineal dem geplanten *hinterher*
   (`CP_FALLBACK_MAX_KM` verwirft einen Kilometerstand, den die geladene Spur
@@ -888,7 +898,14 @@ Grenzfälle 179 und 181 Minuten.
   (`"41.7°N"` in der Leiter, `app.js:661`, reines Label, fließt in keine
   Rechnung ein) blieb bei einer ersten Ausführung stehen und zeigte kurz die
   falsche Breite an — bei jeder `pos`-Korrektur auch `lat` (auf eine
-  Nachkommastelle gerundete Breite) mitziehen.
+  Nachkommastelle gerundete Breite) mitziehen. Dieselbe falsche Peshkopi-
+  Koordinate steckte auch in **`DEFAULTS`** (app.js, Kopf der Datei) — dem
+  Fallback, der greift, wenn `data.json` nicht lädt, und der Startwert beim
+  „Alles zurücksetzen“-Knopf im Bearbeiten-Modus. `DEFAULTS.cps[].km` bleibt
+  bewusst die ursprüngliche redaktionelle Schätzung (zieht `data.json`s
+  spätere GPX-Korrekturen nicht nach, siehe Kommentar über `DEFAULTS` in
+  app.js) — aber eine falsche STADT ist keine Schätzung, sondern ein Fehler,
+  und wurde dort ebenfalls auf die Leskovik-Koordinate korrigiert.
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
