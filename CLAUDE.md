@@ -869,6 +869,26 @@ Grenzfälle 179 und 181 Minuten.
   negative Distanz, kein „überholt“-Artefakt. Sobald Manuel nah genug an CP4
   ist, dass BRouter die Reststrecke routet, dieselbe Rechnung wiederholen —
   **nicht vorher raten.**
+  · **CP4s Koordinate war keine Schätzung, sondern schlicht falsch**
+  (01.08.2026, wenige Stunden nach dem Eintrag oben). `pos` zeigte auf
+  **Peshkopi** (41,68589 / 20,42493, Bashkia Dibër, Nordalbanien) statt auf
+  **Leskovik** (Bashkia Kolonjë, Südalbanien) — zwei verschiedene albanische
+  Städte, 171 km auseinander, per Nominatim-Reverse-Geocode bestätigt. Anders
+  als bei der km-Schätzung ist das kein Lineal-Problem, sondern eine
+  Verwechslung beim Anlegen der Liste. Auf denselben Fehler laufen `cpHit()`
+  (Nähe-Erkennung für die Feier) und die Karte — mit der falschen Koordinate
+  hätte die Ankunfts-Feier bei CP4 entweder nie oder an der falschen Stelle
+  ausgelöst. Korrigiert auf die vom Nutzer gegebene, geokodierte Koordinate
+  (40,152629 / 20,599462). `km` blieb bei 4250 (weiterhin ungemessen, siehe
+  oben — BRouter kann von Manuels Position aus immer noch nicht routen).
+  **Lehre:** eine `pos`-Korrektur ist nicht automatisch nur eine
+  Präzisionsfrage wie bei CP3 (dort lagen alt/neu nur 12 m auseinander) — vor
+  jeder CP-Koordinate lohnt ein Reverse-Geocode-Gegencheck gegen den CP-Namen,
+  bevor man sie für Nähe-Erkennung und Karte nutzt. Das `lat`-Anzeigefeld
+  (`"41.7°N"` in der Leiter, `app.js:661`, reines Label, fließt in keine
+  Rechnung ein) blieb bei einer ersten Ausführung stehen und zeigte kurz die
+  falsche Breite an — bei jeder `pos`-Korrektur auch `lat` (auf eine
+  Nachkommastelle gerundete Breite) mitziehen.
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
