@@ -5188,14 +5188,28 @@
       "speed": 22.4,
       "ele": 130,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785573998069",
+      "ts": "2026-08-01T10:42",
+      "tsSrc": "track",
+      "km": 3423.01,
+      "place": "Špionica Gornja",
+      "note": "Platz 192",
+      "cc": "BA",
+      "lat": 44.763311,
+      "lon": 18.498868,
+      "speed": 25.5,
+      "ele": 150,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T08:21:27.803Z",
+  "updated": "2026-08-01T08:46:38.190Z",
   "live": {
-    "ts": "2026-08-01T10:21",
-    "km": 3419.84,
-    "fixMinsAgo": 10,
-    "speed": 22.4,
+    "ts": "2026-08-01T10:46",
+    "km": 3423.01,
+    "fixMinsAgo": 4,
+    "speed": 25.5,
     "rank": 192
   }
 }
