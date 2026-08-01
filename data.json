@@ -5230,14 +5230,28 @@
       "speed": 14.6,
       "ele": 270,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785578529447",
+      "ts": "2026-08-01T11:57",
+      "tsSrc": "track",
+      "km": 3451.2,
+      "place": "Mramor Novi",
+      "note": "Platz 192",
+      "cc": "BA",
+      "lat": 44.570192,
+      "lon": 18.57759,
+      "speed": 24.6,
+      "ele": 239,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T09:36:58.771Z",
+  "updated": "2026-08-01T10:02:09.591Z",
   "live": {
-    "ts": "2026-08-01T11:36",
-    "km": 3439.32,
-    "fixMinsAgo": 9,
-    "speed": 14.6,
+    "ts": "2026-08-01T12:02",
+    "km": 3451.2,
+    "fixMinsAgo": 4,
+    "speed": 24.6,
     "rank": 192
   }
 }
