@@ -5118,14 +5118,28 @@
       "speed": 23.5,
       "ele": 82,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785566448942",
+      "ts": "2026-08-01T08:36",
+      "tsSrc": "track",
+      "km": 3382.06,
+      "place": "Grad Županja",
+      "note": "Platz 192",
+      "cc": "HR",
+      "lat": 45.048269,
+      "lon": 18.703869,
+      "speed": 7.5,
+      "ele": 82,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T06:15:39.190Z",
+  "updated": "2026-08-01T06:40:49.080Z",
   "live": {
-    "ts": "2026-08-01T08:15",
-    "km": 3372.96,
-    "fixMinsAgo": 4,
-    "speed": 23.5,
+    "ts": "2026-08-01T08:40",
+    "km": 3382.06,
+    "fixMinsAgo": 5,
+    "speed": 7.5,
     "rank": 192
   }
 }
