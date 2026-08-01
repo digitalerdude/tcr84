@@ -5426,14 +5426,28 @@
       "speed": 28.4,
       "ele": 810,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785602674006",
+      "ts": "2026-08-01T18:40",
+      "tsSrc": "track",
+      "km": 3565.04,
+      "place": "Balibegovići",
+      "note": "Platz 192",
+      "cc": "BA",
+      "lat": 43.972701,
+      "lon": 18.249558,
+      "speed": 0,
+      "ele": 442,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T16:19:24.741Z",
+  "updated": "2026-08-01T16:44:34.253Z",
   "live": {
-    "ts": "2026-08-01T18:19",
-    "km": 3538.4,
-    "fixMinsAgo": 34,
-    "speed": 28.4,
+    "ts": "2026-08-01T18:44",
+    "km": 3565.04,
+    "fixMinsAgo": 4,
+    "speed": 0,
     "rank": 192
   }
 }
