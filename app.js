@@ -287,7 +287,20 @@ function compute(){
        der Passstraße. CP_FALLBACK_MAX_KM lässt den harmlosen Fall stehen
        (Posten am Ortsrand statt in der Mitte, siehe oben), verwirft aber
        einen Kilometerstand, den die Spur über viele Kilometer widerlegt. */
-    if(drueber && (!spurGeprueft || naechsteSpurM <= CP_FALLBACK_MAX_KM*1000)) return drueber;
+    /* Für einen Kontrollpunkt MIT `pos` darf der reine Kilometerstand nur
+       zählen, wenn die Spur ihn bestätigt (naechsteSpurM <= CP_FALLBACK_MAX_KM).
+       Ist die Spur noch nicht geladen (erster Rendergang, `spurGeprueft`
+       false), wird NICHT gefeiert: ein vorausgelaufenes Tracker-Lineal löste
+       sonst zu früh aus — am 01.08.2026 meldete der Tracker 3527 km und damit
+       CP3 Sarajevo als „erreicht", während Manuel laut Spur noch 42 km davor
+       stand; die Feier fiel, bevor der nächste Rendergang mit geladener Spur
+       sie widerlegen konnte, und die localStorage-Gesehen-Marke verhinderte
+       das Nachfeuern. Ein Kontrollpunkt OHNE `pos` hat nur den Kilometerstand
+       und behält ihn. */
+    if(drueber){
+      if(!cp.pos) return drueber;
+      if(spurGeprueft && naechsteSpurM <= CP_FALLBACK_MAX_KM*1000) return drueber;
+    }
     return null;
   };
   const cpHits = new Map();   // Kontrollpunkt → Meldung, mit der er erreicht wurde

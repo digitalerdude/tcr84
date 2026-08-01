@@ -817,6 +817,26 @@ Grenzfälle 179 und 181 Minuten.
   Verschiedenes. Sitzt ein Posten weiter als 4 km vom Ortsmittelpunkt, fällt
   die Erkennung auf den Kilometerstand zurück: dann ist es wieder so spät wie
   vorher, aber nie falsch.
+  · **Der Kilometerstand-Fallback wartet auf die Spur** (01.08.2026). Beim
+  Chopok-Fall (29.07.) lief das Tracker-Lineal dem geplanten *hinterher*
+  (`CP_FALLBACK_MAX_KM` verwirft einen Kilometerstand, den die geladene Spur
+  über viele Kilometer widerlegt). Am 01.08. lief es ihm *voraus*: der Tracker
+  meldete 3527 km und damit CP3 Sarajevo (km 3520) als erreicht, während Manuel
+  laut Spur noch **42 km davor** stand. Der Guard hätte das gefangen — aber nur
+  *mit* geladener Spur, und `init()` ruft den ersten `render()` **vor**
+  `refreshTrack()` auf. In diesem einen spurlosen Rendergang war `TRACK` null,
+  `spurGeprueft` false, und der Term `!spurGeprueft` schaltete den Guard kurz:
+  die Feier fiel und markierte sich in `localStorage` (`tcr84:cpSeen`) als
+  gesehen, ~1 s bevor die geladene Spur sie widerlegte — zu spät zum
+  Nachfeuern. Deshalb zählt der reine Kilometerstand für einen CP **mit `pos`**
+  jetzt nur noch, wenn die Spur ihn bestätigt hat; ohne Spur wird für pos-CPs
+  nicht gefeiert, die legitime Feier kommt dann beim nächsten Rendergang. Ein
+  CP **ohne `pos`** behält den Kilometerstand als einzigen Weg. Beweisbar
+  regressionsfrei: mit geladener Spur ist das Verhalten identisch zu vorher —
+  geändert wird allein der spurlose erste Rendergang. Denselben Fehler
+  vermeidet, wer eine neue spur-abhängige Prüfung baut: **eine Prüfung, die
+  ohne die Spur eine schwächere Antwort gibt, darf keinen unwiderruflichen
+  Effekt (Feier, Gesehen-Marke) auslösen, solange die Spur noch fehlt.**
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
