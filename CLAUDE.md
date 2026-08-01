@@ -837,6 +837,38 @@ Grenzfälle 179 und 181 Minuten.
   vermeidet, wer eine neue spur-abhängige Prüfung baut: **eine Prüfung, die
   ohne die Spur eine schwächere Antwort gibt, darf keinen unwiderruflichen
   Effekt (Feier, Gesehen-Marke) auslösen, solange die Spur noch fehlt.**
+  · **`cp.km` selbst ist nur eine Schätzung und kann von der Realität
+  überholt werden** (01.08.2026, im Anschluss an den Fund oben). CP3 Sarajevo
+  stand mit `km: 3520` auf der *geplanten* Routenskala, während Leiter
+  (`pos=cp.km/total`), Höhenprofil (`X(cp.km)`, die Linie liegt auf
+  `routedKm*kmScale` = Tracker-Skala) und die Kennzahl „Bis CP3“
+  (`cp.km-live.km`) alle auf der *Tracker*-Skala rechnen. Die Drift zwischen
+  beiden Linealen war bis Sarajevo auf ~72 km gewachsen — `cp.km` lag
+  **hinter** Manuels tatsächlichem Stand (3520 < live.km 3538), CP3 erschien in
+  Leiter und Profil als überholt, und „Bis CP3“ zeigte **−18 km**. Das ist
+  dieselbe Zwei-Lineale-Falle wie bei `cpHit`, nur schlägt sie hier auf die
+  reine Positionsanzeige durch, nicht auf die Erreicht-Erkennung.
+  Korrigiert wurde `cp.km`, nicht der Rendercode: vom letzten Trackpunkt aus via
+  BRouter (Profil `trekking`, wie im Scraper) zur CP-Koordinate geroutet
+  (58,45 km), auf die aktuelle `routedKm` addiert (3852,81 → 3911,26) und mit
+  `kmScale` (0,9184) auf die Tracker-Skala zurückgerechnet → **3592**. Dieselbe
+  Rechnung wie `latLonAtKm()`/`kmScale` an anderer Stelle, nur umgekehrt
+  angewandt: nicht Kilometer → Koordinate, sondern Koordinate → Kilometer.
+  Funktioniert nur, weil Manuels Spur bereits nah genug an der CP-Koordinate
+  ist, dass BRouter die Reststrecke in Sekunden routet — der öffentliche
+  Server killt (`thread-priority-watchdog`) Anfragen über einige hundert
+  Kilometer. **Deshalb bleibt CP4 Leskovik unkorrigiert**, obwohl derselbe
+  Verdacht dort ebenfalls besteht: der geplante Sprung CP3→CP4 (658 km über
+  eine Luftlinie von 287 km, Faktor 2,29) liegt deutlich über jedem bisher real
+  gemessenen Balkan-Routenfaktor (CP2b→CP3 1,51; aktuelle Reststrecke 1,54) —
+  ein Indiz, keine Messung. Ohne Manuels Spur in Reichweite der CP-Koordinate
+  gibt es nichts zu routen, eine Korrektur wäre nur ein Faktor-Schätzwert gegen
+  einen anderen getauscht — dieselbe erfundene Genauigkeit, die das Board sonst
+  vermeidet (`q:'plan'`, `tsSrc`, „nicht nachgesehen“ statt „keine Fähre“). CP4
+  fällt aktuell auch nicht auf: es sitzt weit vor dem Fahrer-Punkt, keine
+  negative Distanz, kein „überholt“-Artefakt. Sobald Manuel nah genug an CP4
+  ist, dass BRouter die Reststrecke routet, dieselbe Rechnung wiederholen —
+  **nicht vorher raten.**
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
