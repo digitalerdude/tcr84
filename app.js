@@ -630,13 +630,28 @@ function renderLive(c){
     teile.push(`<span>🚲 <span class="wxval">Pause seit ${new Date(lv.stopSince)
       .toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})} Uhr</span>` +
       ` · ${dhm(dauer)}</span>`);
-  } else if(lv.speed != null && Number(lv.speed) <= LIVE_STEHT_KMH){
+  } else if(lv.speed != null && Number(lv.speed) <= LIVE_STEHT_KMH
+            && !(c.roll != null && c.roll > LIVE_STEHT_KMH)){
     /* Tempo nahe null gemeldet, aber die 40-min-Standphase im Track ist noch
        nicht bestätigt (oder der GPX-Export hinkt hinterher) — dann steht kein
        `stopSince`. Bis dahin „unterwegs“ zu behaupten, war falsch. „steht
        gerade“ nennt nur die gemeldete Momentangeschwindigkeit, ohne eine
        Pause samt Dauer/Grund zu behaupten — dieselbe Zurückhaltung wie sonst
-       (die Spur kennt den Grund nicht). Parkendes Rad, keine Wippanimation. */
+       (die Spur kennt den Grund nicht). Parkendes Rad, keine Wippanimation.
+
+       Die gemeldete Momentangeschwindigkeit ALLEIN reicht aber nicht: an
+       einer steilen Steigung (Serpentinen vor Sarajevo, 01.08.2026) fiel sie
+       an einzelnen Meldungen kurz unter LIVE_STEHT_KMH (2,5 / 2,9 km/h),
+       während der Kilometerstand zwischen den Meldungen die ganze Zeit
+       stetig weiterwuchs (Schnitt seit davor 5,6 / 3,5 km/h) — „steht
+       gerade“ hätte gelogen, während er sich den Berg hochquälte. `c.roll`
+       (derselbe Schnitt zwischen den letzten beiden Meldungen, den auch die
+       Log-Spalte „Schnitt seit davor“ zeigt) ist gegen so ein einzelnes
+       Momentan-Rauschen robust, weil er aus tatsächlich zurückgelegten
+       Kilometern über die verstrichene Zeit gerechnet ist: bewegt sich der
+       GPX-Punkt nachweislich, kann er nicht stehen. Zeigt `roll` dagegen
+       KEINEN Fortschritt (≤ LIVE_STEHT_KMH oder noch keine zwei Meldungen,
+       dann ist `roll` null), bleibt es bei „steht gerade“. */
     teile.push(`<span>🚲 <span class="wxval">steht gerade</span></span>`);
   } else {
     teile.push(`<span><span class="rideAnim">🚴</span> <span class="wxval">unterwegs</span>${

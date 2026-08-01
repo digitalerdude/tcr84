@@ -936,6 +936,31 @@ Grenzfälle 179 und 181 Minuten.
   das war sichtbar falsch. 3 km/h ist bewusst niedrig: eine echte, wenn auch
   quälend langsame Steigung bleibt darüber, nur echter Stillstand fällt
   darunter.
+  **Aber die gemeldete Momentangeschwindigkeit allein reicht nicht** (01.08.2026,
+  Serpentinen vor Sarajevo). Genau umgekehrter Fehler zu Ystad: er fuhr die
+  ganze Zeit stetig weiter, aber die Momentanwerte einzelner Meldungen fielen
+  kurz unter 3 km/h (2,5 / 2,9 km/h), während der Kilometerstand zwischen
+  denselben Meldungen ununterbrochen weiterwuchs (Schnitt seit davor 5,6 /
+  3,5 km/h) — „steht gerade“ hätte gelogen, während er sich den Berg
+  hochquälte. Fix: `renderLive()` prüft jetzt zusätzlich `c.roll` (derselbe
+  Schnitt zwischen den letzten beiden Meldungen wie in der Log-Spalte
+  „Schnitt seit davor“) — zeigt der einen Fortschritt über `LIVE_STEHT_KMH`,
+  gewinnt „unterwegs“ trotz niedrigem Momentanwert. Der Unterschied zu
+  `lv.speed`: `roll` ist aus tatsächlich zurückgelegten Kilometern über die
+  verstrichene Zeit gerechnet und damit robust gegen das Rauschen einer
+  einzelnen Momentanmessung (Serpentine, kurzes Antreten). Bewusst NICHT
+  gegen Veralten abgesichert (kein Extra-Staleness-Check): steht er wirklich
+  still, bleiben neue Log-Einträge aus (unter `minKmDelta`), `roll` bleibt auf
+  dem letzten Vor-Stopp-Wert stehen, und bis zu den nächsten ~40 Minuten
+  könnte „unterwegs“ statt „steht gerade“ erscheinen — aber genau in diesem
+  Fenster übernimmt ohnehin bald `stopSince` (Track-Bestätigung, mit Vorrang
+  vor diesem Zweig). Ein seltenes, sich selbst heilendes Fenster ist der
+  bessere Tausch gegen einen Fehler, der bei JEDER langsamen Bergetappe
+  wiederkehrt — dieselbe Abwägung wie beim `exportRueckstandMin`-Toleranzfenster
+  in `check.mjs`. Verifiziert mit zwei künstlichen Ständen (isolierte
+  `data.json`-Kopie, echte nie berührt): niedriger Momentanwert + hoher `roll`
+  → „unterwegs“; niedriger Momentanwert + niedriger `roll` (echter Stillstand)
+  weiterhin → „steht gerade“.
 - **Tagesstreifen unter den Tagesbalken** (`dayStrip()`): je Tag 24 h von links
   nach rechts, Messing = Bewegung, abgedunkelt = Standzeit, Tooltip trägt die
   Summe. Gleiche Quelle wie Karte und Log (`findStops()`/`trackStops()`), damit
