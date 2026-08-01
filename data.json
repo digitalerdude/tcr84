@@ -5174,14 +5174,28 @@
       "speed": 29.4,
       "ele": 115,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785572487685",
+      "ts": "2026-08-01T10:11",
+      "tsSrc": "track",
+      "km": 3419.84,
+      "place": "Hrgovi Donji",
+      "note": "Platz 192",
+      "cc": "BA",
+      "lat": 44.786726,
+      "lon": 18.516468,
+      "speed": 22.4,
+      "ele": 130,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T07:56:18.358Z",
+  "updated": "2026-08-01T08:21:27.803Z",
   "live": {
-    "ts": "2026-08-01T09:56",
-    "km": 3409.18,
-    "fixMinsAgo": 5,
-    "speed": 29.4,
+    "ts": "2026-08-01T10:21",
+    "km": 3419.84,
+    "fixMinsAgo": 10,
+    "speed": 22.4,
     "rank": 192
   }
 }
