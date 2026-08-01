@@ -5258,14 +5258,28 @@
       "speed": 9.5,
       "ele": 227,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785581550051",
+      "ts": "2026-08-01T12:44",
+      "tsSrc": "track",
+      "km": 3463.49,
+      "place": "Morančani",
+      "note": "Platz 192",
+      "cc": "BA",
+      "lat": 44.485455,
+      "lon": 18.613672,
+      "speed": 0,
+      "ele": 215,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-01T10:27:19.891Z",
+  "updated": "2026-08-01T10:52:30.181Z",
   "live": {
-    "ts": "2026-08-01T12:27",
-    "km": 3459.42,
-    "fixMinsAgo": 5,
-    "speed": 9.5,
+    "ts": "2026-08-01T12:52",
+    "km": 3463.49,
+    "fixMinsAgo": 8,
+    "speed": 0,
     "rank": 192
   }
 }
