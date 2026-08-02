@@ -157,6 +157,7 @@ node update-tracker.mjs --backfill            # nur fehlende Höhen-Felder nacht
 node update-tracker.mjs --backfill --force    # dito, auch vorhandene Werte neu rechnen
 node update-tracker.mjs --places              # Ortsnamen bestehender Einträge neu auflösen (ohne Browser)
 node update-tracker.mjs --fixts               # Zeitstempel auf den Messzeitpunkt korrigieren (ohne Browser)
+node update-tracker.mjs --recalc-climb        # nur profile.json: chunks up/down + climbUp/down aus points neu (ohne Browser, ohne Netz)
 ```
 
 ### Der Zeitstempel einer Meldung ist die Zeit ihres GPS-Punkts
@@ -274,8 +275,23 @@ lineare Hochrechnung war deshalb ohnehin nicht aussagekräftig für die
 Profil-Wahl — die blieb aus dem harten Indiz oben: `fastbike` nimmt nachweislich
 den Umweg über die falsche Talseite.)
 `fastbike-asphalt-avoid-unsafe` gibt es auf dem öffentlichen Server nicht (HTTP 500). Liefert Höhe je Stützpunkt in der Geometrie
-(`[lon, lat, ele]`), `track-length`, und entscheidend `filtered ascend` — eine
-bereits entrauschte Höhenmeter-Summe. `climbDown` = `filtered ascend` − `plain-ascend`.
+(`[lon, lat, ele]`), `track-length`, und `filtered ascend` — eine bereits
+entrauschte Höhenmeter-Summe. `climbDown` = `filtered ascend` − `plain-ascend`.
+
+**Seit 02.08.2026 ist `filtered ascend` nicht mehr die Quelle der kumulierten
+Höhenmeter** (`climbUp`/`climbDown` und `chunks[].up/down` in `profile.json`).
+In steilem Schluchtgelände ist es DEM-rauschüberhöht: an der Drina-Schlucht
+lieferte es 4207 hm gegenüber 1090 hm Roh-GPS und 1520 hm aus der
+**gezeichneten** 500-m-`points`-Linie über dieselben 114 km — routenweit macht
+das noch +12 % aus, im Gorge das Dreifache. Die 500-m-Stützpunkte entrauschen
+schon von selbst und sind ohnehin das, was das Höhenprofil zeichnet — also
+zählt das Board jetzt genau das: `recalcClimbFromPoints()` in
+`update-tracker.mjs` integriert die kumulierten Höhenmeter aus `prof.points`
+und überschreibt damit die während des Routings aus `filtered ascend`
+aufsummierten Werte, am Ende jedes Laufs von `updateProfile()` und per
+`--recalc-climb` auf Bestand. `filtered ascend`/`r.up`/`r.down` bleiben nur
+noch Log-Info während des Routings, keine Summenquelle mehr. Einmalig
+korrigiert: `climbUp` 35628 → 31874, `climbDown` 34941 → 31525.
 
 **Verworfener erster Ansatz (2026-07-20), nicht zurückbauen:** OSRM-Demo-Server +
 punktweise Höhenabfrage bei Open-Meteo. Zwei Fehler: der öffentliche OSRM-Demo
@@ -284,6 +300,11 @@ mit 17,4 km), und das Aufsummieren roher DEM-Werte alle ~230 m erzeugt massive
 Artefakte, weil die geratene Route Hangflanken streift: im Testsegment ein Sprung
 von 190 m auf 500 m Strecke (38 % Steigung). Ergebnis 423 statt 103 Höhenmeter,
 gut das Vierfache. Steigungs- und Hysterese-Filter von Hand brachten nur ~8 %.
+**Nicht zu verwechseln mit der `points`-Integration von oben:** dort wird die
+**rohe** DEM-Höhe alle ~230 m auf einer geratenen Auto-Route aufsummiert (heute
+6675 hm im Gorge); `recalcClimbFromPoints()` integriert dagegen die schon auf
+500 m entrauschte BRouter-Fahrradroute (1520 hm) — derselbe Kilometerabstand
+ungefähr, aber eine andere Route und vor allem ein anderes Ausgangssignal.
 
 `--backfill` trägt die Felder auf bestehenden Einträgen nach (ohne Browser, nur
 BRouter + DEM), `--backfill --force` rechnet auch schon vorhandene Werte neu.
@@ -388,7 +409,13 @@ jede Stunde ein paar hundert Anfragen an einen Gratis-Dienst.
 `chunks` hält bewusst nur den Stand am Blockende — das Board interpoliert dazwischen
 linear (`cumClimbAt()`) und kann so Höhenmeter für beliebige Zeiträume ableiten:
 je Meldung im Log, je Kalendertag in den Balken. Ein Block ist knapp eine Stunde
-Fahrt (`waypointsPerRequest: 10` × ~5 Minuten).
+Fahrt (`waypointsPerRequest: 10` × ~5 Minuten). **Seit 02.08.2026** werden
+`cumUp`/`cumDown` je Block sowie die Top-Level-`climbUp`/`climbDown` nicht mehr
+während des Routings aus BRouters `filtered ascend` aufsummiert, sondern am
+Ende jedes Laufs (und per `--recalc-climb` auf Bestand) aus `points` neu
+berechnet (`recalcClimbFromPoints()`, siehe „Höhen und Höhenmeter" oben) — die
+gezeichnete Linie ist die Wahrheit, `chunks` folgt ihr, statt eine eigene zu
+behaupten.
 
 **Warum die Kilometer skaliert werden:** `routedKm` ist BRouters Streckenlänge und
 liegt ~3 % über der des Trackers (418 gegen 405 km). Das Frontend streckt beim

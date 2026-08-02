@@ -335,7 +335,7 @@ function compute(){
      code nach dem letzten mit einem anderen — die Feier ist also auf die
      Auflösung des Logs genau (~25 min), nicht auf die der Spur (~5 min). */
   let ccReached = null;
-  const ccList = list.filter(e => e.cc);
+  const ccList = list.filter(e => e.cc && FUEL.laender.some(l=> l.cc === e.cc));
   if (ccList.length > 0) {
     const latestCc = ccList[ccList.length - 1].cc;
     let transitionEntry = null;
@@ -1810,6 +1810,11 @@ const FUEL = {
       ['🧀','Sirnica','dieselbe Rolle mit Käse',520],
       ['🍎','Tufahija','Apfel mit Walnuss in Sirup',350],
     ], notiz:'Wichtig für ihn: <b>„Burek“ heißt hier ausschließlich die Fleischvariante.</b> Vegetarisch bestellt man Sirnica (Käse) oder Zeljanica (Spinat) — in Kroatien meint Burek beides, hier nicht.'},
+    {cc:'RS', nm:'Serbien', flag:'🇷🇸', em:'🧀', snack:'Gibanica', pl:'Gibanice', kcal:450, karte:[
+      ['🧀','Gibanica','Blätterteig mit Käse und Ei, das serbische Nationalgebäck',450],
+      ['🥧','Burek sa sirom','Blätterteigrolle mit Käse — anders als in Bosnien meint Burek hier auch die Käseversion',520],
+      ['🍩','Krofne','Krapfen mit Marmelade, an jedem Kiosk',300],
+    ], notiz:'Kurzer Grenzstreifen an der Drina zwischen Bosnien und Montenegro auf dem Weg Richtung CP4.'},
     {cc:'ME', nm:'Montenegro', flag:'🇲🇪', em:'🍯', snack:'Priganice', pl:'Priganice', kcal:350, karte:[
       ['🍯','Priganice','Teigbällchen mit Honig und Kajmak',350],
       ['🌽','Cicvara','Maisgrieß mit Kajmak, Bergküche',600],
@@ -1845,7 +1850,7 @@ function fuelKcal(km, hm){
 let FUEL_OVERRIDE = null;   // Debug-Hook tcr84Land(), siehe unten
 function fuelLand(c){
   if(FUEL_OVERRIDE) return FUEL_OVERRIDE;
-  const e = c.list.filter(x=> x.cc).pop();
+  const e = c.list.filter(x=> x.cc && FUEL.laender.some(l=> l.cc === x.cc)).pop();
   return e ? FUEL.laender.find(l=> l.cc === e.cc) || null : null;
 }
 

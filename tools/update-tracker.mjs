@@ -20,6 +20,7 @@
  *   node update-tracker.mjs --backfill       # rebuild the elevation profile from the archived track (no browser)
  *   node update-tracker.mjs --backfill --force   # ... from scratch, e.g. after changing the routing profile
  *   node update-tracker.mjs --places         # re-resolve place names of existing entries (no browser)
+ *   node update-tracker.mjs --recalc-climb   # nur profile.json: chunks up/down + climbUp/down aus points neu, ohne Netz
  */
 import { chromium } from 'playwright';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -120,6 +121,7 @@ const FLAGS = {
   backfill: args.includes('--backfill'),
   places: args.includes('--places'),
   fixts: args.includes('--fixts'),
+  recalcClimb: args.includes('--recalc-climb'),
   /* Setzt nur der launchd-Job. Von Hand gestartete Läufe sollen immer sofort
      arbeiten — wer selbst tippt, will jetzt ein Ergebnis und nicht „ist noch
      frisch genug“ lesen. */
@@ -357,6 +359,49 @@ function loadProfile() {
   try { return JSON.parse(readFileSync(PROFILE_JSON_PATH, 'utf8')); } catch { return null; }
 }
 
+/* Höhenmeter aus der gezeichneten 500-m-Profillinie (prof.points) statt aus
+   BRouters `filtered ascend`: letzteres ist in steilem Schluchtgelände
+   DEM-rauschüberhöht (02.08.2026: 4207 hm gegen 1090 Roh-GPS / 1520 Linie).
+   Die 500-m-Stützpunkte entrauschen von selbst. `points` IST die gezeichnete
+   Wahrheit — hier wird genau sie gezählt, damit Overlay/Kopf/Feier/Verpflegung
+   nie wieder etwas anderes behaupten als die Kurve darüber. Kein Höhen-
+   Schwellwert (die Linie exakt zählen); nur ein km-Sprung-Schutz gegen Fähr-
+   /Routing-Lücken, damit die Höhe über eine Lücke ohne Stützpunkte nicht als
+   Anstieg zählt. */
+const CLIMB_GAP_GUARD_KM = 3;
+function cumClimbSeriesFromPoints(points){
+  // liefert Funktion km -> {up,down} anhand der aufsummierten +/- Höhendeltas
+  const kms = [], ups = [], downs = [];
+  let up = 0, down = 0, prev = null;
+  for(const [km, ele] of points){
+    if(prev){
+      const dk = km - prev[0], de = ele - prev[1];
+      if(dk <= CLIMB_GAP_GUARD_KM){ if(de > 0) up += de; else down -= de; }
+    }
+    kms.push(km); ups.push(up); downs.push(down);
+    prev = [km, ele];
+  }
+  const at = kmEnd => {
+    // größter Stützpunkt mit km <= kmEnd (points sind aufsteigend sortiert)
+    let lo = 0, hi = kms.length - 1, r = 0;
+    while(lo <= hi){ const m = (lo+hi)>>1; if(kms[m] <= kmEnd){ r = m; lo = m+1; } else hi = m-1; }
+    return { up: ups[r], down: downs[r] };
+  };
+  return { at, totalUp: up, totalDown: down };
+}
+function recalcClimbFromPoints(prof){
+  if(!prof.points || !prof.points.length) return prof;
+  const s = cumClimbSeriesFromPoints(prof.points);
+  for(const ch of prof.chunks){
+    const v = s.at(ch[1]);          // ch[1] = kmEnd (Routed-Skala, dieselbe wie points)
+    ch[2] = Math.round(v.up);
+    ch[3] = Math.round(v.down);
+  }
+  prof.climbUp = Math.round(s.totalUp);
+  prof.climbDown = Math.round(s.totalDown);
+  return prof;
+}
+
 /* Baut das Höhenprofil entlang der echten Spur fort — inkrementell, es wird
    pro Lauf nur das neu hinzugekommene Ende geroutet (bei stündlichem Abruf
    also ~12 neue Spurpunkte, ein bis zwei BRouter-Anfragen). Ein kompletter
@@ -432,6 +477,10 @@ async function updateProfile(trackPoints, { rebuild = false } = {}) {
     await new Promise(r => setTimeout(r, CONFIG.brouterDelayMs));
     i = end - 1;   // ein Punkt Überlappung an der Naht, wie beim festen Schritt oben
   }
+
+  // Zählt seit 02.08.2026 die gezeichnete 500-m-Linie statt BRouters
+  // rauschüberhöhtem `filtered ascend` (siehe Kommentar an recalcClimbFromPoints).
+  recalcClimbFromPoints(prof);
 
   prof.updated = new Date().toISOString();
   writeFileSync(PROFILE_JSON_PATH, JSON.stringify(prof) + '\n');
@@ -826,6 +875,24 @@ async function backfill() {
   else log('dry run — not committed. Pass --commit (and --push) to publish.');
 }
 
+/* profile.json neu aus den vorhandenen `points` berechnen, ohne Browser und
+ * ohne Netz — reine Nachrechnung derselben gezeichneten Linie, siehe
+ * recalcClimbFromPoints(). Idempotent: dieselben points ergeben dieselben
+ * Summen, egal wie oft es läuft. */
+async function recalcClimb() {
+  const prof = loadProfile();
+  if (!prof || !prof.points || !prof.points.length) {
+    log('profile.json fehlt oder hat keine Stützpunkte — erst einen normalen Lauf oder --backfill machen.');
+    return;
+  }
+  const vorUp = prof.climbUp, vorDown = prof.climbDown;
+  recalcClimbFromPoints(prof);
+  prof.updated = new Date().toISOString();
+  writeFileSync(PROFILE_JSON_PATH, JSON.stringify(prof) + '\n');
+  log(`profile.json: climbUp ${vorUp} → ${prof.climbUp}, climbDown ${vorDown} → ${prof.climbDown} ` +
+      `(aus ${prof.points.length} Stützpunkten, ${prof.chunks.length} chunks).`);
+}
+
 /* ---- Der Zeitstempel einer Meldung ist die Zeit ihres GPS-Punkts ----
  *
  * Bis zum 21.07.2026 trug `ts` den Zeitpunkt UNSERES Abrufs. Position, km,
@@ -943,6 +1010,7 @@ async function main() {
   if (FLAGS.places) return refreshPlaces();
   if (FLAGS.backfill) return backfill();
   if (FLAGS.fixts) return fixTimestamps();
+  if (FLAGS.recalcClimb) return recalcClimb();
 
   const data0 = loadData();
   const windowStart = new Date(data0.settings.start);
