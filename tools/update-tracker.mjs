@@ -550,11 +550,21 @@ async function fetchRiderState() {
       // Mit Deadline: der Export läuft im Seitenkontext, ein stehender
       // Aufruf dort hinge sonst am Playwright-Aufruf hier und damit am
       // ganzen Lauf.
-      gpx = await page.evaluate(async ([deviceId, timeoutMs]) => {
-        const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`,
-          { signal: AbortSignal.timeout(timeoutMs) });
-        return res.ok ? res.text() : null;
+      // Der HTTP-Status wird bewusst zurückgegeben und bei Nicht-OK protokolliert:
+      // ein stilles `res.ok ? … : null` hat am 02.08.2026 einen 5-Stunden-Ausfall
+      // verschleiert — Cloudflare fing an, den `.php`-Endpunkt mit 403 zu blocken
+      // (der Live-Feed `ridersArray` lief weiter), und der Lauf loggte trotzdem
+      // „N Spurpunkte archiviert", weil unten auf die alte Spur zurückgefallen wird.
+      const r = await page.evaluate(async ([deviceId, timeoutMs]) => {
+        try {
+          const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`,
+            { signal: AbortSignal.timeout(timeoutMs) });
+          return { ok: res.ok, status: res.status, body: res.ok ? await res.text() : null };
+        } catch (e) { return { ok: false, status: 0, body: null, err: String((e && e.message) || e) }; }
       }, [rider.deviceId, CONFIG.netzTimeoutMs]);
+      if (r.ok) gpx = r.body;
+      else log(`WARNUNG: GPX-Export nicht abrufbar (HTTP ${r.status}${r.err ? ', ' + r.err : ''}) — ` +
+               `Spur bleibt auf dem letzten Stand. Häufigste Ursache: Cloudflare blockt den Endpunkt.`);
     } catch (e) { log('GPX-Export fehlgeschlagen (ignoriert):', e.message); }
 
     if (FLAGS.dump) {
@@ -1042,8 +1052,10 @@ async function main() {
     log(`warning: last report is ${rider.lastReportMins} min old — tracker may be offline/asleep.`);
   }
 
-  const trackPoints = saveTrack(gpx, rider.deviceId) || (loadTrack() || {}).points;
-  if (trackPoints) log(`track.json: ${trackPoints.length} Spurpunkte archiviert.`);
+  const savedPoints = saveTrack(gpx, rider.deviceId);
+  const trackPoints = savedPoints || (loadTrack() || {}).points;
+  if (savedPoints) log(`track.json: ${savedPoints.length} Spurpunkte archiviert.`);
+  else if (trackPoints) log(`track.json: NICHT aktualisiert — ${trackPoints.length} archivierte Spurpunkte behalten (GPX-Export lieferte keine neuen Daten).`);
 
   if (trackPoints) {
     try {
