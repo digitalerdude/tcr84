@@ -5928,14 +5928,42 @@
       "speed": 16.3,
       "ele": 561,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785682494671",
+      "ts": "2026-08-02T16:53",
+      "tsSrc": "track",
+      "km": 3812.57,
+      "place": "Njegnjevo",
+      "note": "Platz 163",
+      "cc": "ME",
+      "lat": 43.067554,
+      "lon": 19.785803,
+      "speed": 0.3,
+      "ele": 555,
+      "eleSrc": "dem"
+    },
+    {
+      "id": "1785684157966",
+      "ts": "2026-08-02T17:18",
+      "tsSrc": "fix",
+      "km": 3817.49,
+      "place": "Boljanina",
+      "note": "Platz 163",
+      "cc": "ME",
+      "lat": 43.036019,
+      "lon": 19.809815,
+      "speed": 18,
+      "ele": 613,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-02T14:36:41.993Z",
+  "updated": "2026-08-02T15:22:38.100Z",
   "live": {
-    "ts": "2026-08-02T16:36",
-    "km": 3804.9,
-    "fixMinsAgo": 3,
-    "speed": 16.3,
+    "ts": "2026-08-02T17:22",
+    "km": 3817.49,
+    "fixMinsAgo": 4,
+    "speed": 18,
     "rank": 163
   }
 }
