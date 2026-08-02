@@ -25,6 +25,23 @@
 # die Quelle ist hier ehrlicher als eine Bausatz-Abhängigkeit zwischen einem
 # Cloud-Job und einem lokalen Skript. Ändert sich TOL.exportRueckstandMin in
 # check.mjs, hier mitziehen.
+#
+# Dritter Job (deploy-pruefen, 02.08.2026): deckt einen DRITTEN Fehlermodus,
+# den die ersten beiden nicht sehen können, weil beide `data.json`/`track.json`
+# direkt aus dem Checkout lesen, nicht über die deployte Seite. Läuft 1 zu 1,
+# was der Scraper committet, aber der GitHub-Pages-Build selbst scheitert, sind
+# die Daten frisch im Git — nur die AUSGELIEFERTE Seite zeigt sie nicht. Genau
+# das passierte am 02.08.2026 (Run #710): "job was not acquired by Runner ...
+# even after multiple attempts" — eine GitHub-seitige Runner-Knappheit, keine
+# Folge irgendeines Commits hier. Ein einzelner Fehlschlag heilt sich fast
+# immer von selbst: der nächste Scraper-Push (alle ~25 min) löst automatisch
+# einen neuen Build aus, und #710 tat genau das (nächster Push baute in 1m17s
+# erfolgreich). Deshalb prüft dieser Job NICHT den letzten Build-Versuch für
+# sich (der wäre bei jedem neuen, auch wieder scheiternden Push frisch und
+# das Alter bliebe künstlich niedrig — genau der Fehler, den es hier zu
+# vermeiden gilt), sondern sucht in der Build-HISTORIE den letzten
+# tatsächlich ERFOLGREICHEN Build und alarmiert erst, wenn der zu lange
+# zurückliegt.
 name: Wächter
 
 on:
@@ -240,6 +257,121 @@ jobs:
                 'Betrifft nur die aus der Spur abgeleiteten Werte (Höhenprofil, Tagesbalken, CP-Nähe-Erkennung) — Kilometerstand, Tempo und Platz in der Kopfzeile bleiben davon unberührt, die kommen aus dem separaten Live-Feed.',
                 '',
                 '_Dieses Issue schließt sich von selbst, sobald der Export wieder aufgeholt hat._',
+              ].filter(Boolean).join('\n'),
+            });
+            core.info('Issue angelegt.');
+
+  deploy-pruefen:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pages: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Deckungsgleich mit den anderen beiden Jobs, aus demselben Grund:
+            // mehrere Fehlschläge hintereinander dürfen sein, bevor jemand
+            // geweckt wird — ein einzelner heilt sich fast immer über den
+            // nächsten Scraper-Push von selbst.
+            const SCHWELLE_MIN = 180;
+            const RUHE_AB = 23, RUHE_BIS = 7;
+            const TITEL = 'Pages-Build hängt';
+
+            const data = JSON.parse(fs.readFileSync('data.json', 'utf8'));
+            const st = data.settings || {};
+            const alsLokal = s => new Date(s + '+02:00');
+
+            const jetzt = new Date();
+            const start = alsLokal(st.start);
+            const ende = new Date(alsLokal(st.deadline).getTime() + 24 * 3600 * 1000);
+
+            const liste = await github.rest.issues.listForRepo({
+              owner: context.repo.owner, repo: context.repo.repo,
+              state: 'open', per_page: 100,
+            });
+            const offen = liste.data.find(i => !i.pull_request && i.title === TITEL);
+
+            if (jetzt < start || jetzt > ende) {
+              core.info('Außerhalb des Rennfensters — nichts zu tun.');
+              return;
+            }
+
+            /* Bewusst NICHT /pages/builds/latest (nur der letzte Versuch,
+               egal ob erfolgreich): bei einem dauerhaften Defekt, der JEDEN
+               Build scheitern lässt, würde dessen Zeitstempel mit jedem
+               neuen Scraper-Push (~alle 25 min) neu gesetzt — das Alter
+               bliebe künstlich niedrig und die Schwelle griffe nie. Gesucht
+               wird stattdessen in der Build-LISTE (neueste zuerst) der
+               letzte Eintrag mit status:'built', und dessen Alter zählt.
+               30 Einträge decken bei diesem Push-Takt weit mehr als die
+               180-Minuten-Schwelle ab. Schlägt der Abruf selbst fehl (API-
+               Aussetzer beim Abfragen, nicht am Build), wird das NICHT als
+               Alarm gewertet — anders als bei `pruefen`s live.ts, das aus
+               unserem eigenen Commit-Inhalt kommt, wäre ein Alarm hier ein
+               Fehlschluss über eine fremde Diagnose-Abfrage, nicht über den
+               Build selbst. */
+            let letzterErfolg = null;
+            try {
+              const res = await github.request('GET /repos/{owner}/{repo}/pages/builds', {
+                owner: context.repo.owner, repo: context.repo.repo, per_page: 30,
+              });
+              letzterErfolg = res.data.find(b => b.status === 'built') || null;
+            } catch (e) {
+              core.info(`Pages-Build-Historie nicht abrufbar, kein Alarm daraus: ${e.message}`);
+              return;
+            }
+
+            const altMin = letzterErfolg ? Math.round((jetzt - new Date(letzterErfolg.updated_at)) / 60000) : null;
+            core.info(`Letzter erfolgreicher Pages-Build: ${altMin === null ? 'keiner in den letzten 30 Versuchen' : altMin + ' min her'}.`);
+
+            if (altMin !== null && altMin < SCHWELLE_MIN) {
+              if (offen) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: offen.number,
+                  body: `Der Pages-Build läuft wieder — letzter erfolgreicher Build ${altMin} min her. Automatisch geschlossen.`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo, issue_number: offen.number, state: 'closed',
+                });
+                core.info('Wieder in Ordnung, Issue geschlossen.');
+              }
+              return;
+            }
+
+            const stunde = Number(jetzt.toLocaleString('en-GB', {
+              timeZone: 'Europe/Berlin', hour: '2-digit', hour12: false,
+            }));
+            if (stunde >= RUHE_AB || stunde < RUHE_BIS) {
+              core.info(`Nachtruhe (${stunde} Uhr lokal) — Meldung wartet bis ${RUHE_BIS} Uhr.`);
+              return;
+            }
+
+            if (offen) {
+              core.info(`Issue #${offen.number} ist schon offen — keine zweite Meldung.`);
+              return;
+            }
+
+            const alt = altMin === null ? 'nicht in den letzten 30 Build-Versuchen' : `${Math.floor(altMin/60)} h ${altMin%60} min`;
+            await github.rest.issues.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              title: TITEL,
+              body: [
+                `Der letzte erfolgreiche GitHub-Pages-Build liegt **${alt}** zurück (Schwelle: ${SCHWELLE_MIN} min).`,
+                'data.json/track.json/profile.json sind im Git vermutlich frisch (das prüfen die anderen beiden Wächter-Jobs separat)',
+                '— nur die AUSGELIEFERTE Seite zeigt sie nicht. Ein einzelner Build-Fehlschlag heilt sich normalerweise mit dem',
+                'nächsten Scraper-Push von selbst (alle ~25 min); dass das hier so lange nicht passiert ist, spricht für etwas Dauerhaftes:',
+                '',
+                '- https://github.com/digitalerdude/tcr84/actions/workflows/pages-build-deployment — Verlauf der Build-Läufe',
+                '- https://www.githubstatus.com/ — GitHub-weite Störung bei Pages/Actions?',
+                '- Sofort aufholen: einen leeren Commit pushen (`git commit --allow-empty -m "Build neu anstoßen" && git push`) oder in den Repo-Settings → Pages neu bauen lassen.',
+                '',
+                '_Dieses Issue schließt sich von selbst, sobald wieder ein Build `built` meldet._',
               ].filter(Boolean).join('\n'),
             });
             core.info('Issue angelegt.');
