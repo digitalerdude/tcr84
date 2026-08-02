@@ -2570,7 +2570,7 @@ setInterval(windLaden, 120000);
    Bauform „externer Worker oder gar nicht da“. Der Unterschied ist, was
    ankommt — der Wind ist eine Zahl, ein Satz mit Namen ist ein Mensch.
 
-   Jeder Zuruf verfällt nach 48 Stunden. Das ist der Zweck, nicht der Preis:
+   Jeder Zuruf verfällt nach 36 Stunden. Das ist der Zweck, nicht der Preis:
    Manuel liest im Rennen Frisches, kein Gästebuch, und was schiefgeht, räumt
    sich selbst weg. Die Wand ist absichtlich kein Archiv.
 

@@ -1406,9 +1406,10 @@ Panel es dazu, sonst sieht es nach einer wackeligen Zahl aus.
 
 Das Geschwister des Rückenwind-Knopfs und die zweite Sache, die ein Zuschauer
 **tun** kann — aber die erste, die bei Manuel wirklich ankommt. Der Wind ist
-eine Zahl, ein Satz mit Namen ist ein Mensch. Bis zu 180 Zeichen, ein rotierender
-Kasten, darunter die vollständige Liste, und **jeder Zuruf verfällt nach 48
-Stunden**.
+eine Zahl, ein Satz mit Namen ist ein Mensch. Bis zu 180 Zeichen, ein
+rotierender Kasten mit Pfeilnavigation (die feste Liste darunter ist seit
+31.07.2026 wieder entfernt, siehe unten), und **jeder Zuruf verfällt nach
+36 Stunden**.
 
 Die Vergänglichkeit ist der Zweck, nicht der Preis: Manuel liest im Rennen
 Frisches, kein Gästebuch, das mit jedem Tag länger wird — und was schiefgeht,
@@ -1427,7 +1428,7 @@ Besucher über zwei Funktionen hinweg wiedererkennen.
 nimmt es hin, weil eine verlorene Böe niemand vermisst. Hier wäre der Preis ein
 anderer: schreiben zwei Leute in derselben Sekunde, verschwände der **komplette
 Zuruf eines Fremden** — still, während beide Absender ein „Geschickt!“ gesehen
-haben. Getrennte Schlüssel haben das Problem nicht, und die 48 Stunden kommen
+haben. Getrennte Schlüssel haben das Problem nicht, und die 36 Stunden kommen
 dadurch je Zuruf gratis (`expirationTtl`). *Kein Aufräumjob ist ein Feature:
 man kann nichts vergessen laufen zu lassen.* **Nie zu einer Liste umbauen.**
 Die Zufallsendung hinter der Millisekunde im Schlüssel gehört dazu — ohne sie
@@ -1441,7 +1442,7 @@ hart gedeckelt (Worst Case hier ~640). Das ist der *physische* Grund, warum
 180 Zeichen später nicht auf 500 gehen können, ohne die Nutzlast zu verlegen
 und die N Extraaufrufe zurückzuholen.
 
-**Moderation: kein Vorfilter, ein Löschweg, 48 Stunden.** Die TTL *ist* die
+**Moderation: kein Vorfilter, ein Löschweg, 36 Stunden.** Die TTL *ist* die
 Moderation — nichts bleibt stehen. Der Löschweg (`#zuruf=<Token>` im Hash,
 Secret `ZURUF_TOKEN` im Worker) ist der Notausgang des Besitzers, keine
 Prüfschlange: Vormoderation hätte die Spontaneität getötet und ihn nachts zum

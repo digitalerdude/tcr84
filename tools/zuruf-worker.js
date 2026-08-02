@@ -12,7 +12,7 @@
  * wird nirgends geprüft — ein Name ist hier keine Identität, sondern eine
  * Unterschrift unter einen Gruß.
  *
- * Jeder Zuruf verfällt nach 48 Stunden. Das ist keine Aufräumroutine, sondern
+ * Jeder Zuruf verfällt nach 36 Stunden. Das ist keine Aufräumroutine, sondern
  * der Zweck: Manuel soll Frisches lesen, kein Gästebuch abarbeiten — und was
  * schiefgeht, räumt sich selbst weg.
  *
@@ -45,14 +45,14 @@
  *       → {"ok":true,"k":"k:..."}
  *
  * ── WAS ES BEWUSST NICHT KANN ───────────────────────────────────────────────
- * · Keine Vorprüfung, keine Warteschlange, kein Wortfilter. Die 48 Stunden SIND
+ * · Keine Vorprüfung, keine Warteschlange, kein Wortfilter. Die 36 Stunden SIND
  *   die Moderation, der Löschweg ist der Notausgang. Eine deutsche Wortliste
  *   wäre entweder zu kurz, um zu greifen, oder lang genug, um "Scheiß Gegenwind
  *   heute, halt durch!" wegzufiltern — und genau solche Sätze gehören dorthin.
  * · `list()` ist eventual consistent, bis zu ~60 Sekunden. Ein gerade
  *   geschriebener Zuruf kann im nächsten GET noch fehlen. Das ist KV, kein
  *   Fehler; das Board hält eigene Zurufe deshalb kurz lokal fest.
- * · Keine Paginierung, `limit:200`. Wer in 48 Stunden 200 Zurufe bekommt, hat
+ * · Keine Paginierung, `limit:200`. Wer in 36 Stunden 200 Zurufe bekommt, hat
  *   ein schöneres Problem, als diese Datei löst.
  * · Kein Bearbeiten. Ein Zuruf ist da oder weg.
  * · Metadaten sind bei 1024 Bytes hart gedeckelt — siehe unten, das ist der
@@ -74,7 +74,7 @@ const ERLAUBTE_ORIGINS = [
 
 const MAX_TEXT = 180;         // muss zu ZURUF.maxText in app.js passen
 const MAX_NAME = 20;          // dito ZURUF.maxName
-const TTL_SEK = 48 * 3600;    // Halbwertszeit eines Zurufs
+const TTL_SEK = 36 * 3600;    // Halbwertszeit eines Zurufs
 const MAX_BODY = 4096;        // Byte, bevor überhaupt gelesen wird
 const MAX_META = 900;         // Byte, mit Luft unter KVs harter 1024-Grenze
 const LISTE_MAX = 200;
@@ -134,7 +134,7 @@ function gleichKonstant(a, b) {
    vermisst. Hier wäre der Preis ein anderer: schreiben zwei Leute gleichzeitig,
    verschwände der KOMPLETTE Zuruf eines Fremden — still, während beide Absender
    ein "Geschickt!" gesehen haben. Getrennte Schlüssel haben das Problem nicht,
-   und die 48 Stunden kommen dadurch je Zuruf gratis: kein Aufräumjob, den
+   und die 36 Stunden kommen dadurch je Zuruf gratis: kein Aufräumjob, den
    jemand vergessen könnte laufen zu lassen.
 
    Die Zufallsendung hinter der Millisekunde ist Teil davon — ohne sie teilen
