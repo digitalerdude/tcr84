@@ -794,6 +794,35 @@ function kmAt(list, unixSec){
   }
   return Number(list[list.length-1].km);
 }
+/* Der heutige (noch laufende) Tag ist ein Sonderfall gegenüber den
+   abgeschlossenen Tagen in renderDays(): effortBetween() dort hängt am
+   GPX-Export (profile.json) und friert ein, sobald der stockt — Cloudflare
+   blockt ihn zeitweise (siehe update-tracker.mjs, zuletzt 02.08.2026 über
+   5 Stunden), während der Live-Feed weiterläuft. Fürs Heute gibt es ein
+   zweites Lineal, das nicht am Export hängt: kmAt() auf den Log-Metern plus
+   `live.km`, das bei JEDEM Lauf geschrieben wird statt nur bei einer neuen
+   Log-Zeile — dieselbe Frische-Regel wie beim Ø-Schnitt in compute(). Die
+   Fährkorrektur läuft wie in renderFuel() auf derselben Tracker-Skala, nicht
+   wie bei effortBetween() auf der Profil-Skala. Ältere Tage bleiben bewusst
+   bei effortBetween(): das Log deckt erst ab der ersten eigenen Erfassung,
+   die Spur reicht bis Trondheim zurück, und ein Tausch löste ihre Summe von
+   der Gesamtstrecke. */
+function todayKm(c){
+  const dayStart = new Date(c.now.getFullYear(), c.now.getMonth(), c.now.getDate()).getTime()/1000;
+  const kmNow = Math.max(c.km, Number(S.live && S.live.km) || 0);
+  const kmMidnight = kmAt(c.list, dayStart);
+  let km = kmNow - (kmMidnight ?? kmNow);
+  const fer = ferryCrossing();
+  if(fer && fer.state === 'done'){
+    const bT = new Date(fer.boardTs).getTime()/1000, lT = new Date(fer.landTs).getTime()/1000;
+    const from = Math.max(bT, dayStart), to = Math.min(lT, c.now.getTime()/1000);
+    if(from < to){
+      const vor = kmAt(c.list, from), nach = kmAt(c.list, to);
+      if(vor != null && nach != null) km -= Math.max(nach - vor, 0);
+    }
+  }
+  return Math.max(km, 0);
+}
 let PROF = null; // gerenderter Zustand für die Zeigersteuerung
 
 // Das eigenständige Diagramm im Board: mit Kennzahlenstreifen und Erklärkasten.
@@ -1161,6 +1190,13 @@ function renderDays(c){
       byDay[key] = eff.km * c.kmScale;
       upDay[key] = Math.round(eff.up);
     }
+    /* Heute überschreiben: der Balken oben rechnet bis lastT (Ende der
+       archivierten Spur) und friert ein, sobald der GPX-Export stockt —
+       dann zeigt er einen alten Stand, obwohl Log und `live` längst weiter
+       sind (siehe todayKm() oben). Nur die Kilometer werden ersetzt; die
+       Höhenmeter (upDay) bleiben auf dem letzten Profilstand, weil sie sich
+       ohne Profil nicht neu rechnen lassen. */
+    byDay[dayKey(c.now)] = todayKm(c);
   } else {
     for(let i=1;i<c.list.length;i++){
       const a=c.list[i-1], b=c.list[i];

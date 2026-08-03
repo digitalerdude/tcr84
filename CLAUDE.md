@@ -988,6 +988,30 @@ Grenzfälle 179 und 181 Minuten.
   `data.json`-Kopie, echte nie berührt): niedriger Momentanwert + hoher `roll`
   → „unterwegs“; niedriger Momentanwert + niedriger `roll` (echter Stillstand)
   weiterhin → „steht gerade“.
+- **Der heutige Tagesbalken hängt am GPX-Export, alle anderen nicht**
+  (`todayKm()`, 03.08.2026). `renderDays()` rechnet abgeschlossene Tage aus
+  `profile.json` (`effortBetween()`/`cumClimbAt()`) — das braucht die
+  aufgezeichnete Spur, weil sie bis Trondheim zurückreicht und das Log erst
+  ab der ersten eigenen Erfassung. Für den **laufenden** Tag ist das aber die
+  falsche Quelle: stockt der GPX-Export (Cloudflare blockt ihn zeitweise,
+  siehe `tools/update-tracker.mjs`), friert der heutige Balken auf dem letzten
+  Profilstand ein, während Log und `live` längst weiter sind. Am 03.08.2026
+  konkret beobachtet: Profil 5 h 50 min alt, Balken hätte **113 km**
+  behauptet, tatsächlich waren es **199 km** — 86 km Differenz an einem
+  einzigen Tag, nur weil zufällig zum Rendern gerade eine der ohnehin
+  bekannten, sich meist von selbst heilenden Export-Aussetzer lief.
+  `todayKm()` überschreibt deshalb ausschließlich den heutigen Kilometerwert
+  mit demselben Lineal wie `kmAt()`/`renderFuel()` (Tracker-Skala, nicht
+  Profil-Skala) und derselben Frische-Regel wie der Ø-Schnitt in `compute()`
+  (`max(c.km, live.km)`, weil `live` bei jedem Lauf schreibt, das Log erst ab
+  `minKmDelta`). Die Fährkorrektur läuft analog zu `effortBetween()`, nur auf
+  der Tracker- statt der Profil-Skala. **Nicht mitgezogen wird `upDay`** (die
+  Höhenmeter des Tages): die lassen sich ohne Profil nicht neu rechnen und
+  bleiben auf dem letzten bekannten Stand, bis der Export nachzieht — vertretbar,
+  weil die km-Zahl die Aussage des Balkens ist und die Höhenmeter nur die
+  Nebenzeile. Frühere Tage bleiben bewusst bei `effortBetween()`: ein Tausch
+  auf das Log-Lineal für die ganze Historie löste ihre Summe von der
+  Gesamtstrecke (siehe die nächste Notiz zur Ferry-Restdrift).
 - **Tagesstreifen unter den Tagesbalken** (`dayStrip()`): je Tag 24 h von links
   nach rechts, Messing = Bewegung, abgedunkelt = Standzeit, Tooltip trägt die
   Summe. Gleiche Quelle wie Karte und Log (`findStops()`/`trackStops()`), damit
