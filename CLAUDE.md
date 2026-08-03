@@ -1006,12 +1006,31 @@ Grenzfälle 179 und 181 Minuten.
   (`max(c.km, live.km)`, weil `live` bei jedem Lauf schreibt, das Log erst ab
   `minKmDelta`). Die Fährkorrektur läuft analog zu `effortBetween()`, nur auf
   der Tracker- statt der Profil-Skala. **Nicht mitgezogen wird `upDay`** (die
-  Höhenmeter des Tages): die lassen sich ohne Profil nicht neu rechnen und
-  bleiben auf dem letzten bekannten Stand, bis der Export nachzieht — vertretbar,
-  weil die km-Zahl die Aussage des Balkens ist und die Höhenmeter nur die
-  Nebenzeile. Frühere Tage bleiben bewusst bei `effortBetween()`: ein Tausch
-  auf das Log-Lineal für die ganze Historie löste ihre Summe von der
-  Gesamtstrecke (siehe die nächste Notiz zur Ferry-Restdrift).
+  Höhenmeter des Tages): die lassen sich ohne Profil nicht neu rechnen. Eine
+  zweite Höhenquelle als Fallback wäre eine erfundene Zahl und ist bewusst
+  ausgeschlossen — geprüft am 03.08.2026, ob andere Seiten mehr hergeben
+  (Anlass: dotwatcher.cc): sie tun es nicht. dotwatchers eigener SSR-Payload
+  trägt als „`trackleadersRaceId`" wörtlich die followmychallenge-URL (das
+  Live-Tracking ist ein eingebetteter iframe desselben Cloudflare-gated
+  Trackers), und sein `liveLeaderboard` hat pro Fahrer nur Rang/Land/Status,
+  **keine Koordinaten, keine Kilometer, keine Spur**. Rang/Distanz haben wir
+  ohnehin frisch aus `ridersArray`; die dichte Spur — das Einzige, was
+  Höhenmeter erzeugt — liegt nur bei followmychallenge, hinter demselben 403.
+  Also wird der **Stand kommentiert statt geraten** (`todayHmAsOf` in
+  `renderDays`, `DAY_HM_STALE_KM` = 25): der heutige ↑-Wert bekommt eine
+  gedämpfte „…"-Marke (Tooltip mit „Stand HH:MM Uhr") und darunter eine
+  Klartextzeile (`.daynote`), sobald die frischen Tageskilometer die vom
+  Profil abgedeckten um mehr als 25 km übersteigen. **Ausgelöst wird über die
+  Kilometerlücke, nicht über das Alter der Spur** — ein legitimer Halt/Schlaf
+  lässt die Spur ebenso altern, aber ohne fehlende Höhenmeter (Lücke ~0), und
+  bekäme sonst fälschlich die Marke: dieselbe Pause-vs-Ausfall-Falle wie bei
+  der Karte, hier über die Distanz entschieden. 25 km liegt über dem normalen
+  Stapel-Rückstand (~40 min ≈ 13 km) und der Ferry/kmScale-Restdrift, unter
+  dem echten Ausfall (86 km). Verifiziert gegen vier Stände: Ausfall-während-
+  Fahrt → Marke; Profil aktuell → keine; Halt (Lücke ~0) → keine; normaler
+  Stapel (~12 km) → keine. Frühere Tage bleiben bewusst bei `effortBetween()`:
+  ein Tausch auf das Log-Lineal für die ganze Historie löste ihre Summe von
+  der Gesamtstrecke (siehe die nächste Notiz zur Ferry-Restdrift).
 - **Tagesstreifen unter den Tagesbalken** (`dayStrip()`): je Tag 24 h von links
   nach rechts, Messing = Bewegung, abgedunkelt = Standzeit, Tooltip trägt die
   Summe. Gleiche Quelle wie Karte und Log (`findStops()`/`trackStops()`), damit

@@ -70,6 +70,15 @@ const DEFAULTS = {
    wieder so spät wie vorher, aber nie falsch. */
 const CP_RADIUS_KM = 1.5;
 const CP_KM_MIN_FRAC = 0.9;
+/* Ab welcher Kilometerlücke der heutige ↑-Höhenmeter-Balken als „hängt
+   hinterher" markiert wird (todayHmAsOf in renderDays). Gemessen wird der
+   Abstand zwischen den frischen Tageskilometern (Tracker) und den vom Profil
+   abgedeckten — nicht das Alter der Spur, denn ein legitimer Halt lässt die
+   Spur ebenso altern, ohne dass Höhenmeter fehlen. 25 km liegt sicher über
+   dem normalen Stapel-Rückstand des Exports (~40 min ≈ 13 km bei Fahrttempo)
+   und der bekannten Ferry/kmScale-Restdrift, und deutlich unter dem echten
+   Ausfall vom 03.08.2026 (86 km). */
+const DAY_HM_STALE_KM = 25;
 /* Obergrenze für den Kilometerstand-Fallback in cpHit(), wenn die Spur da ist
    aber nie in CP_RADIUS_KM herankommt. Bewusst großzügiger als CP_RADIUS_KM:
    sie deckt weiterhin den harmlosen Fall ab, dass der Posten am Ortsrand statt
@@ -1169,6 +1178,7 @@ function renderDays(c){
   const w = document.getElementById('daysWrap');
   if(c.list.length < 2){ w.innerHTML = '<div class="empty">Ab zwei Meldungen erscheint hier die Tagesleistung.</div>'; return; }
   const byDay = {}, upDay = {};
+  let todayK = null, todayHmAsOf = null;
   if(PROFILE && PROFILE.chunks && PROFILE.chunks.length){
     /* Aus der aufgezeichneten Spur, nicht aus den Meldungen: die decken erst
        ab der ersten eigenen Erfassung ab, die Spur reicht bis Trondheim
@@ -1196,7 +1206,21 @@ function renderDays(c){
        sind (siehe todayKm() oben). Nur die Kilometer werden ersetzt; die
        Höhenmeter (upDay) bleiben auf dem letzten Profilstand, weil sie sich
        ohne Profil nicht neu rechnen lassen. */
-    byDay[dayKey(c.now)] = todayKm(c);
+    todayK = dayKey(c.now);
+    const abgedecktHeute = byDay[todayK] || 0;   // vom Profil abgedeckte Tages-km
+    byDay[todayK] = todayKm(c);
+    /* Der ↑-Wert des Tages bleibt beim Profilstand — ohne dichte Spur nicht
+       neu rechenbar, und eine zweite Höhenquelle wäre eine erfundene Zahl
+       (dotwatcher.cc & Co. haben die Spur auch nicht, sie betten denselben
+       Cloudflare-gated Tracker ein). Also wird der Stand kommentiert statt
+       eine Teilsumme als Tagessumme auszugeben: übersteigen die frischen
+       Kilometer die abgedeckten deutlich, fehlt dem Profil echte
+       Fahrstrecke → Zeitpunkt anhängen, bis zu dem die Summe reicht. Steht
+       er dagegen (Halt/Schlaf), ist die Lücke ~0 und nichts wird markiert —
+       dieselbe Pause-vs-Ausfall-Unterscheidung wie bei der Karte, hier über
+       die Kilometerlücke statt über das nackte Alter der Spur. */
+    if(byDay[todayK] - abgedecktHeute > DAY_HM_STALE_KM)
+      todayHmAsOf = new Date(lastT).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
   } else {
     for(let i=1;i<c.list.length;i++){
       const a=c.list[i-1], b=c.list[i];
@@ -1210,11 +1234,12 @@ function renderDays(c){
   w.innerHTML =
     `<div class="dayscrollwrap"><div class="dayscroll"><div class="daystrack">` +
       `<div class="days">${keys.map(k=>`<div class="day"><span class="daykm">${num(byDay[k])}</span>
-        ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}</span>`:''}
+        ${upDay[k]?`<span class="dayhm">↑${num(upDay[k])}${k===todayK&&todayHmAsOf?`<span class="dayhmstale" title="Höhenmeter aus der aufgezeichneten Spur, die gerade hinterherhängt — Stand ${todayHmAsOf} Uhr. Die Kilometer sind aktuell.">…</span>`:''}</span>`:''}
         <div class="bar ${k===best?'top':''}" style="height:${byDay[k]/max*60}px"></div></div>`).join('')}</div>` +
       (TRACK ? `<div class="daystrips">${keys.map(k=>`<div class="daystripcell">${dayStrip(k)}</div>`).join('')}</div>` : '') +
       `<div class="daylabels">${keys.map(k=>`<div class="daylabel">${k.slice(8)}.${k.slice(5,7)}.</div>`).join('')}</div>` +
     `</div></div></div>` +
+    (todayHmAsOf ? `<div class="daynote">Heutige ↑ Höhenmeter erst bis ${todayHmAsOf} Uhr erfasst — der Spur-Export hängt gerade. Die Kilometer sind aktuell.</div>` : '') +
     (TRACK ? `<div class="striplegend">Streifen je Tag (0–24 Uhr): <span class="lg-ride">▬</span> unterwegs · ▬ Standzeit${
       c.ferry && c.ferry.state === 'done' ? ` · <span class="lg-ferry">▬</span> Fähre` : ''}</div>` : '');
 

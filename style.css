@@ -292,6 +292,11 @@
   .daylabel{flex:1 0 var(--daycol);text-align:center;font-family:var(--mono);font-size:9px;color:var(--muted)}
   .daykm{font-family:var(--mono);font-size:9.5px;color:var(--muted)}
   .dayhm{font-family:var(--mono);font-size:8.5px;color:var(--brass);opacity:.8}
+  /* Marke am heutigen ↑hm, wenn die Spur hinterherhängt: gedämpft, damit sie
+     als „unvollständig" liest statt als Teil der Messing-Zahl. */
+  .dayhmstale{color:var(--muted);opacity:1;cursor:help}
+  /* Kommentarzeile darunter — Fließtext, deshalb --prose statt --muted. */
+  .daynote{font-family:var(--mono);font-size:9.5px;color:var(--prose);margin-top:7px;line-height:1.6}
 
   /* Fährplanung: je Hafen ein Kasten, der als Angelpunkt empfohlene mit
      Messing-Kante wie beim Einschätzungskasten. Die Abfahrtszeiten stehen
