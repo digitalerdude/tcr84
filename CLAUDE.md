@@ -936,18 +936,25 @@ Grenzfälle 179 und 181 Minuten.
   Funktioniert nur, weil Manuels Spur bereits nah genug an der CP-Koordinate
   ist, dass BRouter die Reststrecke in Sekunden routet — der öffentliche
   Server killt (`thread-priority-watchdog`) Anfragen über einige hundert
-  Kilometer. **Deshalb bleibt CP4 Leskovik unkorrigiert**, obwohl derselbe
-  Verdacht dort ebenfalls besteht: der geplante Sprung CP3→CP4 (658 km über
-  eine Luftlinie von 287 km, Faktor 2,29) liegt deutlich über jedem bisher real
-  gemessenen Balkan-Routenfaktor (CP2b→CP3 1,51; aktuelle Reststrecke 1,54) —
-  ein Indiz, keine Messung. Ohne Manuels Spur in Reichweite der CP-Koordinate
-  gibt es nichts zu routen, eine Korrektur wäre nur ein Faktor-Schätzwert gegen
-  einen anderen getauscht — dieselbe erfundene Genauigkeit, die das Board sonst
-  vermeidet (`q:'plan'`, `tsSrc`, „nicht nachgesehen“ statt „keine Fähre“). CP4
-  fällt aktuell auch nicht auf: es sitzt weit vor dem Fahrer-Punkt, keine
-  negative Distanz, kein „überholt“-Artefakt. Sobald Manuel nah genug an CP4
-  ist, dass BRouter die Reststrecke routet, dieselbe Rechnung wiederholen —
-  **nicht vorher raten.**
+  Kilometer. **CP4 Leskovik blieb bis zum 04.08.2026 unkorrigiert** (km 4250,
+  die redaktionelle Schätzung), weil der geplante Sprung CP3→CP4 (658 km über
+  eine Luftlinie von 287 km, Faktor 2,29) zwar deutlich über jedem real
+  gemessenen Balkan-Routenfaktor lag (CP2b→CP3 1,51) — aber ein Indiz ist keine
+  Messung, und ohne Manuels Spur in Reichweite der CP-Koordinate gab es nichts
+  zu routen. Eine frühere Korrektur wäre nur ein Faktor-Schätzwert gegen einen
+  anderen getauscht gewesen — dieselbe erfundene Genauigkeit, die das Board sonst
+  vermeidet (`q:'plan'`, `tsSrc`, „nicht nachgesehen“ statt „keine Fähre“).
+  **Am 04.08.2026 nachgeholt**, als Manuel bis auf ~8 km an Leskovik heran war:
+  BRouter (trekking) vom letzten Trackpunkt [40.183, 20.650] zur CP-Koordinate
+  = 8,50 km, auf `routedKm` (4711,17) addiert und mit `kmScale` (0,9255) auf die
+  Tracker-Skala zurückgerechnet → **km 4250 → 4368**. Ohne die Korrektur lag die
+  Schätzung 118 km zu niedrig: Manuels Tracker-Stand (4360) hatte die 4250 längst
+  überholt, CP4 erschien in Höhenprofil und Leiter *hinter* ihm und „Bis CP4"
+  zeigte negativ — obwohl er nach der Spur noch 7,7 km davor stand. Exakt die
+  Zwei-Lineale-Falle wie bei CP3, nur eine Woche später und in die andere
+  Richtung. Genau wie bei CP3 wurde nur `data.json`s `cp.km` korrigiert, nicht
+  der Rendercode; `DEFAULTS.cps[].km` in app.js bleibt die redaktionelle
+  Schätzung.
   · **CP4s Koordinate war keine Schätzung, sondern schlicht falsch**
   (01.08.2026, wenige Stunden nach dem Eintrag oben). `pos` zeigte auf
   **Peshkopi** (41,68589 / 20,42493, Bashkia Dibër, Nordalbanien) statt auf
