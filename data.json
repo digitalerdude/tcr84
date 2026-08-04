@@ -7062,14 +7062,28 @@
       "speed": 5.9,
       "ele": 1005,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785873265279",
+      "ts": "2026-08-04T21:43",
+      "tsSrc": "track",
+      "km": 4360.32,
+      "place": "Qendër Leskovik",
+      "note": "Platz 163",
+      "cc": "AL",
+      "lat": 40.183347,
+      "lon": 20.649758,
+      "speed": 27.4,
+      "ele": 1002,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-04T19:29:14.444Z",
+  "updated": "2026-08-04T19:54:25.457Z",
   "live": {
-    "ts": "2026-08-04T21:29",
-    "km": 4354.22,
-    "fixMinsAgo": 6,
-    "speed": 5.9,
+    "ts": "2026-08-04T21:54",
+    "km": 4360.32,
+    "fixMinsAgo": 11,
+    "speed": 27.4,
     "rank": 163
   }
 }
