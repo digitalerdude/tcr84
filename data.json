@@ -6614,14 +6614,28 @@
       "speed": 0,
       "ele": 641,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785824955368",
+      "ts": "2026-08-04T08:23",
+      "tsSrc": "track",
+      "km": 4099.21,
+      "place": "Begjunec",
+      "note": "Platz 163",
+      "cc": "AL",
+      "lat": 41.672245,
+      "lon": 20.439112,
+      "speed": 14.7,
+      "ele": 709,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-04T06:04:06.427Z",
+  "updated": "2026-08-04T06:29:15.551Z",
   "live": {
-    "ts": "2026-08-04T08:04",
-    "km": 4095.17,
-    "fixMinsAgo": 5,
-    "speed": 0,
+    "ts": "2026-08-04T08:29",
+    "km": 4099.21,
+    "fixMinsAgo": 6,
+    "speed": 14.7,
     "rank": 163
   }
 }
