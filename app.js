@@ -1891,6 +1891,11 @@ const FUEL = {
       ['🍯','Petulla','frittierter Teig mit Honig',350],
       ['🍮','Trileçe','Milchkuchen, drei Sorten Milch',400],
     ], notiz:'CP4 Leskovik liegt hier — und Byrek gibt es in Albanien an jeder Tankstelle.'},
+    {cc:'MK', nm:'Nordmazedonien', flag:'🇲🇰', em:'🥯', snack:'Banica', pl:'Banici', kcal:450, karte:[
+      ['🥯','Banica so sirenje','Blätterteig mit Käse und Ei, der serbischen Gibanica sehr ähnlich',450],
+      ['🍩','Mekici','frittierte Teigpuffer, mit Käse oder Ajvar bestrichen',380],
+      ['🍯','Tulumbi','frittierter Teig in Zuckersirup',400],
+    ], notiz:'Ein kurzer Grenzzipfel auf der Fahrt durch Albanien Richtung Griechenland — hin und zurück auf wenigen Kilometern.'},
     {cc:'GR', nm:'Griechenland', flag:'🇬🇷', em:'🥙', snack:'Spanakopita', pl:'Spanakopites', kcal:350, karte:[
       ['🥙','Spanakopita','Spinat und Feta im Blätterteig',350],
       ['🥧','Bougatsa','Grießcreme im Blätterteig, warm',400],
