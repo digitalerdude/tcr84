@@ -133,6 +133,48 @@ Punkte (2026-07-20):
   dauerhaft im Hintergrund (Wetter-Widget, Update-Countdown) und wird nie "idle".
   Stattdessen wird auf den Seitentitel gepollt (`waitForAppReady`).
 
+**Vom Betriebsrisiko zum Trust-Score-Problem (03./04.08.2026).** Bis dahin
+war ein einzelner Fehlschlag Betriebsrisiko (siehe unten). Am 03.08.2026 kam
+mehr zusammen: der GPX-Export (`generate.php`) blockte über Stunden fast
+durchgehend (9 von 48 Läufen kamen an einem Tag durch), an einer Stelle sogar
+**`functions.min.js`** — das interaktive Kern-JS der Seite selbst — mit 403.
+Im normalen Browser des Nutzers lief zur selben Zeit alles: „Track: Show"
+zeichnete Manuels Spur bis zur aktuellen Position. Die Daten fehlten also
+nicht auf dem Server — unser nackter, bei jedem Lauf frisch gestarteter
+Playwright-Chromium bekam schlicht einen niedrigeren Cloudflare-Trust-Score
+als ein echter, wiederkehrender Browser.
+
+Zwei Hebel dagegen, beide ohne echte Täuschung (kein gefälschter User-Agent,
+keine künstlichen Flags — das bräche den Fingerprint gerade erst):
+- **`patchright` statt `playwright`** (`import { chromium } from 'patchright'`
+  — identisches API, reines Drop-in). Patcht bekannte
+  Playwright-Automatisierungsmarker im Chromium-Build weg.
+- **Persistenter Kontext statt Kaltstart je Lauf** —
+  `chromium.launchPersistentContext(CF_PROFILE_DIR, …)` statt
+  `chromium.launch()`. `CF_PROFILE_DIR` (`tools/.cf-profile/`, gitignored —
+  enthält `cf_clearance`-Cookies) behält Cloudflares Reputationssignale über
+  die ~48 Läufe am Tag, statt bei jedem Start wieder bei Null anzufangen.
+  `channel:'chrome'` (echtes Google Chrome, laut patchright-Doku die
+  stärkste Tarnung) scheiterte auf diesem Mac an einem `sudo`-Installer, den
+  ein unbeaufsichtigter Job nicht bedienen kann — es läuft deshalb
+  patchrights eigenes, bereits gepatchtes Chromium.
+
+Direkt gemessener Effekt (`functions.min.js` / `generate.php`, gleiche
+Anfrage, gleicher Tag): vorher **403 / intermittierend 403** → nachher
+**200 / 200**, GPX-Antwort 467.905 Bytes. `AKTIVER_BROWSER` heißt seitdem
+`AKTIVER_KONTEXT`; der 10-Minuten-Wachhund (siehe unten) schließt einen
+persistenten Kontext (`context.close()`, 5 s Frist) statt einen
+Browser-Kindprozess zu killen — `context.browser()` ist bei
+`launchPersistentContext()` `null`.
+
+Ein Nebenfund beim ersten großen Nachhol-Batch (7+ Stunden Rückstand in
+einem Rutsch nachgeliefert): das GPX enthielt an einer `<trkseg>`-Naht ein
+exaktes Duplikat (gleiche Koordinate/Höhe/Sekunde zweimal), was `check.mjs`
+zu Recht als „Punkte laufen zeitlich rückwärts" meldete. `parseGpx()`
+verwirft seitdem exakte Duplikate zum Vorgänger-Punkt — GPX-Exporter
+wiederholen häufig den letzten Punkt eines Segments als ersten des nächsten,
+besonders wenn nach einer langen Lücke viele Segmente auf einmal kommen.
+
 **Wenn ein Lauf scheitert:** Der Abruf hängt an einer fremden Seite hinter
 Cloudflare — dass er gelegentlich nicht durchkommt, ist Betriebsrisiko. Am
 21.07.2026 lief `page.goto` in seinen 45-s-Timeout und der 17:06-Lauf fiel

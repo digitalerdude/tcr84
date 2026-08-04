@@ -22,7 +22,11 @@
  *   node update-tracker.mjs --places         # re-resolve place names of existing entries (no browser)
  *   node update-tracker.mjs --recalc-climb   # nur profile.json: chunks up/down + climbUp/down aus points neu, ohne Netz
  */
-import { chromium } from 'playwright';
+// patchright statt playwright: unverändertes API, aber patcht Chromiums
+// Automatisierungs-Fingerprints weg. Nötig geworden, weil Cloudflare unseren
+// nackten Playwright-Chromium am 03.08.2026 nachweislich schlechter behandelt
+// hat als einen echten Browser — siehe die lange Cloudflare-Notiz unten.
+import { chromium } from 'patchright';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +38,10 @@ const REPO_ROOT = path.resolve(__dirname, '..');
 const DATA_JSON_PATH = path.join(REPO_ROOT, 'data.json');
 const TRACK_JSON_PATH = path.join(REPO_ROOT, 'track.json');
 const PROFILE_JSON_PATH = path.join(REPO_ROOT, 'profile.json');
+// Persistentes Chrome-Profil statt eines frischen Kontexts je Lauf: behält
+// Cloudflares cf_clearance-Cookie und Trust-Signale über die ~48 Läufe am
+// Tag hinweg, statt bei jedem Start wieder bei Null anzufangen.
+const CF_PROFILE_DIR = path.join(__dirname, '.cf-profile');
 
 const CONFIG = {
   trackerUrl: 'https://www.followmychallenge.com/live/tcrno12/',
@@ -73,6 +81,12 @@ const CONFIG = {
      jeweils frischem Browser. */
   abrufVersuche: 3,
   abrufPauseMs: 20000,
+  /* Der GPX-Export blockt intermittierend, nicht durchgehend (am 03.08.2026
+     9 von 48 Läufen erfolgreich) — innerhalb derselben schon geladenen und
+     durch Cloudflare gekommenen Seite lohnt sich deshalb eine kurze
+     Wiederholung, bevor der Lauf resigniert und die WARNUNG loggt. */
+  gpxVersuche: 3,
+  gpxPauseMs: 8000,
   // Zeit fürs Laden der Tracker-Seite. Cloudflare-Prüfung plus ein träger
   // Server brauchen gelegentlich mehr als die ursprünglichen 45 s.
   gotoTimeoutMs: 60000,
@@ -487,9 +501,12 @@ async function updateProfile(trackPoints, { rebuild = false } = {}) {
   return { prof, added, requests };
 }
 
-/* Der gerade offene Browser — nur damit der Wachhund am Dateiende ihn beim
-   harten Abbruch mitnehmen kann. Sonst überlebt Chromium den Prozess. */
-let AKTIVER_BROWSER = null;
+/* Der gerade offene Kontext — nur damit der Wachhund am Dateiende ihn beim
+   harten Abbruch mitnehmen kann. Sonst überlebt Chromium den Prozess.
+   Ein persistenter Kontext hat kein `.browser()` (null), der Wachhund
+   schließt deshalb den Kontext selbst statt einen Browser-Prozess zu
+   killen — siehe dort. */
+let AKTIVER_KONTEXT = null;
 
 async function fetchRiderState() {
   // Cloudflare's WAF hard-blocks Playwright's headless mode here (fingerprint-
@@ -497,13 +514,35 @@ async function fetchRiderState() {
   // Required", the exact same real window that passes in --headed mode
   // sails through). So we always launch headed and, for unattended runs,
   // just push the window off-screen instead of fighting the fingerprint.
-  const browser = await chromium.launch({
+  //
+  // 03.08.2026: selbst headed reichte irgendwann nicht mehr durchgehend —
+  // Cloudflare blockte den GPX-Export intermittierend (9 von 48 Läufen kamen
+  // durch), an einem Tag sogar `functions.min.js` (das Kern-JS der Seite
+  // selbst) mit 403. Im echten Browser des Nutzers lief zur selben Zeit
+  // alles — inklusive "Track: Show", das die volle Spur zeichnete. Die Daten
+  // fehlen also nicht auf dem Server, unser automatisierter Chromium bekam
+  // nur einen niedrigeren Cloudflare-Trust-Score als ein echter Browser.
+  // Zwei Hebel dagegen, beide ohne echte Täuschung (kein gefälschter
+  // User-Agent, keine künstlichen Flags — das würde den Fingerprint gerade
+  // brechen): `patchright` statt `playwright` (patcht Chromiums bekannte
+  // Automatisierungs-Marker weg, sonst identisches API) und ein
+  // PERSISTENTER Chrome-Kontext (`launchPersistentContext` mit festem
+  // `CF_PROFILE_DIR`), der `cf_clearance` und Cloudflares Reputation über
+  // die ~48 Läufe am Tag behält statt bei jedem Start neu bei Null
+  // anzufangen. `channel:'chrome'` (echtes Google Chrome, laut patchright-
+  // Doku die stärkste Tarnung) würde einen `sudo`-Installer verlangen, den
+  // dieser Mac headless nicht bedienen kann — deshalb patchrights eigenes,
+  // bereits gepatchtes Chromium, ohne `channel`.
+  const context = await chromium.launchPersistentContext(CF_PROFILE_DIR, {
     headless: false,
-    args: FLAGS.headed ? [] : ['--window-position=2400,2400', '--window-size=1024,768'],
+    viewport: { width: 1280, height: 800 },
+    locale: 'de-DE',
+    timezoneId: 'Europe/Berlin',
+    args: FLAGS.headed ? [] : ['--window-position=2400,2400'],
   });
-  AKTIVER_BROWSER = browser;
+  AKTIVER_KONTEXT = context;
   try {
-    const page = await browser.newPage();
+    const page = context.pages()[0] || await context.newPage();
     log('opening tracker (passing Cloudflare check)…');
     // Don't wait for networkidle: this site polls continuously in the
     // background (weather widget, update countdown) and network activity
@@ -555,15 +594,29 @@ async function fetchRiderState() {
       // verschleiert — Cloudflare fing an, den `.php`-Endpunkt mit 403 zu blocken
       // (der Live-Feed `ridersArray` lief weiter), und der Lauf loggte trotzdem
       // „N Spurpunkte archiviert", weil unten auf die alte Spur zurückgefallen wird.
-      const r = await page.evaluate(async ([deviceId, timeoutMs]) => {
-        try {
-          const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`,
-            { signal: AbortSignal.timeout(timeoutMs) });
-          return { ok: res.ok, status: res.status, body: res.ok ? await res.text() : null };
-        } catch (e) { return { ok: false, status: 0, body: null, err: String((e && e.message) || e) }; }
-      }, [rider.deviceId, CONFIG.netzTimeoutMs]);
+      //
+      // Der Block ist intermittierend, nicht durchgehend (siehe gpxVersuche
+      // oben), und die Seite ist in diesem Lauf schon einmal erfolgreich durch
+      // Cloudflare gekommen — deshalb hier bis zu CONFIG.gpxVersuche Anläufe
+      // in derselben Seite, bevor resigniert wird. Kostet im Erfolgsfall
+      // nichts (bricht beim ersten `ok` sofort ab).
+      let r = null;
+      for (let versuch = 1; versuch <= CONFIG.gpxVersuche; versuch++) {
+        r = await page.evaluate(async ([deviceId, timeoutMs]) => {
+          try {
+            const res = await fetch(`${location.origin}/live/tcrno12/export/gpx/generate.php?deviceId=${deviceId}`,
+              { signal: AbortSignal.timeout(timeoutMs) });
+            return { ok: res.ok, status: res.status, body: res.ok ? await res.text() : null };
+          } catch (e) { return { ok: false, status: 0, body: null, err: String((e && e.message) || e) }; }
+        }, [rider.deviceId, CONFIG.netzTimeoutMs]);
+        if (r.ok) break;
+        if (versuch < CONFIG.gpxVersuche) {
+          log(`GPX-Export-Versuch ${versuch}/${CONFIG.gpxVersuche} fehlgeschlagen (HTTP ${r.status}), neuer Versuch in ${CONFIG.gpxPauseMs / 1000}s…`);
+          await new Promise(res => setTimeout(res, CONFIG.gpxPauseMs));
+        }
+      }
       if (r.ok) gpx = r.body;
-      else log(`WARNUNG: GPX-Export nicht abrufbar (HTTP ${r.status}${r.err ? ', ' + r.err : ''}) — ` +
+      else log(`WARNUNG: GPX-Export nicht abrufbar (HTTP ${r.status}${r.err ? ', ' + r.err : ''}, ${CONFIG.gpxVersuche} Versuche) — ` +
                `Spur bleibt auf dem letzten Stand. Häufigste Ursache: Cloudflare blockt den Endpunkt.`);
     } catch (e) { log('GPX-Export fehlgeschlagen (ignoriert):', e.message); }
 
@@ -586,8 +639,8 @@ async function fetchRiderState() {
       gpx,
     };
   } finally {
-    await browser.close();
-    AKTIVER_BROWSER = null;
+    await context.close();
+    AKTIVER_KONTEXT = null;
   }
 }
 
@@ -637,7 +690,17 @@ function parseGpx(gpx) {
   for (const m of gpx.matchAll(re)) {
     const t = Date.parse(m[4]);
     if (!isFinite(t)) continue;
-    out.push([Math.round(+m[1] * 1e5) / 1e5, Math.round(+m[2] * 1e5) / 1e5, Math.round(+m[3]), Math.round(t / 1000)]);
+    const p = [Math.round(+m[1] * 1e5) / 1e5, Math.round(+m[2] * 1e5) / 1e5, Math.round(+m[3]), Math.round(t / 1000)];
+    /* GPX-Exporter wiederholen oft den letzten Punkt eines <trkseg> als
+       ersten des nächsten Segments — am 04.08.2026 erstmals beobachtet,
+       exakt an der Naht des größten bisherigen Nachhol-Batches (nach einem
+       7+ Stunden Cloudflare-Ausfall, in einem Rutsch nachgeliefert). Ein
+       exaktes Duplikat (gleiche Koordinate, Höhe, Sekunde) trägt keine
+       Information und verletzt die zeitlich-aufsteigend-Invariante, die
+       check.mjs, kmAt() und updateProfile() voraussetzen. */
+    const prev = out[out.length - 1];
+    if (prev && prev[0] === p[0] && prev[1] === p[1] && prev[2] === p[2] && prev[3] === p[3]) continue;
+    out.push(p);
   }
   return out;
 }
@@ -1191,12 +1254,19 @@ async function main() {
    den Event-Loop an und der Timer feuert nie —, deshalb hat `git()` sein
    eigenes Timeout; andere synchrone Blocker gibt es hier nicht.
 
-   Chromium wird vorher hart erschossen: `process.exit()` lässt einen
-   gestarteten Browser sonst als Waise zurück, und nach ein paar solchen
-   Läufen stehen Fenster im Nirgendwo herum und fressen Speicher. */
-const wachhund = setTimeout(() => {
+   Chromium wird vorher geschlossen: `process.exit()` lässt einen gestarteten
+   Browser sonst als Waise zurück, und nach ein paar solchen Läufen stehen
+   Fenster im Nirgendwo herum und fressen Speicher.
+
+   Seit dem Umstieg auf `launchPersistentContext()` (04.08.2026, siehe
+   fetchRiderState) gibt es keinen Kindprozess mehr, den man wie vorher per
+   `.process().kill('SIGKILL')` abschießen könnte — `context.browser()` ist
+   bei einem persistenten Kontext `null`. Also wird sauber `context.close()`
+   versucht, aber mit eigener kurzer Frist statt unbegrenzt zu warten: ein
+   hängender Lauf ist schlimmer als ein einzelnes Waisen-Chrome-Fenster. */
+const wachhund = setTimeout(async () => {
   logFehler(`FAILED: Lauf überschreitet ${Math.round(CONFIG.laufDeadlineMs / 60000)} min — harter Abbruch, damit der nächste Tick wieder greift.`);
-  try { AKTIVER_BROWSER?.process()?.kill('SIGKILL'); } catch { /* egal, wir gehen ohnehin */ }
+  try { await Promise.race([AKTIVER_KONTEXT?.close(), new Promise(r => setTimeout(r, 5000))]); } catch { /* egal, wir gehen ohnehin */ }
   process.exit(1);
 }, CONFIG.laufDeadlineMs);
 wachhund.unref();
