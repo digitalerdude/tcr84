@@ -1950,6 +1950,25 @@ const WERKSTATT = {
   ]
 };
 
+/* Einmaliger, leiser Board-Hinweis — von Hand gepflegte Frontend-Konstante wie
+   WERKSTATT (redaktionell, nicht gemessen). Poppt einmal je Gerät als
+   .celebrate-Overlay (showHinweis), ausdrücklich OHNE Konfetti/Haken: bei einer
+   Verletzung wäre der Feier-Schmuck tonlos. `id` ist die Gesehen-Marke —
+   bumpen zeigt einen NEUEN Hinweis erneut, derselbe nie zweimal; `null`
+   schaltet den Hinweis ganz ab. Tonlage bewusst neutral zum Ausgang (Abbruch
+   ist okay), kein Druck — Manuel liest mit. */
+const HINWEIS = {
+  id: 'knieverletzung-2026-08',
+  em: '🙏',
+  eyebrow: 'Aus der Werkstatt',
+  titel: 'Denkt an Manuel',
+  text: 'Seit Kilometer 4.050 fährt Manuel mit einer Sehnenreizung im Knie — ' +
+        'angeschlagen, aber unterwegs. Er beißt sich durch, so weit es geht; ' +
+        'und wenn Schluss ist, ist Schluss, ganz ohne schlechtes Gewissen. ' +
+        'Kein Anfeuern unter Druck — schick ihm einfach einen guten Gedanken.',
+  cta: 'Einen Zuruf schicken'
+};
+
 /* Bilanz-Fragmente für die Kopfzeile — nur nicht-leere Kategorien, in fester
    Reihenfolge, Singular/Plural von Hand (eine Regel gäbe es nicht, nur eine
    Reihe falscher Formen — siehe FUEL.pl). Reifenpannen zuerst, sie sind die
@@ -3413,6 +3432,82 @@ function showCelebration(c, r, isCc){
   ov.querySelector('#celClose').focus();
 }
 
+/* Verletzungs-Hinweis — dasselbe Muster wie maybeCelebrate/markCpSeen, aber
+   eigene Gesehen-Marke (auf HINWEIS.id) und eigener SEEN_MEM-Notnagel für
+   Fenster mit blockiertem localStorage. Teilt den `celebrating`-Mutex, damit
+   Hinweis und Feier nie gleichzeitig aufgehen. */
+const HINWEIS_SEEN_KEY = 'tcr84:hinweisSeen';
+const HINWEIS_SEEN_MEM = new Set();
+function markHinweisSeen(){
+  HINWEIS_SEEN_MEM.add(HINWEIS.id);
+  try{ localStorage.setItem(HINWEIS_SEEN_KEY, HINWEIS.id); }catch(e){}
+}
+function maybeHinweis(){
+  if(celebrating || !HINWEIS || !HINWEIS.id) return;
+  let seen = HINWEIS_SEEN_MEM.has(HINWEIS.id);
+  try{ if(localStorage.getItem(HINWEIS_SEEN_KEY) === HINWEIS.id) seen = true; }catch(e){}
+  if(seen) return;
+  celebrating = true;
+  setTimeout(()=>{ markHinweisSeen(); showHinweis(); }, 600);
+}
+
+/* Wie showCelebration, aber leise: 🙏 statt Haken, KEIN confettiRain, keine
+   Statistik-/Fortschrittszeile. Der Knopf führt zur Grußwand (öffnet das
+   Zuruf-Formular, sofern nicht die 6-h-Sperre läuft), ein leiser Zweitlink zum
+   Werkstatt-Logbuch. */
+function showHinweis(){
+  const ov = document.createElement('div');
+  ov.className = 'celebrate';
+  ov.setAttribute('role','dialog');
+  ov.setAttribute('aria-modal','true');
+  ov.setAttribute('aria-label', HINWEIS.titel);
+  ov.innerHTML = `
+    <div class="celPanel">
+      <div class="celEmoji" aria-hidden="true">${HINWEIS.em}</div>
+      <div class="celEyebrow">${esc(HINWEIS.eyebrow)}</div>
+      <h3>${esc(HINWEIS.titel)}</h3>
+      <div class="celSub celProse">${esc(HINWEIS.text)}</div>
+      <button class="celClose" id="hinClose">${esc(HINWEIS.cta)}</button>
+      <button class="celLink" id="hinWerkstatt" type="button">Alles dazu im Werkstatt-Logbuch</button>
+    </div>`;
+  document.body.appendChild(ov);
+
+  const zu = ()=>{
+    ov.remove(); celebrating = false;
+    document.removeEventListener('keydown', beiTaste);
+  };
+  const beiTaste = e=>{ if(e.key === 'Escape') zu(); };
+  const scrollZu = sel=>{ const el = document.querySelector(sel); if(el) el.scrollIntoView({behavior:'smooth', block:'start'}); };
+  ov.querySelector('#hinClose').onclick = ()=>{
+    zu();
+    scrollZu('#zurufWrap');
+    // Formular nur öffnen, wenn keine eigene Zuruf-Sperre läuft — sonst bloß hin.
+    if(typeof zurufSperreRest === 'function' && zurufSperreRest() <= 0) zurufFormular(true);
+  };
+  ov.querySelector('#hinWerkstatt').onclick = ()=>{
+    zu();
+    const det = document.getElementById('werkstattDetails');
+    if(det && det.hidden === false) det.open = true;
+    scrollZu('#werkstattDetails');
+  };
+  ov.onclick = e=>{ if(e.target === ov) zu(); };   // Klick daneben schließt auch
+  document.addEventListener('keydown', beiTaste);
+  ov.querySelector('#hinClose').focus();
+}
+
+/* Zum Ausprobieren und Vorführen in der Browser-Konsole:
+     tcr84Hinweis()       den Verletzungs-Hinweis on demand zeigen
+     tcr84HinweisReset()  Gesehen-Marke löschen, dann poppt er beim Laden neu */
+window.tcr84Hinweis = ()=>{
+  if(celebrating) return 'ein Modal ist schon offen — erst schließen.';
+  celebrating = true; showHinweis(); return 'ok';
+};
+window.tcr84HinweisReset = ()=>{
+  HINWEIS_SEEN_MEM.clear();
+  try{ localStorage.removeItem(HINWEIS_SEEN_KEY); }catch(e){}
+  return 'zurückgesetzt — beim nächsten Laden poppt der Hinweis wieder.';
+};
+
 /* Zum Ausprobieren und Vorführen in der Browser-Konsole:
      tcr84Feier()             letzten passierten Kontrollpunkt nochmal feiern
      tcr84Feier('CP1 Flåm')   einen bestimmten
@@ -3623,6 +3718,7 @@ function render(){
   renderFerry(c); renderFuel(c); renderWerkstatt(c); renderWind(); renderLog(c); renderSource(c);
   maybeLoadWeather(c);
   maybeCelebrate(c);
+  maybeHinweis();   // nach der Feier: ein echter Kontrollpunkt hat Vorrang
   if(EDIT) renderDirty();
   if(mapObj && document.getElementById('mapDetails').open) renderMap(c);
 }

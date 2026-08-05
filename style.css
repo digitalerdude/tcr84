@@ -623,6 +623,14 @@
   .celNext{font-family:var(--mono);font-size:11px;color:var(--muted);margin-top:12px}
   .celNext b{color:var(--ice);font-weight:500}
   .celClose{margin-top:19px;width:100%}
+  /* Leiser Verletzungs-Hinweis (showHinweis): 🙏 statt selbstzeichnendem Haken,
+     Fließtext auf --prose (nicht --muted, siehe CLAUDE.md), Zweitlink zurückhaltend. */
+  .celEmoji{font-size:52px;line-height:1;margin:0 auto 4px;display:block}
+  .celSub.celProse{color:var(--prose);font-family:var(--display);font-size:14.5px;line-height:1.6}
+  .celLink{margin-top:12px;background:none;border:none;cursor:pointer;
+           font-family:var(--mono);font-size:11px;color:var(--muted);text-decoration:underline;
+           text-underline-offset:3px;padding:4px}
+  @media (hover:hover){.celLink:hover{color:var(--ice)}}
   /* Der Haken zeichnet sich selbst: Kreis, dann Häkchen — reines
      stroke-dashoffset, kein Bild und keine Bibliothek. */
   .celMark{width:72px;height:72px;margin:0 auto;display:block}
