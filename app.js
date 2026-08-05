@@ -1942,6 +1942,8 @@ const WERKSTATT = {
     {km:3000, ic:'🔧', txt:'Reifenpanne vorn',                    grp:'defekt',  kat:'reifen'},
     {km:3150, ic:'⛓️', txt:'Kette geölt',                         grp:'wartung', kat:'kette'},
     {km:3150, ic:'🔩', txt:'Bowdenzug Schaltung hinten gerissen', grp:'defekt',  kat:'defekt'},
+    {km:4050, ic:'🦵', txt:'Sehnenreizung rechte Kniekehle · Leistung ~80%, Schmerz erträglich', grp:'defekt', kat:'defekt'},
+    {km:4125, ic:'⛓️', txt:'Kette geölt',                         grp:'wartung', kat:'kette'},
   ]
 };
 
