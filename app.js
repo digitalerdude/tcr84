@@ -32,7 +32,10 @@ const KEY = 'tcr84:state';
    danach gesucht wird — ein ungenauer Wert verschiebt also nur das Zeitfenster
    der Suche, erfindet aber keine Ankunft. */
 const DEFAULTS = {
-  totalKm: 4800,
+  totalKm: 4800,   // redaktionell wie die cp.km unten; data.json trägt die
+                   // gemessene Ziel-km (05.08.2026 via BRouter 4800→4876,
+                   // gleiche Zwei-Lineale-Korrektur wie CP3/CP4). Hier NICHT
+                   // nachziehen — das ist der Fallback, keine Bodenwahrheit.
   start: '2026-07-19T20:00',
   deadline: '2026-08-08T23:59',
   cps: [
