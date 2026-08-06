@@ -7452,15 +7452,28 @@
       "speed": 0,
       "ele": 9,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785988154863",
+      "ts": "2026-08-06T05:44",
+      "tsSrc": "track",
+      "km": 4572.46,
+      "place": "Stanos",
+      "note": "Platz 147",
+      "cc": "GR",
+      "lat": 38.813026,
+      "lon": 21.179132,
+      "speed": 27.3,
+      "ele": 29,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-06T03:24:06.175Z",
+  "updated": "2026-08-06T03:49:15.012Z",
   "live": {
-    "ts": "2026-08-06T05:24",
-    "km": 4565.74,
-    "fixMinsAgo": 4,
-    "speed": 0,
-    "rank": 147,
-    "stopSince": "2026-08-05T17:35"
+    "ts": "2026-08-06T05:49",
+    "km": 4572.46,
+    "fixMinsAgo": 5,
+    "speed": 27.3,
+    "rank": 147
   }
 }
