@@ -7508,14 +7508,28 @@
       "speed": 24,
       "ele": 27,
       "eleSrc": "dem"
+    },
+    {
+      "id": "1785994191103",
+      "ts": "2026-08-06T07:24",
+      "tsSrc": "track",
+      "km": 4606.69,
+      "place": "Stathmos Angelokastrou",
+      "note": "Platz 147",
+      "cc": "GR",
+      "lat": 38.574237,
+      "lon": 21.29032,
+      "speed": 0,
+      "ele": 17,
+      "eleSrc": "dem"
     }
   ],
-  "updated": "2026-08-06T05:04:43.141Z",
+  "updated": "2026-08-06T05:29:51.249Z",
   "live": {
-    "ts": "2026-08-06T07:04",
-    "km": 4596.86,
+    "ts": "2026-08-06T07:29",
+    "km": 4606.69,
     "fixMinsAgo": 5,
-    "speed": 24,
+    "speed": 0,
     "rank": 147
   }
 }
