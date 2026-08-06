@@ -105,6 +105,18 @@ let ZIELTAG_OVERRIDE = null;   // Debug-Hook tcr84Zieltag(), siehe unten
 function istZieltag(c){
   return ZIELTAG_OVERRIDE != null ? ZIELTAG_OVERRIDE : c.now >= new Date(ZIELTAG_AB);
 }
+/* Die echte Ankunft — datengetrieben, kein Datum. `istZieltag` schaltet den
+   LOOK des letzten Tages frei (Verpflegung ohne Karte, Zoom, Zielmarker) und
+   kippt am 07.08.2026 um Mitternacht, egal wo Manuel gerade ist. Für das
+   Finale (großer Popup + dauerhafter Andenken-Zustand) zählt das nicht — das
+   darf erst kommen, wenn er wirklich da ist. `c.rest===0` ist exakt dieselbe
+   Bedingung, die schon die Ankunfts-Kachel und den Verdict-Satz „das Ding ist
+   durch" auslöst (siehe compute()), hier nur unter einem eigenen Namen für
+   die Stellen, die ausdrücklich AN DER ANKUNFT hängen, nicht am Kalenderblatt. */
+let ANGEKOMMEN_OVERRIDE = null;   // Debug-Hook tcr84Angekommen(), siehe unten
+function istAngekommen(c){
+  return ANGEKOMMEN_OVERRIDE != null ? ANGEKOMMEN_OVERRIDE : c.rest === 0;
+}
 /* Lokale Zeit ohne Zeitzonen-Suffix — dieselbe Konvention wie `ts` in
    data.json (siehe CLAUDE.md). Ein nacktes toISOString() verschöbe die
    Anzeige um die Zeitzonendifferenz. */
@@ -645,6 +657,18 @@ function renderLive(c){
   const el = document.getElementById('liveLine');
   const lv = S.live;
   if(!el) return;
+  /* Andenken-Zustand: sobald er wirklich angekommen ist, ersetzt eine feste
+     Zeile die ganze Kaskade darunter (Pause/steht/unterwegs/Abruf hängt) —
+     dauerhaft, nicht nur für einen Rendergang. Unabhängig von `lv`, denn auch
+     ein `S.live`, das seit der Ankunft nicht mehr geschrieben wurde, ändert
+     nichts daran, dass er da ist. */
+  if(istAngekommen(c) && c.last){
+    el.style.display = 'flex';
+    el.innerHTML = `<span>🏁 <span class="wxval">Angekommen</span> — ${fmt(c.last.ts)},
+      nach ${dur(new Date(c.last.ts)-c.start)} Rennzeit</span>`;
+    syncNowbar();
+    return;
+  }
   if(!lv || !lv.ts){ el.style.display = 'none'; syncNowbar(); return; }
   el.style.display = 'flex';
 
@@ -1534,6 +1558,9 @@ function bookedDeparture(){
 
 function renderFerry(c){
   const det = document.getElementById('ferryDetails');
+  // Andenken-Zustand: die Ostsee ist Geschichte, sobald das ganze Rennen es
+  // ist. Der Breitengrad-Test unten träfe dasselbe, aber nicht so klar lesbar.
+  if(istAngekommen(c)){ det.hidden = true; return; }
   const fer = c.ferry;
   /* Nur solange die Überfahrt tatsächlich läuft — die 24h-Nachlaufzeit nach
      der Landung (bis 26.07.2026 in Kraft) ist auf Wunsch wieder raus: sobald
@@ -2094,7 +2121,10 @@ function fuelAufSee(c){
 
 function renderFuel(c){
   const det = document.getElementById('fuelDetails');
-  if(!fuelSichtbar(c)){ det.hidden = true; return; }
+  // Andenken-Zustand: er isst nicht mehr unterwegs — das Panel hätte sonst
+  // dauerhaft weitergezeigt (fuelSichtbar() schaltet nach der Fähre nie
+  // wieder ab, siehe dort).
+  if(istAngekommen(c) || !fuelSichtbar(c)){ det.hidden = true; return; }
   det.hidden = false;
 
   /* Die Fähre hat ihn getragen, nicht er sich selbst — ihre km fließen nicht
@@ -2665,6 +2695,19 @@ function renderWind(){
   bar.hidden = false;
 
   const btn = document.getElementById('windBtn');
+  /* Andenken-Zustand: er braucht keinen Rückenwind mehr, aber die Pille am
+     Kopf soll nicht einfach verschwinden — sie wird zum Zugang auf die
+     Finisher-Karte (siehe der geteilte Klick-Handler auf #windBtn unten) und
+     der Endstand des Zählers bleibt als Dank stehen, statt weiter hochzuzählen. */
+  if(istAngekommen(compute())){
+    btn.disabled = false;
+    btn.querySelector('.wbem').textContent = '🏁';
+    btn.querySelector('.wbtxt').textContent = 'Finisher-Karte';
+    document.getElementById('windTxt').innerHTML = (WIND_N.da && WIND_N.total > 0)
+      ? `<span class="zahl">${num(WIND_N.total)}</span> × Rückenwind geschickt — danke fürs Mitfahren.`
+      : 'Danke fürs Mitfahren.';
+    return;
+  }
   const rest = windRest();
   btn.disabled = rest > 0;
   /* Vorher stand im gesperrten Zustand nur „wieder in 2 h 38 min“ — ein
@@ -2712,7 +2755,11 @@ function renderWind(){
 }
 
 document.addEventListener('click', e=>{
-  if(e.target.closest && e.target.closest('#windBtn')) windSenden();
+  if(!(e.target.closest && e.target.closest('#windBtn'))) return;
+  // Nach der Ankunft öffnet dieselbe Pille die Finisher-Karte statt eine Böe
+  // zu schicken — der Knopf bleibt derselbe, sein Zweck wechselt einmalig.
+  if(istAngekommen(compute())) openFinaleCard(compute());
+  else windSenden();
 });
 // Der Knopf zählt seine Sperre in Minuten herunter; ohne eigenen Takt stünde
 // bis zum nächsten render() eine veraltete Restzeit da.
@@ -2967,6 +3014,13 @@ function renderZurufe(){
   const nav = document.getElementById('zurufNav');
   const n = ZURUF_N.list.length;
   const ruhe = zurufRuhe();
+  // Andenken-Zustand: die Wand bleibt das Herzstück, nur ihre Einladung
+  // wechselt von „schick ihm was mit" zu „sag ihm Danke". compute() hier ist
+  // dieselbe kleine Zusatzkosten wie bei renderWind — die Wand hat sonst
+  // keinen Bezug zum Rennstand (siehe render()) und bekommt ihn nur dafür.
+  const angekommen = istAngekommen(compute());
+  const oeffnenBtn = document.getElementById('zurufOeffnen');
+  if(oeffnenBtn && !ZURUF_OFFEN) oeffnenBtn.textContent = angekommen ? 'Sag ihm Danke' : 'Etwas dazuschreiben';
 
   /* Ein Kasten ohne Text sieht aus wie ein Ladefehler — der leere Zustand ist
      deshalb immer ein Satz, in derselben Stimme wie beim Rückenwind
@@ -2974,7 +3028,9 @@ function renderZurufe(){
   if(!n){
     box.hidden = false;
     box.innerHTML = ZURUF_N.da || ZURUF_DEMO
-      ? '<div class="empty">Noch nichts an der Wand. Der erste Zuruf ist deiner.</div>'
+      ? (angekommen
+          ? '<div class="empty">Er ist angekommen. Sag ihm Danke — der erste Zuruf ist deiner.</div>'
+          : '<div class="empty">Noch nichts an der Wand. Der erste Zuruf ist deiner.</div>')
       : '<div class="empty">Zurufe werden geladen…</div>';
     nav.innerHTML = '';
     document.getElementById('zurufMeta').textContent = '';
@@ -3376,6 +3432,19 @@ function renderSource(c){
   line.innerHTML = `${stand} · Start 19.07.2026, 20:00 CEST · Limit 08.08.2026 ·
     <a href="https://www.followmychallenge.com/live/tcrno12/" target="_blank" rel="noopener">Live-Tracker</a> ·
     <a href="https://dotwatcher.cc/race/transcontinental-race-no12-2026" target="_blank" rel="noopener">DotWatcher</a>`;
+  /* Andenken-Zustand, öffentliche Ansicht: der Footer räumt sich auf, statt
+     dauerhaft „stündlich vom Live-Tracker abgefragt" zu behaupten — das
+     Rennen ist vorbei, die Abfragen sind es auch. Die Ehrlichkeits-Notiz zur
+     Startnummer bleibt stehen: sie ist bewusst gesetzt (siehe CLAUDE.md), kein
+     Rest zum Wegräumen. Im Bearbeiten-Modus bleibt die volle Quellen-Angabe
+     stehen — wer hier noch etwas nachträgt, braucht sie weiterhin. */
+  if(istAngekommen(c) && c.last && !EDIT){
+    document.getElementById('foot').innerHTML =
+      `🏁 Manuel ist am ${fmt(c.last.ts)} in Kalamata angekommen, nach ${dur(new Date(c.last.ts)-c.start)} Rennzeit.
+       Das war die letzte Aktualisierung — das Board bleibt als Andenken an diese Fahrt stehen.<br>
+       Zuordnung Startnummer 84 zu Manuel Kaufer nicht unabhängig verifiziert. Kilometer der Kontrollpunkte sind Schätzwerte.`;
+    return;
+  }
   document.getElementById('foot').innerHTML = EDIT
     ? `Bearbeiten-Modus. Quelle gerade: <code>${SOURCE}</code>. Änderungen sind erst öffentlich, wenn du
        <code>data.json</code> im Repo ersetzt oder den frischen Link verschickst.<br>
@@ -3413,8 +3482,44 @@ function markCpSeen(nm){
 }
 
 let celebrating = false;
+/* Der Zieleinlauf bekommt eine eigene Gesehen-Marke statt sich die von
+   Kontrollpunkten/Ländern zu teilen (SEEN_KEY) — zwei Gründe: er hängt an
+   `istAngekommen()`, nicht an einem 24h-Fenster (könnte sonst Tage nach der
+   Ankunft nochmal auslösen, wenn jemand localStorage löscht), und er muss
+   der ccReached-/cpReached-Prüfung unten IMMER vorgehen. Ohne eigenen Vorrang
+   könnte eine gleichzeitig frische Griechenland-Grenzfeier (`ccReached`) den
+   größten Moment des ganzen Boards verdrängen — dieselbe Konkurrenz, die
+   maybeCelebrate für CP/Land längst kennt, hier nur mit höherem Einsatz. */
+const ZIEL_SEEN_KEY = 'tcr84:zielSeen';
+let ZIEL_SEEN_MEM = false;
+function zielSeen(){
+  if(ZIEL_SEEN_MEM) return true;
+  try{ return localStorage.getItem(ZIEL_SEEN_KEY) === '1'; }catch(e){ return false; }
+}
+function markZielSeen(){
+  ZIEL_SEEN_MEM = true;
+  try{ localStorage.setItem(ZIEL_SEEN_KEY, '1'); }catch(e){}
+}
 function maybeCelebrate(c){
   if(celebrating) return;
+  /* `istAngekommen()` allein reicht für den einmaligen, unwiderruflichen
+     Popup NICHT — das ist reiner Kilometerstand (`rest===0`), und genau der
+     hat hier schon einmal 51 km danebengelegen (CP2b Chopok, 29.07.2026) und
+     eine ganze Zieleinlauf-Feier vorzeitig ausgelöst (CP3 Sarajevo,
+     01.08.2026, siehe CLAUDE.md). Jeder andere Kontrollpunkt — inklusive der
+     alten, generischen Kalamata-Fassung über showCelebration — verlangt
+     deshalb eine Spur-Bestätigung (`cpHit()`/`cpHits`), bevor er als erreicht
+     gilt. Der Finale-Popup bekommt dieselbe zweite Meinung: erst wenn BEIDE
+     einig sind (Kilometerstand UND Spur), zündet er. Die kosmetischen
+     Andenken-Zweige (renderLive/renderFuel/…) bleiben bewusst bei der
+     einfachen `istAngekommen()`-Prüfung — die sind reversibel und korrigieren
+     sich beim nächsten Rendergang von selbst, der Popup nicht. */
+  const zielCp = c.st.cps.find(cp=> Number(cp.km) >= c.total);
+  if(istAngekommen(c) && zielCp && c.cpHits.has(zielCp) && c.last && !zielSeen()){
+    celebrating = true;
+    setTimeout(()=>{ markZielSeen(); showFinale(c); }, 600);
+    return;
+  }
   let ev = null, isCc = false, nm = null;
   if(c.ccReached){
     const ccNm = `cc_${c.ccReached.cc}`;
@@ -3432,11 +3537,13 @@ function maybeCelebrate(c){
 /* Konfetti aus ~80 winzigen <i>, jedes mit eigener Falldauer, Drift und
    Drehung über CSS-Variablen — eine gemeinsame Keyframe-Regel, kein
    Animations-Loop in JS und keine Bibliothek. Räumt sich selbst wieder ab. */
-function confettiRain(){
+function confettiRain(gold){
   if(matchMedia('(prefers-reduced-motion:reduce)').matches) return;
   const box = document.createElement('div');
   box.className = 'confetti';
-  const cols = ['#D9A441','#BCD7DE','#86B08C','#E9E4D8'];
+  // Das Finale bekommt eine reinere Messing-Palette statt des bunten CP-Mixes
+  // — derselbe Regen, nur festlicher für den einen Moment, den es nur einmal gibt.
+  const cols = gold ? ['#D9A441','#E6B458','#F3D68A','#BCD7DE'] : ['#D9A441','#BCD7DE','#86B08C','#E9E4D8'];
   let html = '';
   for(let i=0;i<80;i++){
     const w = (5+Math.random()*6).toFixed(1), h = (7+Math.random()*7).toFixed(1);
@@ -3508,6 +3615,359 @@ function showCelebration(c, r, isCc){
   ov.onclick = e=>{ if(e.target === ov) zu(); };   // Klick daneben schließt auch
   document.addEventListener('keydown', beiTaste);
   ov.querySelector('#celClose').focus();
+}
+
+/* ---------- Das Finale ----------
+   Der Zieleinlauf lief bis hierhin über dieselbe showCelebration() wie jeder
+   Kontrollpunkt — mit einer hartkodierten „4.800 Kilometer"-Zeile und ohne
+   eigenen Vorrang gegen eine gleichzeitige Länderfeier (siehe maybeCelebrate
+   oben). Das hier ist der eigenständige, große Moment: Auftakt → der ganze
+   Streckenverlauf zeichnet sich einmal nach → die Kennzahlen zählen hoch →
+   die teilbare Finisher-Karte. Jede Stufe ist überspringbar, und die Karte
+   bleibt danach über die Kopf-Pille erreichbar (siehe renderWind/openFinaleCard). */
+
+/* Kennzahlen der Finisher-Karte — eine Funktion, zwei Abnehmer (der finale
+   Popup und die später über die Kopf-Pille wieder aufrufbare Karte), damit
+   beide garantiert dieselben Zahlen zeigen. */
+function finisherStats(c){
+  const seen = new Set(c.list.filter(e=> e.cc).map(e=> e.cc));
+  // FUEL.laender steht bereits in Routenreihenfolge NO→...→GR (siehe dort) —
+  // filtern statt aus den Einträgen selbst sortieren, damit ein Wiedereintritt
+  // (Grenzstreifen Kosovo/Nordmazedonien) kein Land doppelt zählt.
+  const laender = FUEL.laender.filter(l=> seen.has(l.cc));
+  return {
+    raceTime: dur(new Date(c.last.ts) - c.start),
+    km: Math.round(c.km),
+    hm: c.climbUp,
+    avg: c.avg,
+    rank: S.live ? S.live.rank : null,
+    laender,
+    arrivalTs: c.last.ts
+  };
+}
+
+/* Die Karte als HTML — dieselbe Vorlage für den letzten Schritt des Popups
+   UND für openFinaleCard() (Kopf-Pille, jederzeit danach). Kein esc() nötig:
+   alles hier sind eigene Konstanten oder Zahlen, kein Fremdtext (anders als
+   die Grußwand). Erscheint die Flaggenreihe zu voll, ist die Alternative aus
+   demselben Datensatz gebaut — kein zweiter Rechenweg. */
+function finaleCardHtml(c){
+  const st = finisherStats(c);
+  const flagsOk = st.laender.length > 0 && st.laender.length <= 14;
+  return `
+    <div class="finaleCard" id="finaleCardEl">
+      <div class="fcTop">
+        <div class="fcEyebrow">Transcontinental No12 · Trondheim → Kalamata</div>
+        <div class="fcName">Manuel Kaufer · #84</div>
+      </div>
+      <div class="fcBand">
+        <div class="fcStats">
+          <div><b>${st.raceTime}</b><span>Rennzeit</span></div>
+          <div><b>${num(st.km)}</b><span>km</span></div>
+          <div><b>${num(st.hm)}</b><span>Höhenmeter</span></div>
+        </div>
+        ${flagsOk
+          ? `<div class="fcFlags">${st.laender.map(l=> l.flag).join('')}</div>`
+          : `<div class="fcSub">Ø-Schnitt ${one(st.avg)} km/h${st.rank!=null? ' · Platz '+st.rank : ''}</div>`}
+        <div class="fcDate">${fmt(st.arrivalTs)}</div>
+      </div>
+    </div>
+    <div class="btnrow finaleBtns">
+      <button id="finShare" type="button">Teilen</button>
+      <button id="finSave" class="ghost" type="button">Speichern</button>
+      <button id="finClose" class="ghost" type="button">Schließen</button>
+    </div>`;
+}
+
+/* Dieselbe Karte auf ein <canvas> — für Teilen/Speichern existiert im Board
+   sonst nichts Vergleichbares, das ist komplett neu. Fehlt finish.jpg (404),
+   bleibt der dunkle Verlauf stehen statt eines kaputten Bildes — `img.onerror`
+   löst genauso auf wie `onload`, nur ohne drawImage. */
+async function finaleCanvas(c){
+  const st = finisherStats(c);
+  const W = 1080, H = 1350;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#0C1620';
+  ctx.fillRect(0, 0, W, H);
+  await new Promise(resolve=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const s = Math.max(W/img.width, H/img.height);
+      const iw = img.width*s, ih = img.height*s;
+      ctx.drawImage(img, (W-iw)/2, (H-ih)/2, iw, ih);
+      resolve();
+    };
+    img.onerror = resolve;
+    img.src = 'finish.jpg';
+  });
+  const gTop = ctx.createLinearGradient(0, 0, 0, 280);
+  gTop.addColorStop(0, 'rgba(6,12,18,.82)'); gTop.addColorStop(1, 'rgba(6,12,18,0)');
+  ctx.fillStyle = gTop; ctx.fillRect(0, 0, W, 280);
+
+  /* Von UNTEN nach oben verankert (Datum zuerst, dann Flaggen, Label, Zahl) —
+     genau das Muster, das die Karte auf dem Bildschirm über
+     `justify-content:space-between` bekommt (siehe .finaleCard in style.css).
+     Der erste Versuch rechnete von einem festen `laneY = H-400` nach unten;
+     das ließ das ganze Werteband zu hoch sitzen, mit ungenutztem dunklen
+     Streifen darunter — im Bildschirm sitzt der Block dicht am Kartenrand,
+     im Download hing er in der Mitte. Von unten aus verankert trifft beides
+     denselben Abstand zum Rand. */
+  const dateY = H - 50;
+  const flagsY = dateY - 64;
+  const labelY = flagsY - 66;
+  const numberY = labelY - 32;
+
+  /* Das Werteband braucht verlässlichen Kontrast, egal was im Foto darunter
+     liegt — am 06.08.2026 lag ausgerechnet der helle Gehweg genau unter den
+     Zahlen, und Messing auf hellem Grau ist kaum zu lesen. Deshalb ein kurzer
+     Übergang, dann eine durchgehend dunkle Fläche ab kurz vor der ersten Zahl
+     bis zum unteren Rand — keine sanfte Gradiente mehr, die je nach Foto
+     zufällig hell oder dunkel unter den Zahlen landet. */
+  const bandTop = numberY - 70;
+  const gBot = ctx.createLinearGradient(0, bandTop, 0, bandTop+70);
+  gBot.addColorStop(0, 'rgba(6,12,18,0)'); gBot.addColorStop(1, 'rgba(6,12,18,.92)');
+  ctx.fillStyle = gBot; ctx.fillRect(0, bandTop, W, 70);
+  ctx.fillStyle = 'rgba(6,12,18,.92)';
+  ctx.fillRect(0, bandTop+70, W, H-(bandTop+70));
+
+  /* Zentriert, wie die Karte auf dem Bildschirm auch — die erbt text-align:
+     center von .celPanel (siehe style.css). Download und Bildschirm müssen
+     dieselbe Karte zeigen; ctx.fillText() kennt kein CSS-Erbe, das muss hier
+     von Hand nachgebaut werden. */
+  ctx.textAlign = 'center';
+  const cx = W/2;
+  // Zusätzliche Sicherung: ein dunkler Schlagschatten hinter jedem Text, für
+  // den Fall, dass die Fläche oben trotzdem mal knapper ausfällt (anderes
+  // Foto, anderer Zuschnitt) — dieselbe Technik wie bei Story-Overlays.
+  ctx.shadowColor = 'rgba(0,0,0,.75)';
+  ctx.shadowBlur = 7;
+  ctx.shadowOffsetY = 2;
+  ctx.fillStyle = '#BCD7DE';
+  ctx.font = '600 22px "IBM Plex Mono", monospace';
+  ctx.fillText('TRANSCONTINENTAL NO12 · TRONDHEIM → KALAMATA', cx, 90);
+  ctx.fillStyle = '#fff';
+  ctx.font = '700 54px "Space Grotesk", sans-serif';
+  ctx.fillText('Manuel Kaufer · #84', cx, 158);
+
+  const cols = [['RENNZEIT', st.raceTime], ['KM', num(st.km)], ['HÖHENMETER', num(st.hm)]];
+  const colW = (W-112) / 3;
+  cols.forEach(([lbl, val], i)=>{
+    const x = 56 + i*colW + colW/2;   // Mitte der Spalte, nicht ihr linker Rand
+    ctx.fillStyle = '#D9A441';
+    ctx.font = '700 50px "IBM Plex Mono", monospace';
+    ctx.fillText(val, x, numberY);
+    ctx.fillStyle = '#7F98A6';
+    ctx.font = '600 17px "IBM Plex Mono", monospace';
+    ctx.fillText(lbl, x, labelY);
+  });
+
+  ctx.fillStyle = '#BCD7DE';
+  const flagsOk = st.laender.length > 0 && st.laender.length <= 14;
+  if(flagsOk){
+    ctx.font = '46px sans-serif';
+    ctx.fillText(st.laender.map(l=> l.flag).join(''), cx, flagsY);
+  } else {
+    ctx.font = '600 22px "IBM Plex Mono", monospace';
+    ctx.fillText(`Ø-Schnitt ${one(st.avg)} km/h${st.rank!=null? ' · Platz '+st.rank : ''}`, cx, flagsY);
+  }
+  ctx.fillStyle = '#7F98A6';
+  ctx.font = '500 20px "IBM Plex Mono", monospace';
+  ctx.fillText(fmt(st.arrivalTs), cx, dateY);
+
+  // JPEG statt PNG: die Karte ist ein Foto ohne Transparenz, PNG verlustfrei
+  // komprimiert ein Graustufenfoto in dieser Auflösung auf 2-3 MB — für ein
+  // Bild, das über WhatsApp/Insta geteilt werden soll, unnötig schwer.
+  return new Promise(resolve=> cv.toBlob(resolve, 'image/jpeg', 0.9));
+}
+
+function finaleDownload(blob){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'manuel-kaufer-tcr12.jpg';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=> URL.revokeObjectURL(url), 4000);
+}
+async function finaleShare(c){
+  const blob = await finaleCanvas(c);
+  if(!blob) return;
+  const file = new File([blob], 'manuel-kaufer-tcr12.jpg', {type:'image/jpeg'});
+  if(navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}))){
+    try{
+      await navigator.share({files:[file], title:'Manuel Kaufer · TCR No12', text:'Angekommen in Kalamata!'});
+      return;
+    }catch(e){ /* abgebrochen oder nicht unterstützt — Download bleibt der Fallback */ }
+  }
+  finaleDownload(blob);
+}
+async function finaleSave(c){
+  const blob = await finaleCanvas(c);
+  if(blob) finaleDownload(blob);
+}
+function wireFinaleCard(ov, c, zu){
+  ov.querySelector('#finShare').onclick = ()=> finaleShare(c);
+  ov.querySelector('#finSave').onclick = ()=> finaleSave(c);
+  ov.querySelector('#finClose').onclick = zu;
+  ov.querySelector('#finClose').focus();
+}
+
+/* Die Karte jederzeit danach ansehen — Zugang über die Kopf-Pille (siehe
+   renderWind), keine neue Feier, kein Konfetti, kein celebrating-Vorrang vor
+   einer echten Feier nötig (die kann nach der Ankunft ohnehin nicht mehr
+   kommen — cpHits/ccReached haben dann nichts Neues mehr zu melden). */
+function openFinaleCard(c){
+  if(celebrating) return;
+  celebrating = true;
+  const ov = document.createElement('div');
+  ov.className = 'celebrate finale';
+  ov.setAttribute('role','dialog');
+  ov.setAttribute('aria-modal','true');
+  ov.setAttribute('aria-label','Finisher-Karte');
+  ov.innerHTML = `<div class="celPanel finalePanel">${finaleCardHtml(c)}</div>`;
+  document.body.appendChild(ov);
+  const zu = ()=>{ ov.remove(); celebrating = false; document.removeEventListener('keydown', beiTaste); };
+  const beiTaste = e=>{ if(e.key === 'Escape') zu(); };
+  ov.onclick = e=>{ if(e.target === ov) zu(); };
+  document.addEventListener('keydown', beiTaste);
+  wireFinaleCard(ov, c, zu);
+}
+
+/* Der einmalige Zieleinlauf-Popup. Stufenkette über setTimeout/requestAnimationFrame
+   (dasselbe Muster wie zurufTakt für „Verweildauer hängt am Inhalt", hier
+   „Verweildauer ist die halbe Freude"). Jede Stufe überspringbar → landet
+   direkt auf der Karte, dem einzigen Zustand, der bleiben soll. */
+function showFinale(c){
+  const ov = document.createElement('div');
+  ov.className = 'celebrate finale';
+  ov.setAttribute('role','dialog');
+  ov.setAttribute('aria-modal','true');
+  ov.setAttribute('aria-label','Zieleinlauf: Kalamata');
+  document.body.appendChild(ov);
+
+  const reduced = matchMedia('(prefers-reduced-motion:reduce)').matches;
+  let cancelled = false, raf = null;
+  const timers = [];
+  const wait = (ms, fn)=>{ timers.push(setTimeout(()=>{ if(!cancelled) fn(); }, ms)); };
+  const stopClocks = ()=>{ timers.forEach(clearTimeout); timers.length = 0; if(raf) cancelAnimationFrame(raf); raf = null; };
+
+  const zu = ()=>{
+    if(cancelled) return;
+    cancelled = true;
+    stopClocks();
+    ov.remove(); celebrating = false;
+    document.removeEventListener('keydown', beiTaste);
+  };
+  const beiTaste = e=>{ if(e.key === 'Escape') zu(); };
+  document.addEventListener('keydown', beiTaste);
+
+  function panel(inner, {skip=true} = {}){
+    ov.innerHTML = `<div class="celPanel finalePanel">${inner}
+      ${skip ? `<button class="finaleSkip" id="finSkip" type="button">Überspringen</button>` : ''}</div>`;
+    ov.onclick = e=>{ if(e.target === ov) zu(); };
+    const skipBtn = ov.querySelector('#finSkip');
+    if(skipBtn) skipBtn.onclick = ()=>{ stopClocks(); stageCard(); };
+  }
+
+  function stageAuftakt(){
+    panel(`
+      <div class="finaleFlagWrap">
+        <svg class="celMark finaleMark" viewBox="0 0 60 60" aria-hidden="true">
+          <circle class="cm-c" cx="30" cy="30" r="27"/>
+          <path class="cm-k" d="M18 31.5 L26.5 40 L43 21"/>
+        </svg>
+        <div class="finaleFlag" aria-hidden="true">🏁</div>
+      </div>
+      <div class="celEyebrow">Zieleinlauf</div>
+      <h3>Kalamata erreicht</h3>
+      <div class="celSub">Manuel ist angekommen.</div>`);
+    confettiRain(true);
+    if(reduced){ wait(50, stageCard); return; }
+    wait(2800, stageReplay);
+  }
+
+  function stageReplay(){
+    const pts = TRACK && TRACK.points;
+    if(!pts || pts.length < 2){ stageCounts(); return; }
+    let minLat=Infinity, maxLat=-Infinity, minLon=Infinity, maxLon=-Infinity;
+    for(const p of pts){
+      if(p[0]<minLat) minLat=p[0]; if(p[0]>maxLat) maxLat=p[0];
+      if(p[1]<minLon) minLon=p[1]; if(p[1]>maxLon) maxLon=p[1];
+    }
+    const W=340, H=380, pad=26;
+    const spanLat=(maxLat-minLat)||1, spanLon=(maxLon-minLon)||1;
+    const s = Math.min((W-2*pad)/spanLon, (H-2*pad)/spanLat);
+    const X = lon => pad + (lon-minLon)*s;
+    const Y = lat => pad + (maxLat-lat)*s;   // Norden oben
+    const d = pts.map((p,i)=> `${i?'L':'M'}${X(p[1]).toFixed(1)},${Y(p[0]).toFixed(1)}`).join('');
+    const startXY = [X(pts[0][1]), Y(pts[0][0])];
+    panel(`
+      <div class="celEyebrow">Trondheim → Kalamata</div>
+      <svg id="finReplaySvg" viewBox="0 0 ${W} ${H}" aria-hidden="true">
+        <path id="finRoute" class="finRoute" d="${d}"/>
+        <circle id="finDot" class="finDot" r="4.5" cx="${startXY[0]}" cy="${startXY[1]}"/>
+        <text class="finLbl" x="${startXY[0]}" y="${Math.max(startXY[1]-10,10)}">Trondheim</text>
+        <text class="finLbl fin" x="${X(pts[pts.length-1][1])}" y="${Math.max(Y(pts[pts.length-1][0])-10,10)}">Kalamata</text>
+      </svg>
+      <div class="celSub">4.800 Kilometer quer durch Europa.</div>`);
+    const path = ov.querySelector('#finRoute');
+    const dot = ov.querySelector('#finDot');
+    const len = path.getTotalLength();
+    path.style.strokeDasharray = String(len);
+    path.style.strokeDashoffset = String(len);
+    const DUR = 11000;
+    let t0 = null;
+    const frame = ts=>{
+      if(cancelled) return;
+      if(t0 == null) t0 = ts;
+      const t = Math.min((ts-t0)/DUR, 1);
+      path.style.strokeDashoffset = String(len*(1-t));
+      const pt = path.getPointAtLength(len*t);
+      dot.setAttribute('cx', pt.x); dot.setAttribute('cy', pt.y);
+      if(t < 1) raf = requestAnimationFrame(frame);
+      else wait(600, stageCounts);
+    };
+    raf = requestAnimationFrame(frame);
+  }
+
+  function stageCounts(){
+    const st = finisherStats(c);
+    panel(`
+      <div class="celEyebrow">Was für eine Fahrt</div>
+      <div class="finaleCounts">
+        <div><b id="cntTime">0</b><span>Rennzeit</span></div>
+        <div><b id="cntKm">0</b><span>km</span></div>
+        <div><b id="cntHm">0</b><span>Höhenmeter</span></div>
+      </div>`);
+    const raceMs = new Date(c.last.ts) - c.start;
+    const elTime = ov.querySelector('#cntTime'), elKm = ov.querySelector('#cntKm'), elHm = ov.querySelector('#cntHm');
+    if(reduced){
+      elTime.textContent = st.raceTime; elKm.textContent = num(st.km); elHm.textContent = num(st.hm);
+      wait(900, stageCard);
+      return;
+    }
+    const DUR = 1800;
+    let t0 = null;
+    const frame = ts=>{
+      if(cancelled) return;
+      if(t0 == null) t0 = ts;
+      const t = Math.min((ts-t0)/DUR, 1);
+      const e = 1 - Math.pow(1-t, 3);   // ease-out — die letzten Meter dürfen sich Zeit lassen
+      elTime.textContent = dur(raceMs*e);
+      elKm.textContent = num(Math.round(st.km*e));
+      elHm.textContent = num(Math.round(st.hm*e));
+      if(t < 1) raf = requestAnimationFrame(frame);
+      else wait(900, stageCard);
+    };
+    raf = requestAnimationFrame(frame);
+  }
+
+  function stageCard(){
+    panel(finaleCardHtml(c), {skip:false});
+    wireFinaleCard(ov, c, zu);
+  }
+
+  stageAuftakt();
 }
 
 /* Verletzungs-Hinweis — dasselbe Muster wie maybeCelebrate/markCpSeen, aber
@@ -3595,6 +4055,14 @@ window.tcr84Feier = nm=>{
   const c = compute();
   const cp = nm ? c.st.cps.find(x=> x.nm === nm) : (c.cpReached || {}).cp;
   if(!cp) return 'kein Kontrollpunkt gefunden — Namen prüfen: ' + c.st.cps.map(x=>x.nm).join(', ');
+  if(celebrating) return 'ein Modal ist schon offen — erst schließen.';
+  // Kalamata bekommt seit dem Finale eine eigene, größere Fassung (showFinale)
+  // statt der generischen CP-Feier — dieselbe Weiche wie in maybeCelebrate.
+  if(Number(cp.km) >= c.total){
+    celebrating = true;
+    showFinale(c);
+    return 'ok — Zielfassung (showFinale)';
+  }
   celebrating = true;
   showCelebration(c, {cp, ts: (c.cpReached && c.cpReached.ts) || (c.last||{}).ts || c.st.start});
   return 'ok';
@@ -3626,6 +4094,23 @@ window.tcr84Grenze = cc=>{
 window.tcr84Zieltag = was=>{
   if(!was || was === 'off'){ ZIELTAG_OVERRIDE = null; render(); return 'Zieltag-Override aus.'; }
   if(was === 'an'){ ZIELTAG_OVERRIDE = true; render(); return 'Zieltag-Override: an'; }
+  return "unbekannt — 'an' oder 'off'";
+};
+/* Das Finale zum Vorführen, unabhängig vom echten Zielstand:
+     tcr84Finale()           die volle Sequenz einmal komplett durchspielen
+     tcr84Angekommen('an')   den dauerhaften Andenken-Zustand des ganzen
+                             Boards erzwingen (Live-Zeile, Kopf-Pille, Fähre/
+                             Verpflegung aus, Grußwand-Text, Footer)
+     tcr84Angekommen('off')  Override aus, `c.rest===0` entscheidet wieder */
+window.tcr84Finale = ()=>{
+  if(celebrating) return 'ein Modal ist schon offen — erst schließen.';
+  celebrating = true;
+  showFinale(compute());
+  return 'ok';
+};
+window.tcr84Angekommen = was=>{
+  if(!was || was === 'off'){ ANGEKOMMEN_OVERRIDE = null; render(); return 'Angekommen-Override aus.'; }
+  if(was === 'an'){ ANGEKOMMEN_OVERRIDE = true; render(); return 'Angekommen-Override: an'; }
   return "unbekannt — 'an' oder 'off'";
 };
 /* Die echte Überfahrt steht erst in ~1 Woche an — bis dahin lässt sich die

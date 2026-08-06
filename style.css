@@ -708,3 +708,77 @@
   footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);
          font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8}
   code{background:#0A131B;padding:1px 5px;border-radius:2px;font-size:11px}
+
+  /* ---------- Das Finale ----------
+     Baut auf .celebrate/.celPanel auf (Overlay, Fokusrahmen, Ein-/Ausblendung
+     — beide Klassen stehen zusätzlich am Element, siehe showFinale/openFinaleCard
+     in app.js). Was hier folgt, ist nur das, was der CP-/Länder-Feier fremd
+     ist: der Routenrückblick, die Zahlen-Hochzählung und die volle Karte. */
+  .finalePanel{max-width:420px}
+  .finaleSkip{display:block;margin:14px auto 0;background:none;border:none;
+              color:var(--muted);font-family:var(--mono);font-size:11px;
+              text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:4px}
+  .finaleSkip:hover{color:var(--ice)}
+
+  /* Der Haken wird zur Flagge: dieselbe selbstzeichnende .celMark wie bei
+     jedem Kontrollpunkt, nur in Messing statt Grün, und sobald sie fertig
+     gezeichnet ist, blendet ein 🏁 darüber ein — kein SVG-Morphing, derselbe
+     Effekt mit einem Bruchteil des Aufwands. */
+  .finaleFlagWrap{position:relative;width:72px;height:72px;margin:0 auto}
+  .finaleMark .cm-c,.finaleMark .cm-k{stroke:var(--brass)}
+  .finaleFlag{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+              font-size:34px;opacity:0;animation:finFlagIn .4s ease-out 1.05s forwards}
+  @keyframes finFlagIn{from{opacity:0;transform:scale(.7)}to{opacity:1;transform:none}}
+
+  /* Routenrückblick: eigenes SVG, die Linie zeichnet sich mit derselben
+     stroke-dashoffset-Technik wie der Haken, nur über die echte Spur statt
+     einen Kreis; der Messingpunkt reitet per requestAnimationFrame mit
+     getPointAtLength mit — kein Video, keine Bibliothek, dieselbe Bauart wie
+     das Höhenprofil. */
+  #finReplaySvg{width:100%;height:auto;margin-top:8px}
+  .finRoute{fill:none;stroke:var(--brass);stroke-width:2.5;stroke-linecap:round}
+  .finDot{fill:var(--bone);stroke:var(--night);stroke-width:1.5}
+  .finLbl{font-family:var(--mono);font-size:9px;fill:var(--muted);text-anchor:middle}
+  .finLbl.fin{fill:var(--brass)}
+
+  /* Die Kennzahlen zählen einmal hoch — kein Loop, dieselbe
+     requestAnimationFrame-Bauart wie der Routenrückblick daneben. */
+  .finaleCounts{display:flex;justify-content:center;gap:26px;margin-top:10px;
+                font-family:var(--mono);text-align:center}
+  .finaleCounts b{display:block;font-size:24px;color:var(--brass);font-weight:600;letter-spacing:-.02em}
+  .finaleCounts span{font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+
+  /* Die Finisher-Karte: Sammelkarten-Optik, Foto randabfallend, Werteband über
+     dem unteren Bilddrittel statt über Manu. Fehlt finish.jpg (404 oder noch
+     nicht abgelegt), bleibt der dunkle Verlauf stehen — kein kaputtes Bild,
+     kein Platzhaltertext, einfach die Nacht, aus der das Board sowieso ist. */
+  .finaleCard{position:relative;aspect-ratio:4/5;width:100%;border-radius:2px;
+              overflow:hidden;background-color:var(--night);
+              /* Dunkelt früher ab und hält danach durch statt sanft weiter zu
+                 verlaufen — sonst landet das Werteband je nach Foto zufällig auf
+                 einer hellen Stelle (passiert am 06.08.2026: heller Gehweg genau
+                 unter den Zahlen, Messing auf hellem Grau kaum lesbar). */
+              background-image:
+                linear-gradient(180deg, rgba(6,12,18,.72) 0%, rgba(6,12,18,0) 24%, rgba(6,12,18,0) 42%, rgba(6,12,18,.92) 58%, rgba(6,12,18,.92) 100%),
+                url('finish.jpg');
+              background-size:cover;background-position:center;
+              display:flex;flex-direction:column;justify-content:space-between;padding:18px}
+  .fcEyebrow{font-family:var(--mono);font-size:9px;letter-spacing:.16em;text-transform:uppercase;color:var(--ice);
+             text-shadow:0 1px 3px rgba(0,0,0,.7)}
+  .fcName{font-size:19px;font-weight:700;color:#fff;margin-top:4px;letter-spacing:-.01em;
+          text-shadow:0 1px 4px rgba(0,0,0,.6)}
+  .fcStats{display:flex;gap:16px;font-family:var(--mono)}
+  .fcStats div{flex:1}
+  .fcStats b{display:block;font-size:19px;color:var(--brass);font-weight:600;letter-spacing:-.02em;
+             text-shadow:0 1px 4px rgba(0,0,0,.75)}
+  .fcStats span{font-size:8.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ice);opacity:.85;
+                text-shadow:0 1px 3px rgba(0,0,0,.8)}
+  .fcFlags{margin-top:10px;font-size:19px;line-height:1.3;text-shadow:0 1px 3px rgba(0,0,0,.5)}
+  .fcSub{margin-top:10px;font-family:var(--mono);font-size:11.5px;color:var(--ice);text-shadow:0 1px 3px rgba(0,0,0,.7)}
+  .fcDate{margin-top:8px;font-family:var(--mono);font-size:10px;color:var(--ice);opacity:.8;text-shadow:0 1px 3px rgba(0,0,0,.7)}
+  .finaleBtns{margin-top:16px}
+  .finaleBtns button{flex:1}
+
+  @media (prefers-reduced-motion:reduce){
+    .finaleFlag{animation:none;opacity:1}
+  }
