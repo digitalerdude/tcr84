@@ -1947,6 +1947,7 @@ const WERKSTATT = {
     {km:3150, ic:'🔩', txt:'Bowdenzug Schaltung hinten gerissen', grp:'defekt',  kat:'defekt'},
     {km:4050, ic:'🦵', txt:'Sehnenreizung rechte Kniekehle · Leistung ~80%, Schmerz erträglich', grp:'defekt', kat:'defekt'},
     {km:4125, ic:'⛓️', txt:'Kette geölt',                         grp:'wartung', kat:'kette'},
+    {km:4572, ic:'🎉', txt:'Knie läuft nach Einstellungen am Rad gut: Klickpedal-Winkel verändert, Sattel etwas vor. Kann wieder begrenzt liegend fahren — zuversichtlich, morgen zu beenden.', grp:'wartung', kat:'update'},
   ]
 };
 
