@@ -202,6 +202,14 @@
   .cell .u{font-size:13px;color:var(--muted);font-weight:400}
   .cell .n{font-size:11px;color:var(--muted);margin-top:3px;font-family:var(--mono)}
   .v.good{color:var(--good)} .v.warn{color:var(--warn)} .v.alert{color:var(--alert)}
+  /* Zieltag: „Rest bis Kalamata“ und die Ankunftszeit-Kachel pulsen golden,
+     mit derselben Animation wie .anchor.fresh/.ferb-num. Die Farbe muss hier
+     explizit stehen (nicht nur über .v.warn mitlaufen) — sonst gewinnt bei
+     der Ankunfts-Kachel die Ampelfarbe (z.B. .v.good grün) statt Gold, und
+     „Rest bis Kalamata“ hat gar keine State-Klasse, bliebe also farblos. */
+  .v.zielpuls{color:var(--brass)!important;animation:cpGlow 1.8s ease-in-out infinite}
+  @media (prefers-reduced-motion:reduce){.v.zielpuls{animation:none}}
+  .zielkachel{grid-column:span 2}
 
   /* Puffer-Kachel: wechselt per Pfeil zwischen Ziel- und CP-Frist, statt das
      Raster um eine Kachel je Kontrollpunkt zu erweitern. */
@@ -396,6 +404,16 @@
   @media (prefers-reduced-motion:reduce){.ferb-num{animation:none}}
   /* Emoji-Marker der Karte: nur das Zeichen, kein Leaflet-Kästchen. */
   .ferIcon{font-size:19px;line-height:24px;text-align:center;text-shadow:0 0 3px #0C1620}
+  /* Zielmarker am Zieltag: 🏁 mit goldenem Ring-Puls, nach dem Vorbild von
+     .live-pulse/pulseLive oben, nur in Messing statt Grün. */
+  .zielIcon{position:relative;font-size:19px;line-height:26px;text-align:center;text-shadow:0 0 3px #0C1620}
+  .zielRing{position:absolute;inset:-6px;border-radius:50%;animation:zielPuls 2s infinite}
+  @keyframes zielPuls{
+    0%{box-shadow:0 0 0 0 rgba(217,164,65,.55)}
+    70%{box-shadow:0 0 0 10px rgba(217,164,65,0)}
+    100%{box-shadow:0 0 0 0 rgba(217,164,65,0)}
+  }
+  @media (prefers-reduced-motion:reduce){.zielRing{animation:none}}
   /* Die Kernaussage steht schon in der Klapperzeile, damit sie auch zugeklappt
      zu sehen ist — dafür fällt sie aus dem Versalsatz der übrigen Summaries. */
   #ferrySum b{text-transform:none;letter-spacing:0;color:var(--ice);font-weight:500}
@@ -660,9 +678,13 @@
   tr.logPause td{padding:7px 8px;border-bottom:1px solid #1C2C39;background:var(--panel2);
                  font-family:var(--mono);font-size:11.5px;color:var(--muted);letter-spacing:.04em}
   tr.logPause .pv{color:var(--bone)}
+  /* Linker Messing-Rand + hellere Schrift, damit die Aufklapp-Möglichkeit
+     nicht im gedämpften Grau der übrigen Summaries untergeht — dasselbe
+     „hier lohnt ein Blick"-Idiom wie .verdict/.fuelhero. */
   .logMore{width:100%;background:var(--panel);border:1px solid var(--line);border-top:none;
-           cursor:pointer;padding:11px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
-           text-transform:uppercase;color:var(--muted);text-align:left}
+           border-left:3px solid var(--brass);
+           cursor:pointer;padding:11px 15px 11px 12px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
+           text-transform:uppercase;color:var(--bone);text-align:left}
   .logMore:hover{color:var(--bone);background:var(--panel2)}
   tr.logDetail td{padding:2px 8px 12px 0;border-bottom:1px solid #1C2C39;background:var(--panel2)}
   tr.logDetail .dk{font-family:var(--mono);font-size:11.5px;color:var(--muted);display:flex;gap:16px;flex-wrap:wrap}
@@ -677,6 +699,10 @@
   details{border:1px solid var(--line);background:var(--panel);margin-top:22px}
   summary{cursor:pointer;padding:12px 15px;font-family:var(--mono);font-size:10.5px;letter-spacing:.16em;
           text-transform:uppercase;color:var(--muted)}
+  /* Werkstatt startet eingeklappt (index.html) — derselbe linke Messing-Rand
+     wie .logMore, damit die Aufklapp-Möglichkeit auffällt statt im Grau der
+     übrigen Summaries unterzugehen. */
+  #werkstattDetails > summary{border-left:3px solid var(--brass);color:var(--bone);font-weight:500;padding-left:12px}
   .setbody{padding:4px 15px 18px;border-top:1px solid var(--line)}
   .setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:14px}
   footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);

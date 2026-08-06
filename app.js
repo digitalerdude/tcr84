@@ -91,6 +91,20 @@ const DAY_HM_STALE_KM = 25;
    Ortsrand-Versatz, als der reine Kilometerstand ihn trotzdem für erreicht
    erklärte. */
 const CP_FALLBACK_MAX_KM = 15;
+/* Ab wann das Board auf den Zieltag-Look umschaltet: Verpflegung ohne
+   Speisekarte, Karte zoomt auf den Fahrer statt die Gesamtstrecke, „Rest
+   bis Kalamata" pulst, Soll-Schnitt/Puffer werden zu einer Ankunftszeit-
+   Kachel, Höhenprofil startet auf „Heute", Zielmarker auf der Karte. Ein
+   einzelnes Datum-Gate statt sieben Einzelbedingungen — dasselbe Muster wie
+   die Fährplanung (dort `pos.lat`) oder die Verpflegung (dort der
+   Fährstatus). Lokale Zeit ohne TZ-Suffix, kippt automatisch um Mitternacht,
+   auch in einem bereits offenen Tab, weil jede render()-Runde `istZieltag()`
+   neu auswertet statt den Wert einmalig zu cachen. */
+const ZIELTAG_AB = '2026-08-07T00:00';
+let ZIELTAG_OVERRIDE = null;   // Debug-Hook tcr84Zieltag(), siehe unten
+function istZieltag(c){
+  return ZIELTAG_OVERRIDE != null ? ZIELTAG_OVERRIDE : c.now >= new Date(ZIELTAG_AB);
+}
 /* Lokale Zeit ohne Zeitzonen-Suffix — dieselbe Konvention wie `ts` in
    data.json (siehe CLAUDE.md). Ein nacktes toISOString() verschöbe die
    Anzeige um die Zeitzonendifferenz. */
@@ -474,7 +488,26 @@ function pufferCellHtml(c){
     ${nav}</div>`;
 }
 
+/* Ersetzt pufferCellHtml() am Zieltag: „Soll-Schnitt ab jetzt" und „Puffer
+   auf das Limit" sind dann nur noch Notfall-Kennzahlen (die gebundene Frist
+   wäre an diesem Punkt ohnehin längst gerissen oder komfortabel entspannt),
+   die Ankunftszeit ist die eigentlich interessante. Beide Kacheln werden zu
+   einer breiten zusammengeführt (`.zielkachel`, CSS spannt 2 Spalten) statt
+   das Grid um eine sechste zu erweitern. pufferTiles hat am Zieltag ohnehin
+   nur noch die Ziel-Kachel — alle CPs sind erreicht, cpTiles also leer. */
+function zielCellHtml(c){
+  const t = c.pufferTiles[0];
+  const v = c.rest===0 ? 'Angekommen' : c.eta ? fmt(c.eta) : '–:–';
+  const n = c.rest===0 ? 'im Ziel'
+    : !c.eta ? 'ab zwei Meldungen'
+    : dur(t.buffer) + (t.buffer>=0 ? ' Puffer bis Fristende' : ' über der Frist');
+  return `<div class="cell puffercell zielkachel"><div class="k">Ankunft in Kalamata</div>
+    <div class="v ${t.state||''} ${c.rest>0?'zielpuls':''}">${v}</div>
+    ${n?`<div class="n">${n}</div>`:''}</div>`;
+}
+
 function renderMetrics(c){
+  const zt = istZieltag(c);
   /* Der bindende Termin und das physisch nächste CP müssen nicht derselbe
      sein — CP3s eigene Frist kann entspannt sein, während CP4s Frist eng
      ist (siehe compute()). Ohne diesen Zusatz liest sich „bis CP4 Leskovik“
@@ -495,7 +528,7 @@ function renderMetrics(c){
         ? 'zuletzt gesehen vor ' + dur((c.now - new Date(S.live.ts)) + (S.live.fixMinsAgo||0)*6e4)
         : (c.last ? 'letzte Meldung vor '+dur(c.now-new Date(c.last.ts)) : 'noch keine Meldung'), ''],
     ['Gefahren', c.last? num(c.km):'–', 'km', c.last? one(c.km/c.total*100)+' % der Strecke':'', ''],
-    ['Rest bis Kalamata', c.last? num(c.rest):'–', 'km', '', ''],
+    ['Rest bis Kalamata', c.last? num(c.rest):'–', 'km', '', (zt && c.rest>0) ? 'zielpuls' : ''],
     /* Der Zusatz erscheint nur, wenn das Wissen wirklich zurückliegt (ab 1 h,
        also nach einem ausgefallenen stündlichen Lauf). Im Normalbetrieb wäre
        er Rauschen — dann sind Rennuhr und Messung ohnehin deckungsgleich. */
@@ -505,17 +538,20 @@ function renderMetrics(c){
     /* Rechnet gegen den bindenden Termin (`compute()`), nicht stur gegen
        Kalamata — ein näherer CP-Cutoff sticht das Gesamtlimit, wenn er
        enger ist. Bei Bindung an einen CP wird das im Zusatztext benannt,
-       sonst läse sich die Zahl wie gehabt als Zielschnitt. */
-    ['Soll-Schnitt ab jetzt', isFinite(c.bindingNeed)&&c.rest>0? one(c.bindingNeed):'–', 'km/h',
+       sonst läse sich die Zahl wie gehabt als Zielschnitt. Am Zieltag entfällt
+       die Kachel — sie geht mit „Puffer auf das Limit" in zielCellHtml() auf. */
+    ...(zt ? [] : [[
+      'Soll-Schnitt ab jetzt', isFinite(c.bindingNeed)&&c.rest>0? one(c.bindingNeed):'–', 'km/h',
       c.rest===0? 'Ziel erreicht' : isFinite(c.bindingNeed)
         ? num(c.bindingNeed*24)+' km/Tag'+(c.bindingNm!=='Kalamata'? ' · bis '+esc(c.bindingNm):'')+bindingNote+' · '+dur(c.bindingDl-c.now)+' übrig'
         : (c.bindingNm!=='Kalamata'? 'Frist für '+esc(c.bindingNm)+' vorbei' : 'Zeitlimit vorbei'),
-      c.rest===0?'good':(c.bindingState==='alert'?'alert':(c.avg && c.bindingNeed<=c.avg?'good':'warn'))]
+      c.rest===0?'good':(c.bindingState==='alert'?'alert':(c.avg && c.bindingNeed<=c.avg?'good':'warn'))
+    ]])
   ];
   document.getElementById('metrics').innerHTML = cells.map(([k,v,u,n,cl])=>
     `<div class="cell"><div class="k">${k}</div>
      <div class="v ${cl||''}">${v}${u?` <span class="u">${u}</span>`:''}</div>
-     ${n?`<div class="n">${n}</div>`:''}</div>`).join('') + pufferCellHtml(c);
+     ${n?`<div class="n">${n}</div>`:''}</div>`).join('') + (zt ? zielCellHtml(c) : pufferCellHtml(c));
 
   document.querySelectorAll('#metrics .pnav button').forEach(b=> b.onclick = ()=>{
     PUFFER_IDX += Number(b.dataset.pufdir);
@@ -728,9 +764,16 @@ const PROFS = {};
    mitwachsende X-Achse die letzten Tage horizontal immer weiter. Der
    Ausschnitt reskaliert beide Achsen aufs aktuelle Gelände; ein Umschalter
    holt die Gesamtstrecke (der motivierende „so weit sind wir geklettert“-
-   Blick) zurück. `PROF_FULL` überlebt das 60s-Neuzeichnen wie LOG_ALL. */
+   Blick) zurück, ein dritter zoomt am Zieltag auf den laufenden Tag.
+   `PROF_VIEW` überlebt das 60s-Neuzeichnen wie LOG_ALL. */
 const PROF_FENSTER_TAGE = 2;
-let PROF_FULL = false;
+/* 'heute' | 'fenster' | 'full'. Solange PROF_VIEW_TOUCHED false ist, folgt
+   der Default weiter automatisch dem Zieltag-Flag (siehe istZieltag()) —
+   auch in einem bereits offenen Tab kippt er dadurch um Mitternacht auf
+   „Heute". Sobald jemand selbst einen Reiter anklickt, gilt seine Wahl wie
+   bisher über den 60s-Re-Render hinweg (gleiches Muster wie LOG_ALL). */
+let PROF_VIEW = 'fenster';
+let PROF_VIEW_TOUCHED = false;
 
 /* profile.json hält je Block nur den kumulierten Stand am Blockende fest
    ([tEnd, kmEnde, cumUp, cumDown]; ein Block ist knapp eine Stunde Fahrt).
@@ -866,24 +909,34 @@ function renderProfileInto(c, o){
     ele: ptsAll.length ? eleAtKm(ptsAll, Number(e.km)) : (e.ele!=null?Number(e.ele):null)
   })).filter(m=> m.ele!=null);
 
-  /* Ausschnitt der letzten Tage (nur das Board-Diagramm, nicht die an die
-     Karte gekoppelte Zweitfassung). Der Schnitt-Kilometer kommt über die Zeit:
-     `cumClimbAt` liefert den gerouteten Stand vor N Tagen, auf die Tracker-
-     Achse gestreckt (`kmScale`) liegt er auf derselben Skala wie `pts.km`.
-     Erst ab genug Daten — vor dem N-ten Tag ist „Ausschnitt“ gleich „Gesamt“,
-     dann bleibt der Umschalter aus. */
-  let pts = ptsAll, fenster = false, fensterAb = null;
+  /* Ausschnitt der letzten Tage ODER des heutigen Tages (nur das
+     Board-Diagramm, nicht die an die Karte gekoppelte Zweitfassung). Die
+     Schnitt-Kilometer kommen über die Zeit: `cumClimbAt` liefert den
+     gerouteten Stand vor N Tagen bzw. seit Mitternacht, auf die Tracker-
+     Achse gestreckt (`kmScale`) liegen sie auf derselben Skala wie `pts.km`.
+     Erst ab genug Daten — vor dem N-ten Tag bzw. vor dem ersten Punkt des
+     laufenden Tages ist „Ausschnitt“ gleich „Gesamt“, der jeweilige Reiter
+     bleibt dann aus. PROF_VIEW folgt automatisch dem Zieltag-Flag, solange
+     niemand selbst einen Reiter angeklickt hat (siehe PROF_VIEW_TOUCHED
+     oben) — deshalb hier statt beim deklarieren neu ausgewertet. */
+  if(!PROF_VIEW_TOUCHED) PROF_VIEW = istZieltag(c) ? 'heute' : 'fenster';
+  let pts = ptsAll, fensterAb = null, heuteAb = null;
   const genugFuerFenster = o.window && ptsAll.length > 2 && PROFILE
     && PROFILE.chunks && PROFILE.chunks.length;
   if(genugFuerFenster){
     const cut = cumClimbAt(c.now.getTime()/1000 - PROF_FENSTER_TAGE*86400);
     fensterAb = cut ? cut.km * c.kmScale : null;
+    const dayStart = new Date(c.now.getFullYear(), c.now.getMonth(), c.now.getDate()).getTime()/1000;
+    const cutHeute = cumClimbAt(dayStart);
+    heuteAb = cutHeute ? cutHeute.km * c.kmScale : null;
     // Nur windowen, wenn der Schnitt wirklich Strecke abschneidet — sonst ist
     // „Ausschnitt“ dasselbe Bild wie „Gesamt“ und der Umschalter nur Zierde.
-    if(fensterAb != null && fensterAb > ptsAll[0].km + 1 && !PROF_FULL){
-      const w = ptsAll.filter(p=> p.km >= fensterAb);
-      if(w.length > 1){ pts = w; fenster = true; marks = marks.filter(m=> m.km >= pts[0].km); }
-    }
+    const anwenden = ab=>{
+      const w = ptsAll.filter(p=> p.km >= ab);
+      if(w.length > 1){ pts = w; marks = marks.filter(m=> m.km >= pts[0].km); }
+    };
+    if(PROF_VIEW === 'heute' && heuteAb != null && heuteAb > ptsAll[0].km + 1) anwenden(heuteAb);
+    else if(PROF_VIEW === 'fenster' && fensterAb != null && fensterAb > ptsAll[0].km + 1) anwenden(fensterAb);
   }
 
   const strip = !o.strip ? '' : [
@@ -968,13 +1021,19 @@ function renderProfileInto(c, o){
   const dots = marks.map((m,i)=>
     `<circle class="${i===marks.length-1?'pdot':'pmark'}" cx="${X(m.km).toFixed(1)}" cy="${Y(m.ele).toFixed(1)}"
              r="${i===marks.length-1?4.5:2.4}" ${i===marks.length-1?'stroke-width="1.5"':''}/>`).join('');
-  /* Der Umschalter erscheint nur, wenn Ausschnitt und Gesamt sich wirklich
-     unterscheiden — vor dem zweiten Tag ist beides dasselbe Bild. */
-  const zeigeToggle = o.window && fensterAb != null && fensterAb > ptsAll[0].km + 1;
+  /* Jeder Reiter erscheint nur, wenn er wirklich etwas abschneidet — vor dem
+     ersten eigenen Tagespunkt bzw. vor dem zweiten Tag ist „Ausschnitt"
+     dasselbe Bild wie „Gesamt". „Gesamt" selbst erscheint immer, sobald
+     überhaupt einer der beiden anderen Reiter da ist. */
+  const zeigeHeute = heuteAb != null && heuteAb > ptsAll[0].km + 1;
+  const zeigeFenster = fensterAb != null && fensterAb > ptsAll[0].km + 1;
+  const zeigeToggle = o.window && (zeigeHeute || zeigeFenster);
+  const profBtn = (view, label) => `<button class="${PROF_VIEW===view?'on':''}" data-view="${view}">${label}</button>`;
   const winHtml = zeigeToggle
     ? `<div class="profwin">
-         <button class="${!PROF_FULL?'on':''}" data-full="0">Letzte ${PROF_FENSTER_TAGE} Tage</button>
-         <button class="${PROF_FULL?'on':''}" data-full="1">Gesamt</button>
+         ${zeigeHeute ? profBtn('heute', 'Heute') : ''}
+         ${zeigeFenster ? profBtn('fenster', 'Letzte '+PROF_FENSTER_TAGE+' Tage') : ''}
+         ${profBtn('full', 'Gesamt')}
        </div>`
     : '';
 
@@ -1038,7 +1097,7 @@ function renderProfileInto(c, o){
   if(wasOpen){ const d = wrap.querySelector('details'); if(d) d.open = true; }
 
   wrap.querySelectorAll('.profwin button').forEach(b=> b.onclick = ()=>{
-    PROF_FULL = b.dataset.full === '1'; renderProfile(c);
+    PROF_VIEW = b.dataset.view; PROF_VIEW_TOUCHED = true; renderProfile(c);
   });
 
   PROFS[o.prefix] = {pts, cols, marks, X, Y, L, R, W, T, base, cur,
@@ -2147,7 +2206,7 @@ function renderFuel(c){
       ${heute}
       <div class="fuelrest">${rest}<br>${grund}</div>
     </div>
-    ${karte ? `<div class="fuelmenu"><div class="fmhead">${kopf}</div>${zeilen}${notiz}</div>` : ''}
+    ${(karte && !istZieltag(c)) ? `<div class="fuelmenu"><div class="fmhead">${kopf}</div>${zeilen}${notiz}</div>` : ''}
     ${chips}`;
 }
 
@@ -3272,11 +3331,29 @@ function renderMap(c){
     mapDots.push([m, last ? 'pos' : 'entry']);
   });
 
+  /* Zielmarker: sonst gibt es Kalamata nur in der Leiter, nicht auf der
+     Karte. Nur am Zieltag und nur bis zur Ankunft — danach übernimmt der
+     bestehende Zieleinlauf-Feiermoment (showCelebration). */
+  if(istZieltag(c) && c.rest > 0){
+    const kal = c.st.cps.find(cp=> cp.nm === 'Kalamata');
+    if(kal && kal.pos){
+      L.marker(kal.pos, {icon: L.divIcon({className:'zielIcon',
+          html:'<span class="zielRing"></span>🏁', iconSize:[26,26], iconAnchor:[13,13]})})
+        .bindPopup('<strong>Ziel · Kalamata</strong>').addTo(group);
+    }
+  }
+
   group.addTo(mapObj);
   mapLayer = group;
   // Nur beim ersten Zeichnen einpassen: renderMap läuft im 60s-Takt mit, ein
   // fitBounds bei jedem Durchlauf würde herangezoomte Ansichten wegreißen.
-  if(!mapFitted){ mapObj.fitBounds(latlngs, {padding:[24,24]}); mapFitted = true; }
+  // Am Zieltag zählt nicht die Gesamtstrecke, sondern die lokale Bewegung —
+  // die Karte startet dann direkt nah am Fahrer statt an der ganzen Route.
+  if(!mapFitted){
+    if(istZieltag(c) && marks.length) mapObj.setView([marks[marks.length-1].lat, marks[marks.length-1].lon], 13);
+    else mapObj.fitBounds(latlngs, {padding:[24,24]});
+    mapFitted = true;
+  }
   /* Zweimal, und das ist nötig: beim Öffnen des <details> hat der Container im
      ersten Moment noch keine Größe, die Karte hat dann noch keine Ansicht und
      damit keinen Zoom, den man lesen könnte. Der Nachschlag nach
@@ -3539,6 +3616,17 @@ window.tcr84Grenze = cc=>{
   showCelebration(c, { cc: land.cc, ts: (c.ccReached && c.ccReached.ts) || (c.last||{}).ts || c.st.start,
     km: (c.ccReached && c.ccReached.km) || c.km }, true);
   return 'ok';
+};
+/* Der Zieltag-Look (Verpflegung ohne Speisekarte, Karte auf den Fahrer
+   gezoomt, „Rest bis Kalamata" pulst, Ankunftszeit-Kachel, Höhenprofil auf
+   „Heute", Zielmarker) schaltet sich erst ab ZIELTAG_AB automatisch ein —
+   zum Vorführen vorher:
+     tcr84Zieltag('an')   Zieltag-Look erzwingen, unabhängig vom Datum
+     tcr84Zieltag('off')  Override aus, echte Datumsprüfung wieder aktiv */
+window.tcr84Zieltag = was=>{
+  if(!was || was === 'off'){ ZIELTAG_OVERRIDE = null; render(); return 'Zieltag-Override aus.'; }
+  if(was === 'an'){ ZIELTAG_OVERRIDE = true; render(); return 'Zieltag-Override: an'; }
+  return "unbekannt — 'an' oder 'off'";
 };
 /* Die echte Überfahrt steht erst in ~1 Woche an — bis dahin lässt sich die
    Fähr-Anzeige nur über einen synthetischen Stand ausprobieren:
