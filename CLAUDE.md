@@ -982,6 +982,22 @@ Grenzfälle 179 und 181 Minuten.
   spätere GPX-Korrekturen nicht nach, siehe Kommentar über `DEFAULTS` in
   app.js) — aber eine falsche STADT ist keine Schätzung, sondern ein Fehler,
   und wurde dort ebenfalls auf die Leskovik-Koordinate korrigiert.
+  · **Kalamatas `pos` war die Ortsmitte, nicht die Ziellinie** (07.08.2026,
+  kurz vor der erwarteten Ankunft). `pos` stand auf `37,038/22,113`, dem
+  groben Stadtmittelpunkt — anders als bei CP4 keine falsche Stadt, aber
+  derselbe Grundfehler wie bei CP3/CP4 in kleiner: die Näherungsprüfung
+  (`cpHit()`) zielt auf einen Punkt, der nicht der tatsächliche Zielort ist.
+  Bei einer Stadt am Meer mit Zufahrt aus dem Bergland (siehe Karte) reicht
+  das, um verfrüht auszulösen, bevor die eigentliche Ziellinie erreicht ist.
+  Korrigiert auf die vom Nutzer gegebene exakte Ziel-Koordinate
+  (37,02398/22,10307, 1,79 km vom alten Punkt entfernt), in `data.json` und
+  im `DEFAULTS`-Fallback in app.js gleichermaßen. Im selben Zug
+  `CP_RADIUS_KM` (siehe Kommentar dort in app.js) von 1,5 auf 1 km verengt —
+  beide Korrekturen zusammen, weil ein engerer Radius um einen ungenauen
+  Punkt das eigentliche Problem nicht löst, und eine genaue Koordinate mit
+  zu weitem Radius es auch nicht tut. Zum Zeitpunkt der Änderung war Manuel
+  noch 20,3 km Luftlinie von der korrigierten Koordinate entfernt (km
+  4926,79 von 4984), also ohne akute Fehlauslöse-Gefahr.
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in

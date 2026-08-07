@@ -45,7 +45,7 @@ const DEFAULTS = {
     { nm:'CP2b Chopok', lat:'48.9°N', km:2719, pos:[48.96395, 19.58613], deadline:'2026-07-30T11:00' },
     { nm:'CP3 Sarajevo', lat:'43.8°N', km:3520, pos:[43.83074, 18.470769], deadline:'2026-08-02T23:59' },
     { nm:'CP4 Leskovik', lat:'40.2°N', km:4250, pos:[40.152629, 20.599462], deadline:'2026-08-05T23:59' },
-    { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.038, 22.113] }
+    { nm:'Kalamata', lat:'37.0°N', km:4800, pos:[37.02398, 22.10307] }
   ]
 };
 /* Wie nah er dem Kontrollpunkt gekommen sein muss, damit er als erreicht gilt
@@ -70,8 +70,19 @@ const DEFAULTS = {
    Aurlandsvangen (5,6 km) sowie dem neuen Sarajevo-Vorfall (2,8 km). Enger
    als nötig darf sie nicht sein: sitzt der Posten am Ortsrand statt in der
    Mitte, fällt die Erkennung auf den Kilometerstand zurück — dann ist es
-   wieder so spät wie vorher, aber nie falsch. */
-const CP_RADIUS_KM = 1.5;
+   wieder so spät wie vorher, aber nie falsch.
+
+   Auf 1 km verengt (07.08.2026), vorsorglich vor der Zielankunft in
+   Kalamata: gleichzeitig wurde Kalamatas `pos` von der groben Ortsmitte
+   (37,038/22,113) auf die tatsächliche Ziellinie am Meer (37,02398/22,10307,
+   vom Nutzer geliefert, 1,79 km Versatz) korrigiert — dieselbe Lehre wie bei
+   CP3/CP4: die Näherungsprüfung muss gegen den echten Zielpunkt laufen, nicht
+   gegen eine Ortsmitte, sonst löst selbst ein enger Radius am Stadtrand aus
+   statt an der Ziellinie. 1 km bleibt oberhalb von Flåm (0,8 km). Zum
+   Zeitpunkt der Änderung war Manuel noch 20,3 km Luftlinie entfernt, keine
+   akute Fehlauslösung — der Kilometerstand-Fallback (`CP_FALLBACK_MAX_KM`)
+   bleibt unverändert das Sicherheitsnetz. */
+const CP_RADIUS_KM = 1;
 const CP_KM_MIN_FRAC = 0.9;
 /* Ab welcher Kilometerlücke der heutige ↑-Höhenmeter-Balken als „hängt
    hinterher" markiert wird (todayHmAsOf in renderDays). Gemessen wird der
@@ -2083,7 +2094,8 @@ function renderWerkstatt(c){
   const bilanz = werkstattBilanz(z);
   document.getElementById('werkstattSum').innerHTML =
     'Werkstatt · <b>' + esc(bilanz[0]) + '</b>' +
-    (bilanz.length > 1 ? ' · ' + bilanz.slice(1).map(esc).join(' · ') : '');
+    (bilanz.length > 1 ? ' · ' + bilanz.slice(1).map(esc).join(' · ') : '') +
+    '<span class="wkhint">Antippen zum Aufklappen ▾</span>';
 
   const gruppe = (key, titel)=>{
     const rows = z.filter(e=> e.grp === key);

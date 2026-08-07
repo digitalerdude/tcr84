@@ -703,6 +703,12 @@
      wie .logMore, damit die Aufklapp-Möglichkeit auffällt statt im Grau der
      übrigen Summaries unterzugehen. */
   #werkstattDetails > summary{border-left:3px solid var(--brass);color:var(--bone);font-weight:500;padding-left:12px}
+  /* Reicht der Messing-Rand allein nicht (Nutzer haben die Aufklapp-Möglichkeit
+     übersehen), sagt es die Zeile jetzt dazu — als eigene kurze Zeile, nicht im
+     Fließtext der Bilanz, und verschwindet, sobald aufgeklappt ist. */
+  .wkhint{display:block;margin-top:4px;font-family:var(--mono);font-size:9.5px;
+          letter-spacing:.08em;text-transform:none;font-weight:400;color:var(--muted)}
+  #werkstattDetails[open] .wkhint{display:none}
   .setbody{padding:4px 15px 18px;border-top:1px solid var(--line)}
   .setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:12px;margin-top:14px}
   footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--line);
