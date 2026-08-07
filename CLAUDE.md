@@ -998,6 +998,30 @@ Grenzfälle 179 und 181 Minuten.
   zu weitem Radius es auch nicht tut. Zum Zeitpunkt der Änderung war Manuel
   noch 20,3 km Luftlinie von der korrigierten Koordinate entfernt (km
   4926,79 von 4984), also ohne akute Fehlauslöse-Gefahr.
+  · **`totalKm`/Kalamatas `cp.km` liefen dem Tracker-Stand kurz danach schon
+  wieder davon** (07.08.2026, Sekunden bis Minuten nach der `pos`-Korrektur
+  oben). Der Tracker hatte seit 12:58 ein Funkloch im Bergland vor Kalamata
+  (`lastReportMins` wuchs über zwei Scraper-Läufe auf 68) und lieferte die
+  Lücke dann in einem Schlag nach: **+27,5 km** auf einmal (4933,64 → 4961,11
+  km), mit `currentSpeed` 39,9 km/h — plausibel für eine Bergabfahrt
+  Richtung Küste, aber der reine `total − km`-Rest zeigte danach trotzdem
+  noch **22,9 km**, obwohl die Luftlinie zur (gerade erst korrigierten)
+  Ziel-Koordinate nur noch **6,1 km** betrug. Exakt dieselbe Zwei-Lineale-
+  Falle wie bei CP3/CP4: `totalKm` (4984) war am 06.08. über Manuels eigene
+  Navi-Restdistanz kalibriert, bevor der große gepufferte Sprung kam, und
+  hinkte der neuen Realität hinterher. Nachgerechnet nach demselben Muster
+  wie CP3/CP4: BRouter (trekking) vom letzten Profil-Anker `[37.062,
+  22.14597]` zur Ziel-Koordinate = 7,85 km, auf `routedKm` (5363,94)
+  addiert und mit `kmScale` (0,925) auf die Tracker-Skala zurückgerechnet →
+  **4984 → 4968**, sowohl `settings.totalKm` als auch Kalamatas `cp.km`
+  (beide liefen bisher synchron, blieben es auch hier). Neuer Rest: **7,3 km**
+  statt der vorher gezeigten 22,9 — deckt sich mit der direkten BRouter-
+  Route vom letzten Trackpunkt (8,87 km) und der Luftlinie (6,1 km). **Lehre:**
+  ein einzelner großer gepufferter Sprung (Funkloch-Nachlieferung) ist
+  genau der Moment, in dem `totalKm`/`cp.km` am ehesten von der Tracker-
+  Realität abweichen — nach jedem solchen Sprung in Zielnähe lohnt ein
+  BRouter-Gegencheck wie hier, nicht erst wenn der Rest negativ wird wie
+  bei CP3/CP4.
 - **Alles Externe geht durch `esc()`**, sobald es in `innerHTML` landet:
   Ortsnamen (Nominatim), `note`, CP-Namen — `entries` und `cps` können über
   den `#d=`-Teil-Link von jedem kommen. `esc()` ersetzt auch `"`, damit es in
