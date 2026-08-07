@@ -3778,8 +3778,21 @@ async function finaleCanvas(c){
   ctx.fillStyle = '#BCD7DE';
   const flagsOk = st.laender.length > 0 && st.laender.length <= 14;
   if(flagsOk){
+    /* Nicht auf ctx.textAlign='center' für die Flaggenkette verlassen: eine
+       lange Reihe aus mehreren Zweizeichen-Emoji (jede Flagge zwei Regional-
+       Indicator-Codepoints) bringt manche Emoji-Fonts dazu, beim Messen und
+       beim Zeichnen unterschiedliche Fallback-Schriften heranzuziehen — dann
+       weicht die vom Browser intern berechnete Mitte von der tatsächlich
+       gemalten Breite ab und die Reihe rutscht sichtbar nach rechts. Deshalb
+       hier von Hand zentriert: einmal messen, dann linksbündig an der
+       berechneten Startposition zeichnen — dieselbe Breite, die auch gemalt
+       wird. */
     ctx.font = '46px sans-serif';
-    ctx.fillText(st.laender.map(l=> l.flag).join(''), cx, flagsY);
+    const flagsStr = st.laender.map(l=> l.flag).join('');
+    const flagsW = ctx.measureText(flagsStr).width;
+    ctx.textAlign = 'left';
+    ctx.fillText(flagsStr, cx - flagsW/2, flagsY);
+    ctx.textAlign = 'center';
   } else {
     ctx.font = '600 22px "IBM Plex Mono", monospace';
     ctx.fillText(`Ø-Schnitt ${one(st.avg)} km/h${st.rank!=null? ' · Platz '+st.rank : ''}`, cx, flagsY);
